@@ -1,0 +1,53 @@
+name: Deploy Laravel to Hostinger
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.HOSTINGER_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p ${{ secrets.HOSTINGER_PORT }} ${{ secrets.HOSTINGER_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Upload files to Hostinger
+        run: |
+          rsync -avz --delete \
+            --exclude=".git" \
+            --exclude=".github" \
+            --exclude=".env" \
+            --exclude="storage" \
+            --exclude="node_modules" \
+            --exclude="vendor" \
+            -e "ssh -p ${{ secrets.HOSTINGER_PORT }}" \
+            ./ ${{ secrets.HOSTINGER_USER }}@${{ secrets.HOSTINGER_HOST }}:${{ secrets.HOSTINGER_PATH }}
+
+      - name: Run Laravel deployment commands
+        run: |
+          ssh -p ${{ secrets.HOSTINGER_PORT }} ${{ secrets.HOSTINGER_USER }}@${{ secrets.HOSTINGER_HOST }} << 'EOF'
+            cd ${{ secrets.HOSTINGER_PATH }}
+
+            php artisan down || true
+
+            composer install --no-dev --optimize-autoloader --no-interaction
+
+            php artisan migrate --force
+
+            php artisan optimize:clear
+            php artisan optimize
+
+            chmod -R 775 storage bootstrap/cache
+
+            php artisan up || true
+          EOF
