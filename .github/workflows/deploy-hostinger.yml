@@ -28,10 +28,18 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -p "${{ secrets.HOSTINGER_PORT }}" "${{ secrets.HOSTINGER_HOST }}" >> ~/.ssh/known_hosts
 
+      - name: Test SSH connection
+        shell: bash
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -p "${{ secrets.HOSTINGER_PORT }}" \
+            "${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }}" \
+            "whoami && pwd"
+
       - name: Ensure remote directories exist
         shell: bash
         run: |
-          ssh -p "${{ secrets.HOSTINGER_PORT }}" "${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }}" \
+          ssh -i ~/.ssh/id_ed25519 -p "${{ secrets.HOSTINGER_PORT }}" \
+            "${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }}" \
             "mkdir -p '${{ secrets.HOSTINGER_APP_PATH }}'"
 
       - name: Upload Laravel project
@@ -51,15 +59,17 @@ jobs:
             --exclude "tests/" \
             --exclude "documentation.zip" \
             --exclude "codecanyon-fRKWtib1-stockyultimate-inventory-management-system-with-pos.zip" \
-            -e "ssh -p ${{ secrets.HOSTINGER_PORT }}" \
+            -e "ssh -i ~/.ssh/id_ed25519 -p ${{ secrets.HOSTINGER_PORT }}" \
             ./ "${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }}:${{ secrets.HOSTINGER_APP_PATH }}/"
 
       - name: Run post-deploy Laravel commands
         shell: bash
         run: |
-          ssh -p "${{ secrets.HOSTINGER_PORT }}" "${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }}" <<'EOF'
+          ssh -i ~/.ssh/id_ed25519 -p "${{ secrets.HOSTINGER_PORT }}" \
+            "${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }}" << EOF
           set -e
           cd "${{ secrets.HOSTINGER_APP_PATH }}"
+
           php artisan optimize:clear
           php artisan config:cache
           php artisan view:cache
