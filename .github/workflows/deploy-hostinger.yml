@@ -31,14 +31,14 @@ jobs:
       - name: Test SSH connection
         shell: bash
         run: |
-          ssh -i ~/.ssh/id_ed25519 -p "${{ secrets.HOSTINGER_PORT }}" \
+          ssh -i ~/.ssh/id_rsa -p "${{ secrets.HOSTINGER_PORT }}" \
             "${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }}" \
             "whoami && pwd"
 
       - name: Ensure remote directories exist
         shell: bash
         run: |
-          ssh -i ~/.ssh/id_ed25519 -p "${{ secrets.HOSTINGER_PORT }}" \
+          ssh -i ~/.ssh/id_rsa -p "${{ secrets.HOSTINGER_PORT }}" \
             "${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }}" \
             "mkdir -p '${{ secrets.HOSTINGER_APP_PATH }}'"
 
@@ -59,13 +59,13 @@ jobs:
             --exclude "tests/" \
             --exclude "documentation.zip" \
             --exclude "codecanyon-fRKWtib1-stockyultimate-inventory-management-system-with-pos.zip" \
-            -e "ssh -i ~/.ssh/id_ed25519 -p ${{ secrets.HOSTINGER_PORT }}" \
+            -e "ssh -i ~/.ssh/id_rsa -p ${{ secrets.HOSTINGER_PORT }}" \
             ./ "${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }}:${{ secrets.HOSTINGER_APP_PATH }}/"
 
       - name: Run post-deploy Laravel commands
         shell: bash
         run: |
-          ssh -i ~/.ssh/id_ed25519 -p "${{ secrets.HOSTINGER_PORT }}" \
+          ssh -i ~/.ssh/id_rsa -p "${{ secrets.HOSTINGER_PORT }}" \
             "${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }}" << EOF
           set -e
           cd "${{ secrets.HOSTINGER_APP_PATH }}"
