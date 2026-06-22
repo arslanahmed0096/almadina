@@ -21,7 +21,7 @@ jobs:
       - name: Build frontend
         run: |
           npm install
-          npm run build
+          npm run production
 
       - name: Setup SSH
         run: |
