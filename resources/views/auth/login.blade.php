@@ -56,7 +56,7 @@
       body {
         font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         color: var(--text);
-        background: #f0f0ff;
+        background: #ffffff;
         overflow-x: hidden;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
@@ -65,19 +65,13 @@
       /* ─── LAYOUT ─── */
       .auth-page {
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: 1fr;
         min-height: 100dvh;
       }
 
       /* ─── HERO ─── */
       .auth-hero {
-        position: relative;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 4rem clamp(2.5rem, 6vw, 5rem);
-        background: linear-gradient(160deg, #4f46e5 0%, #6366f1 30%, #818cf8 70%, #a78bfa 100%);
-        overflow: hidden;
+        display: none;
       }
 
       .hero-bg-pattern {
@@ -216,7 +210,8 @@
         align-items: center;
         justify-content: center;
         padding: clamp(1.5rem, 5vw, 4rem);
-        background: linear-gradient(180deg, #f8f9ff 0%, #f0f0ff 100%);
+        background: #ffffff;
+        min-height: 100dvh;
       }
 
       .auth-card {
@@ -536,8 +531,9 @@
           padding: 1.25rem 1rem;
           padding-top: max(1.25rem, env(safe-area-inset-top));
           padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
-          background: #f8f9ff;
-          align-items: flex-start;
+          background: #ffffff;
+          align-items: center;
+          min-height: 100dvh;
         }
         .auth-card {
           padding: 1.5rem 1.25rem;

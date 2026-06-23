@@ -22,9 +22,11 @@ class DatabaseSeeder extends Seeder
             PermissionsSeeder::class,
             RoleSeeder::class,
             UserSeeder::class,
+            UsersSeeder::class,
             UserRoleSeeder::class,
             PermissionRoleSeeder::class,
             Warehouse::class,
+            UserWarehouse::class,
             StoreSettingSeeder::class,
         ]);
 
