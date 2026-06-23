@@ -16,7 +16,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
 
       - name: Cache npm dependencies
         uses: actions/cache@v4
@@ -29,6 +29,7 @@ jobs:
       - name: Build frontend
         run: |
           npm ci
+          npm install --no-save webpack@5.60.0 webpack-cli@4.9.1
           npm run production
 
       - name: Setup SSH
