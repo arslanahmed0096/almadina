@@ -18,17 +18,25 @@ jobs:
         with:
           node-version: 18
 
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
       - name: Build frontend
         run: |
-          npm install
-          npm remove webpack webpack-cli
-          npm install webpack@5.88.2 webpack-cli@4.10.0 --save-dev
+          npm ci
           npm run production
 
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
-          printf "%s" "${{ secrets.HOSTINGER_SSH_KEY }}" > ~/.ssh/id_rsa
+          cat > ~/.ssh/id_rsa << 'EOF'
+          ${{ secrets.HOSTINGER_SSH_KEY }}
+          EOF
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H -p 65002 153.92.10.184 >> ~/.ssh/known_hosts
 
