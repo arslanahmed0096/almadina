@@ -19,21 +19,37 @@ class UsersSeeder extends Seeder
         $now = Carbon::now();
 
         DB::table('users')->insert([
+             [
+                'id' => 1,
+                'firstname' => 'William',
+                'lastname' => 'Castillo',
+                'username' => 'William Castillo',
+                'email' => 'admin@example.com',
+                'password' => '$2y$10$IFj6SwqC0Sxrsiv4YkCt.OJv1UV4mZrWuyLoRG7qt47mseP9mJ58u',
+                'avatar' => 'no_avatar.png',
+                'phone' => '0123456789',
+                'role_id' => 1,
+                'statut' => 1,
+                'is_all_warehouses' => 1,
+                'record_view' => 1,
+            ]
             // // Global/system users
-            // [
-            //     'id' => 1,
-            //     'firstname' => 'Super',
-            //     'lastname' => 'Admin',
-            //     'username' => 'superadmin',
-            //     'email' => 'superadmin@almadina.test',
-            //     'password' => Hash::make('Password123!'),
-            //     'avatar' => null,
-            //     'phone' => null,
-            //     'role_id' => 1,
-            //     'statut' => 1,
-            //     'created_at' => $now,
-            //     'updated_at' => $now,
-            // ],
+            [
+                'id' => 1,
+                'firstname' => 'Super',
+                'lastname' => 'Admin',
+                'username' => 'superadmin',
+                'email' => 'superadmin@almadina.test',
+                'password' => Hash::make('Password123!'),
+                'avatar' => 'no_avatar.png',
+                'phone' => '0123456789',
+                'role_id' => 1,
+                'statut' => 1,
+                'is_all_warehouses' => 1,
+                'record_view' => 1,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
             [
                 'id' => 2,
                 'firstname' => 'Admin',
