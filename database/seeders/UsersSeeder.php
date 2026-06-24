@@ -18,7 +18,7 @@ class UsersSeeder extends Seeder
     {
         $now = Carbon::now();
 
-        DB::table('users')->insert([
+        $users = [
             [
                 'id' => 1,
                 'firstname' => 'Super',
@@ -46,11 +46,11 @@ class UsersSeeder extends Seeder
                 'phone' => null,
                 'role_id' => 2,
                 'statut' => 1,
+                'is_all_warehouses' => 0,
+                'record_view' => 0,
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
-
-            // Default one-per-role users
             [
                 'id' => 3,
                 'firstname' => 'Branch',
@@ -62,6 +62,8 @@ class UsersSeeder extends Seeder
                 'phone' => null,
                 'role_id' => 3,
                 'statut' => 1,
+                'is_all_warehouses' => 0,
+                'record_view' => 0,
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
@@ -76,6 +78,8 @@ class UsersSeeder extends Seeder
                 'phone' => null,
                 'role_id' => 4,
                 'statut' => 1,
+                'is_all_warehouses' => 0,
+                'record_view' => 0,
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
@@ -90,6 +94,8 @@ class UsersSeeder extends Seeder
                 'phone' => null,
                 'role_id' => 5,
                 'statut' => 1,
+                'is_all_warehouses' => 0,
+                'record_view' => 0,
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
@@ -104,11 +110,11 @@ class UsersSeeder extends Seeder
                 'phone' => null,
                 'role_id' => 6,
                 'statut' => 1,
+                'is_all_warehouses' => 0,
+                'record_view' => 0,
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
-
-            // Branch-specific users for Warehouse 1 (Al Madina Branch Kamra Road)
             [
                 'id' => 7,
                 'firstname' => 'Kamra',
@@ -120,6 +126,8 @@ class UsersSeeder extends Seeder
                 'phone' => null,
                 'role_id' => 3,
                 'statut' => 1,
+                'is_all_warehouses' => 0,
+                'record_view' => 0,
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
@@ -134,6 +142,8 @@ class UsersSeeder extends Seeder
                 'phone' => null,
                 'role_id' => 4,
                 'statut' => 1,
+                'is_all_warehouses' => 0,
+                'record_view' => 0,
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
@@ -148,6 +158,8 @@ class UsersSeeder extends Seeder
                 'phone' => null,
                 'role_id' => 5,
                 'statut' => 1,
+                'is_all_warehouses' => 0,
+                'record_view' => 0,
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
@@ -162,11 +174,11 @@ class UsersSeeder extends Seeder
                 'phone' => null,
                 'role_id' => 6,
                 'statut' => 1,
+                'is_all_warehouses' => 0,
+                'record_view' => 0,
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
-
-            // Branch-specific users for Warehouse 2 (Al Madina Branch Madani Chowk)
             [
                 'id' => 11,
                 'firstname' => 'Madani',
@@ -178,6 +190,8 @@ class UsersSeeder extends Seeder
                 'phone' => null,
                 'role_id' => 3,
                 'statut' => 1,
+                'is_all_warehouses' => 0,
+                'record_view' => 0,
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
@@ -192,6 +206,8 @@ class UsersSeeder extends Seeder
                 'phone' => null,
                 'role_id' => 4,
                 'statut' => 1,
+                'is_all_warehouses' => 0,
+                'record_view' => 0,
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
@@ -206,6 +222,8 @@ class UsersSeeder extends Seeder
                 'phone' => null,
                 'role_id' => 5,
                 'statut' => 1,
+                'is_all_warehouses' => 0,
+                'record_view' => 0,
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
@@ -220,11 +238,11 @@ class UsersSeeder extends Seeder
                 'phone' => null,
                 'role_id' => 6,
                 'statut' => 1,
+                'is_all_warehouses' => 0,
+                'record_view' => 0,
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
-
-            // Branch-specific users for Warehouse 3 (Al Madina Kamra Branch)
             [
                 'id' => 15,
                 'firstname' => 'Kamra2',
@@ -236,6 +254,8 @@ class UsersSeeder extends Seeder
                 'phone' => null,
                 'role_id' => 3,
                 'statut' => 1,
+                'is_all_warehouses' => 0,
+                'record_view' => 0,
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
@@ -250,6 +270,8 @@ class UsersSeeder extends Seeder
                 'phone' => null,
                 'role_id' => 4,
                 'statut' => 1,
+                'is_all_warehouses' => 0,
+                'record_view' => 0,
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
@@ -264,6 +286,8 @@ class UsersSeeder extends Seeder
                 'phone' => null,
                 'role_id' => 5,
                 'statut' => 1,
+                'is_all_warehouses' => 0,
+                'record_view' => 0,
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
@@ -278,11 +302,11 @@ class UsersSeeder extends Seeder
                 'phone' => null,
                 'role_id' => 6,
                 'statut' => 1,
+                'is_all_warehouses' => 0,
+                'record_view' => 0,
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
-
-            // Branch-specific users for Warehouse 4 (Al Madina Hazro Branch)
             [
                 'id' => 19,
                 'firstname' => 'Hazro',
@@ -294,6 +318,8 @@ class UsersSeeder extends Seeder
                 'phone' => null,
                 'role_id' => 3,
                 'statut' => 1,
+                'is_all_warehouses' => 0,
+                'record_view' => 0,
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
@@ -308,6 +334,8 @@ class UsersSeeder extends Seeder
                 'phone' => null,
                 'role_id' => 4,
                 'statut' => 1,
+                'is_all_warehouses' => 0,
+                'record_view' => 0,
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
@@ -322,6 +350,8 @@ class UsersSeeder extends Seeder
                 'phone' => null,
                 'role_id' => 5,
                 'statut' => 1,
+                'is_all_warehouses' => 0,
+                'record_view' => 0,
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
@@ -336,10 +366,39 @@ class UsersSeeder extends Seeder
                 'phone' => null,
                 'role_id' => 6,
                 'statut' => 1,
+                'is_all_warehouses' => 0,
+                'record_view' => 0,
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
-        ]);
+        ];
+
+        // Ensure every user array has the same keys (safety) and then insert
+        $defaultKeys = [
+            'id', 'firstname', 'lastname', 'username', 'email', 'password', 'avatar', 'phone',
+            'role_id', 'statut', 'is_all_warehouses', 'record_view', 'created_at', 'updated_at'
+        ];
+
+        $normalized = array_map(function ($u) use ($now, $defaultKeys) {
+            foreach ($defaultKeys as $k) {
+                if (!array_key_exists($k, $u)) {
+                    if ($k === 'created_at' || $k === 'updated_at') {
+                        $u[$k] = $now;
+                    } elseif ($k === 'password') {
+                        $u[$k] = Hash::make('password');
+                    } else {
+                        $u[$k] = null;
+                    }
+                }
+            }
+            // order keys consistently
+            $ordered = [];
+            foreach ($defaultKeys as $k) {
+                $ordered[$k] = $u[$k];
+            }
+            return $ordered;
+        }, $users);
+
+        DB::table('users')->insert($normalized);
     }
 }
-
