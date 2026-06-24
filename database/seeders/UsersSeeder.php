@@ -21,11 +21,11 @@ class UsersSeeder extends Seeder
         DB::table('users')->insert([
              [
                 'id' => 1,
-                'firstname' => 'William',
-                'lastname' => 'Castillo',
-                'username' => 'William Castillo',
-                'email' => 'admin@example.com',
-                'password' => '$2y$10$IFj6SwqC0Sxrsiv4YkCt.OJv1UV4mZrWuyLoRG7qt47mseP9mJ58u',
+                'firstname' => 'Super',
+                'lastname' => 'Admin',
+                'username' => 'superadmin',
+                'email' => 'admin@al-madinaelectronics.com',
+                'password' => Hash::make('Password123!'),
                 'avatar' => 'no_avatar.png',
                 'phone' => '0123456789',
                 'role_id' => 1,
