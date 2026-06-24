@@ -32,8 +32,7 @@ class UsersSeeder extends Seeder
                 'statut' => 1,
                 'is_all_warehouses' => 1,
                 'record_view' => 1,
-            ]
-            // // Global/system users
+            ],
             [
                 'id' => 1,
                 'firstname' => 'Super',
