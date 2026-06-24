@@ -19,7 +19,7 @@ class UsersSeeder extends Seeder
         $now = Carbon::now();
 
         DB::table('users')->insert([
-             [
+            [
                 'id' => 1,
                 'firstname' => 'Super',
                 'lastname' => 'Admin',
