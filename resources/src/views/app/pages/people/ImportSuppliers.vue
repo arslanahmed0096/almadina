@@ -64,7 +64,8 @@
                 <thead class="thead-light">
                   <tr>
                     <th class="req">name</th>
-                    <th class="req">code (integer)</th>
+                    <th>account_title</th>
+                    <th>code (integer)</th>
                     <th>email</th>
                     <th>phone</th>
                     <th>tax_number</th>
@@ -76,6 +77,7 @@
                 <tbody>
                   <tr>
                     <td>ACME Supplies</td>
+                    <td>Accounts Payable - ACME</td>
                     <td>2001</td>
                     <td>contact@acmesupplies.com</td>
                     <td>+1 555 0100</td>
@@ -86,6 +88,7 @@
                   </tr>
                   <tr>
                     <td>Global Vendor</td>
+                    <td>Global Vendor AP</td>
                     <td>2002</td>
                     <td></td>
                     <td>+44 20 7946 0000</td>
@@ -99,7 +102,7 @@
             </div>
 
             <ul class="mini-notes mt-2">
-              <li><strong>code</strong> must be an integer and unique (DB column is INT).</li>
+              <li><strong>code</strong> is optional. If provided it must be an integer and unique (DB column is INT). If omitted a code will be auto-generated.</li>
               <li><strong>name</strong> is required.</li>
               <li><strong>Address</strong> is the address field expected by the backend.</li>
             </ul>
@@ -235,7 +238,8 @@ export default {
       // guide chips
       columnsGuide: [
         { key: 'name',       label: 'name',           required: true  },
-        { key: 'code',       label: 'code (integer)', required: true  },
+        { key: 'account_title', label: 'account_title', required: false },
+        { key: 'code',       label: 'code (integer)', required: false },
         { key: 'email',      label: 'email',          required: false },
         { key: 'phone',      label: 'phone',          required: false },
         { key: 'tax_number', label: 'tax_number',     required: false },

@@ -258,7 +258,7 @@ export default {
       importProcessing: false,
 
       serverParams: {
-        sort: { field: 'id', type: 'desc' },
+        sort: { field: 'name', type: 'asc' },
         page: 1,
         perPage: 10
       },

@@ -28,6 +28,17 @@
               </validation-provider>
             </b-col>
 
+             <!-- Account Title -->
+            <b-col md="6" sm="12">
+              <b-form-group :label="$t('Account_Title')">
+                <b-form-input
+                  label="account_title"
+                  v-model="provider.account_title"
+                  :placeholder="$t('Account_Title')"
+                ></b-form-input>
+              </b-form-group>
+            </b-col>
+
              <!-- Provider Email -->
             <b-col md="6" sm="12">
                 <b-form-group :label="$t('Email')">
@@ -153,6 +164,7 @@ export default {
       customFieldValues: {},
       provider: {
         id: "",
+          account_title: "",
         name: "",
         phone: "",
         email: "",
@@ -187,6 +199,7 @@ export default {
       axios
         .put("providers/" + this.provider.id, {
           name: this.provider.name,
+          account_title: this.provider.account_title,
           email: this.provider.email,
           tax_number: this.provider.tax_number,
           phone: this.provider.phone,
@@ -239,6 +252,7 @@ export default {
           this.provider = {
             id: response.data.provider?.id || "",
             name: response.data.provider?.name || "",
+            account_title: response.data.provider?.account_title || "",
             email: response.data.provider?.email || "",
             phone: response.data.provider?.phone || "",
             tax_number: response.data.provider?.tax_number || "",

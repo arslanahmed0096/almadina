@@ -27,9 +27,21 @@ class UnitsController extends BaseController
 
         // Search With Multiple Param
             ->where(function ($query) use ($request) {
-                return $query->when($request->filled('search'), function ($query) use ($request) {
+                $query->when($request->filled('search'), function ($query) use ($request) {
                     return $query->where('name', 'LIKE', "%{$request->search}%")
                         ->orWhere('ShortName', 'LIKE', "%{$request->search}%");
+                });
+
+                $query->when($request->filled('name'), function ($query) use ($request) {
+                    return $query->where('name', 'LIKE', "%{$request->name}%");
+                });
+
+                $query->when($request->filled('ShortName'), function ($query) use ($request) {
+                    return $query->where('ShortName', 'LIKE', "%{$request->ShortName}%");
+                });
+
+                $query->when($request->filled('base_unit'), function ($query) use ($request) {
+                    return $query->where('base_unit', $request->base_unit);
                 });
             });
         $totalRows = $Units->count();

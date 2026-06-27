@@ -27,52 +27,60 @@
         </div>
 
         <!-- table actions -->
-        <div slot="table-actions" class="mt-2 mb-3">
-          <b-form-select
-            v-model="nameSort"
-            :options="nameSortOptions"
-            size="sm"
-            class="d-inline-block m-1 sort-select"
-            @change="applyNameSort"
-          />
+        <div slot="table-actions" class="table-actions-wrapper mt-2 mb-3 d-flex flex-wrap align-items-center justify-content-between">
+          <div class="table-actions-left d-flex flex-wrap align-items-center">
+            <b-form-select
+              v-model="nameSort"
+              :options="nameSortOptions"
+              size="sm"
+              class="sort-select m-1"
+              @change="applyNameSort"
+            />
 
-          <b-button variant="outline-info m-1" size="sm" v-b-toggle.sidebar-right>
-            <lucide-icon name="filter" />
-            {{ $t("Filter") }}
-          </b-button>
+            <b-button class="m-1" size="sm" variant="outline-info" v-b-toggle.sidebar-right>
+              <lucide-icon name="filter" />
+              {{ $t("Filter") }}
+            </b-button>
 
-          <b-button @click="Product_PDF()" size="sm" variant="outline-success m-1">
-            <lucide-icon name="copy" /> PDF
-          </b-button>
+            <b-button class="m-1" @click="Product_PDF()" size="sm" variant="outline-success">
+              <lucide-icon name="copy" /> PDF
+            </b-button>
 
-          <vue-excel-xlsx
-            class="btn btn-sm btn-outline-danger m-1"
-            :data="products"
-            :columns="excelColumns"
-            :file-name="'products'"
-            :file-type="'xlsx'"
-            :sheet-name="'products'"
-          >
-            <lucide-icon name="file-spreadsheet" /> EXCEL
-          </vue-excel-xlsx>
+            <vue-excel-xlsx
+              class="btn btn-sm btn-outline-danger m-1"
+              :data="products"
+              :columns="excelColumns"
+              :file-name="'products'"
+              :file-type="'xlsx'"
+              :sheet-name="'products'"
+            >
+              <lucide-icon name="file-spreadsheet" /> EXCEL
+            </vue-excel-xlsx>
 
-          <router-link
-            v-if="currentUserPermissions && currentUserPermissions.includes('product_import')"
-            :to="{ name: 'import_products' }"
-            class="btn btn-sm btn-outline-info m-1"
-          >
-            <lucide-icon name="download" />
-            {{ $t("import_products") }}
-          </router-link>
+            <b-button class="m-1" @click="exportAllProducts" :disabled="isExportingAll" size="sm" variant="outline-danger">
+              <lucide-icon name="download" /> {{ $t('Export_All') || 'Export All' }}
+            </b-button>
 
-          <router-link
-            class="btn btn-sm btn-primary m-1"
-            v-if="currentUserPermissions && currentUserPermissions.includes('products_add')"
-            to="/app/products/store"
-          >
-            <lucide-icon name="plus" />
-            {{$t('Add')}}
-          </router-link>
+            <router-link
+              v-if="currentUserPermissions && currentUserPermissions.includes('product_import')"
+              :to="{ name: 'import_products' }"
+              class="btn btn-sm btn-outline-info m-1"
+            >
+              <lucide-icon name="download" />
+              {{ $t("import_products") }}
+            </router-link>
+          </div>
+
+          <div class="table-actions-right d-flex flex-wrap align-items-center">
+            <router-link
+              class="btn btn-sm btn-primary m-1"
+              v-if="currentUserPermissions && currentUserPermissions.includes('products_add')"
+              to="/app/products/store"
+            >
+              <lucide-icon name="plus" />
+              {{$t('Add')}}
+            </router-link>
+          </div>
         </div>
 
         <!-- SAFE rendering: never v-html for user text -->
@@ -265,6 +273,7 @@ import { mapGetters } from "vuex";
 import NProgress from "nprogress";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import * as XLSX from "xlsx";
 import {
   formatPriceDisplay as formatPriceDisplayHelper,
   getPriceFormatSetting
@@ -274,7 +283,7 @@ export default {
   metaInfo: { title: "Products" },
   data() {
     return {
-      serverParams: { sort: { field: "id", type: "desc" }, page: 1, perPage: 10 },
+      serverParams: { sort: { field: "name", type: "asc" }, page: 1, perPage: 10 },
       selectedIds: [],
       ImportProcessing: false,
       data: new FormData(),
@@ -294,6 +303,7 @@ export default {
       products: [],
       warehouses: [],
       nameSort: "az",
+      isExportingAll: false,
       // Optional price format key for frontend display (loaded from system settings/localStorage)
       price_format_key: null
     };
@@ -560,6 +570,59 @@ export default {
       this.Get_Products(this.serverParams.page);
     },
 
+    async exportAllProducts() {
+      if (this.isExportingAll) return;
+      this.isExportingAll = true;
+      NProgress.start();
+      NProgress.set(0.1);
+
+      try {
+        this.setToStrings();
+        const params = new URLSearchParams({
+          page: '1',
+          limit: '-1',
+          code: this.Filter_code || '',
+          name: this.Filter_name || '',
+          category_id: this.Filter_category || '',
+          brand_id: this.Filter_brand || '',
+          warehouse_id: this.Filter_warehouse || '',
+          SortField: this.serverParams.sort.field || 'name',
+          SortType: this.serverParams.sort.type || 'asc',
+          search: this.search || ''
+        }).toString();
+
+        const response = await axios.get(`products?${params}`);
+        const rows = Array.isArray(response.data.products) ? response.data.products : [];
+
+        if (!rows.length) {
+          this.makeToast('warning', this.$t('NoDataToExport') || 'No products to export', this.$t('Warning') || 'Warning');
+          return;
+        }
+
+        const exportData = rows.map(row => {
+          const newRow = {};
+          this.excelColumns.forEach(col => {
+            newRow[col.label] = row[col.field] !== undefined && row[col.field] !== null ? row[col.field] : '';
+          });
+          return newRow;
+        });
+
+        const worksheet = XLSX.utils.json_to_sheet(exportData);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, this.$t('productsList') || 'products');
+
+        const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+        const filename = `products_all_${timestamp}.xlsx`;
+        XLSX.writeFile(workbook, filename);
+      } catch (error) {
+        console.error('Export all products failed:', error);
+        this.makeToast('danger', this.$t('Export_Failed') || 'Export failed. Please try again.', this.$t('Failed') || 'Failed');
+      } finally {
+        this.isExportingAll = false;
+        NProgress.done();
+      }
+    },
+
     Reset_Filter() {
       this.search = "";
       this.Filter_brand = "";
@@ -698,5 +761,20 @@ export default {
 
 <style scoped>
 .pre { white-space: pre-line; }
-.sort-select { width: 190px; vertical-align: middle; }
+.sort-select { width: 190px; min-width: 180px; vertical-align: middle; }
+.table-actions-wrapper {
+  gap: 0.5rem;
+}
+.table-actions-left,
+.table-actions-right {
+  gap: 0.5rem;
+}
+.table-actions-right {
+  margin-left: auto;
+}
+.table-actions-wrapper .btn,
+.table-actions-wrapper .btn-group,
+.table-actions-wrapper .b-form-select {
+  white-space: nowrap;
+}
 </style>

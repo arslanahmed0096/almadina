@@ -29,11 +29,20 @@
       }"
         styleClass="table-hover tableOne vgt-table"
       >
-        <div slot="table-actions" class="mt-2 mb-3">
-          <b-button @click="New_Unit()" class="btn-rounded" variant="btn btn-primary btn-icon m-1">
-            <lucide-icon name="plus" />
-            {{$t('Add')}}
-          </b-button>
+        <div slot="table-actions" class="table-actions-wrapper mt-2 mb-3 d-flex flex-wrap align-items-center justify-content-between">
+          <div class="table-actions-left d-flex flex-wrap align-items-center">
+            <b-button class="m-1" size="sm" variant="outline-info" v-b-toggle.sidebar-right>
+              <lucide-icon name="filter" />
+              {{ $t("Filter") }}
+            </b-button>
+          </div>
+
+          <div class="table-actions-right d-flex flex-wrap align-items-center">
+            <b-button @click="New_Unit()" class="btn-rounded m-1" variant="btn btn-primary btn-icon">
+              <lucide-icon name="plus" />
+              {{$t('Add')}}
+            </b-button>
+          </div>
         </div>
 
         <template slot="table-row" slot-scope="props">
@@ -52,6 +61,53 @@
         </template>
       </vue-good-table>
     </b-card>
+
+    <b-sidebar id="sidebar-right" :title="$t('Filter')" bg-variant="white" right shadow>
+      <div class="px-3 py-2">
+        <b-row>
+          <b-col md="12">
+            <b-form-group :label="$t('ProductName')">
+              <b-form-input
+                :placeholder="$t('SearchByName')"
+                v-model="Filter_name"
+              />
+            </b-form-group>
+          </b-col>
+
+          <b-col md="12">
+            <b-form-group :label="$t('ShortName')">
+              <b-form-input
+                :placeholder="$t('SearchByShortName')"
+                v-model="Filter_shortName"
+              />
+            </b-form-group>
+          </b-col>
+
+          <b-col md="12">
+            <b-form-group :label="$t('BaseUnit')">
+              <v-select
+                :reduce="label => label.value"
+                :placeholder="$t('Choose_Base_Unit')"
+                v-model="Filter_base_unit"
+                :options="units_base.map(unit => ({ label: unit.name, value: unit.id }))"
+              />
+            </b-form-group>
+          </b-col>
+
+          <b-col md="12">
+            <b-button @click="updateParams({ page: 1 }); Get_Units(1)" variant="primary m-1" size="sm" block>
+              <lucide-icon name="filter" /> {{ $t('Filter') }}
+            </b-button>
+          </b-col>
+
+          <b-col md="6" sm="12">
+            <b-button @click="Reset_Filter()" variant="danger m-1" size="sm" block>
+              <lucide-icon name="power" /> {{ $t('Reset') }}
+            </b-button>
+          </b-col>
+        </b-row>
+      </div>
+    </b-sidebar>
 
     <validation-observer ref="Create_Unit">
       <b-modal hide-footer size="md" id="New_Unit" :title="editmode?$t('Edit'):$t('Add')">
@@ -184,6 +240,9 @@ export default {
       limit: "10",
       units: [],
       units_base: [],
+      Filter_name: "",
+      Filter_shortName: "",
+      Filter_base_unit: "",
       editmode: false,
       show_operator: false,
       unit: {
@@ -360,6 +419,12 @@ export default {
             this.serverParams.sort.type +
             "&search=" +
             this.search +
+            "&name=" +
+            encodeURIComponent(this.Filter_name || "") +
+            "&ShortName=" +
+            encodeURIComponent(this.Filter_shortName || "") +
+            "&base_unit=" +
+            encodeURIComponent(this.Filter_base_unit || "") +
             "&limit=" +
             this.limit
         )
@@ -455,6 +520,13 @@ export default {
         operator: "*",
         operator_value: 1
       };
+    },
+
+    Reset_Filter() {
+      this.Filter_name = "";
+      this.Filter_shortName = "";
+      this.Filter_base_unit = "";
+      this.Get_Units(this.serverParams.page);
     },
 
     //--------------------------------- Remove Unit --------------------\\

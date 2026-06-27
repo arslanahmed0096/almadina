@@ -155,15 +155,13 @@ class UserController extends BaseController
             'email.unique' => 'This Email already taken.',
         ]);
         \DB::transaction(function () use ($request) {
-            if ($request->hasFile('avatar')) {
-
-                $image = $request->file('avatar');
-                $filename = rand(11111111, 99999999).$image->getClientOriginalName();
+            $image = $request->file('avatar');
+            if ($image && is_object($image) && method_exists($image, 'getClientOriginalName')) {
+                $filename = rand(11111111, 99999999) . $image->getClientOriginalName();
 
                 $image_resize = Image::make($image->getRealPath());
                 $image_resize->resize(128, 128);
-                $image_resize->save(public_path('/images/avatar/'.$filename));
-
+                $image_resize->save(public_path('/images/avatar/' . $filename));
             } else {
                 $filename = 'no_avatar.png';
             }
@@ -264,20 +262,24 @@ class UserController extends BaseController
 
             $currentAvatar = $user->avatar;
             if ($request->avatar != $currentAvatar) {
-
                 $image = $request->file('avatar');
-                $path = public_path().'/images/avatar';
-                $filename = rand(11111111, 99999999).$image->getClientOriginalName();
+                $path = public_path() . '/images/avatar';
+                if ($image && is_object($image) && method_exists($image, 'getClientOriginalName')) {
+                    $filename = rand(11111111, 99999999) . $image->getClientOriginalName();
 
-                $image_resize = Image::make($image->getRealPath());
-                $image_resize->resize(128, 128);
-                $image_resize->save(public_path('/images/avatar/'.$filename));
+                    $image_resize = Image::make($image->getRealPath());
+                    $image_resize->resize(128, 128);
+                    $image_resize->save(public_path('/images/avatar/' . $filename));
 
-                $userPhoto = $path.'/'.$currentAvatar;
-                if (file_exists($userPhoto)) {
-                    if ($user->avatar != 'no_avatar.png') {
-                        @unlink($userPhoto);
+                    $userPhoto = $path . '/' . $currentAvatar;
+                    if (file_exists($userPhoto)) {
+                        if ($user->avatar != 'no_avatar.png') {
+                            @unlink($userPhoto);
+                        }
                     }
+                } else {
+                    // No uploaded file present — keep current avatar filename
+                    $filename = $currentAvatar;
                 }
             } else {
                 $filename = $currentAvatar;
@@ -344,21 +346,25 @@ class UserController extends BaseController
 
         $currentAvatar = $user->avatar;
         if ($request->avatar != $currentAvatar) {
-
             $image = $request->file('avatar');
-            $path = public_path().'/images/avatar';
-            $filename = rand(11111111, 99999999).$image->getClientOriginalName();
+            $path = public_path() . '/images/avatar';
+            if ($image && is_object($image) && method_exists($image, 'getClientOriginalName')) {
+                $filename = rand(11111111, 99999999) . $image->getClientOriginalName();
 
-            $image_resize = Image::make($image->getRealPath());
-            $image_resize->resize(128, 128);
-            $image_resize->save(public_path('/images/avatar/'.$filename));
+                $image_resize = Image::make($image->getRealPath());
+                $image_resize->resize(128, 128);
+                $image_resize->save(public_path('/images/avatar/' . $filename));
 
-            $userPhoto = $path.'/'.$currentAvatar;
+                $userPhoto = $path . '/' . $currentAvatar;
 
-            if (file_exists($userPhoto)) {
-                if ($user->avatar != 'no_avatar.png') {
-                    @unlink($userPhoto);
+                if (file_exists($userPhoto)) {
+                    if ($user->avatar != 'no_avatar.png') {
+                        @unlink($userPhoto);
+                    }
                 }
+            } else {
+                // No uploaded file present — keep current avatar filename
+                $filename = $currentAvatar;
             }
         } else {
             $filename = $currentAvatar;

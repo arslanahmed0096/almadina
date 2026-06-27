@@ -94,6 +94,7 @@ class ProvidersController extends BaseController
             $item['name'] = $provider->name;
             $item['phone'] = $provider->phone;
             $item['tax_number'] = $provider->tax_number;
+            $item['account_title'] = $provider->account_title ?? null;
             $item['code'] = $provider->code;
             $item['email'] = $provider->email;
             $item['country'] = $provider->country;
@@ -127,6 +128,7 @@ class ProvidersController extends BaseController
         $provider = Provider::create([
             'name' => $request['name'],
             'code' => $this->getNumberOrder(),
+            'account_title' => $request['account_title'] ?? null,
             'adresse' => $request['adresse'],
             'phone' => $request['phone'],
             'email' => $request['email'],
@@ -171,6 +173,7 @@ class ProvidersController extends BaseController
 
         Provider::whereId($id)->update([
             'name' => $request['name'],
+            'account_title' => $request['account_title'] ?? null,
             'adresse' => $request['adresse'],
             'phone' => $request['phone'],
             'email' => $request['email'],
@@ -305,6 +308,9 @@ class ProvidersController extends BaseController
         $prepared = [];
         $codesInFile = [];
 
+        $lastProvider = DB::table('providers')->latest('id')->first();
+        $nextGenerated = $lastProvider ? ($lastProvider->code + 1) : 1;
+
         foreach ($normalized as $i => $row) {
             $line = $i + $lineBase;
 
@@ -316,6 +322,7 @@ class ProvidersController extends BaseController
             $city = isset($row['city']) ? trim((string) $row['city']) : '';
             $adresse = isset($row['adresse']) ? trim((string) $row['adresse']) : '';
             $tax_number = isset($row['tax_number']) ? trim((string) $row['tax_number']) : '';
+            $account_title = isset($row['account_title']) ? trim((string) $row['account_title']) : null;
             $opening_balance = isset($row['opening_balance']) && is_numeric($row['opening_balance']) ? (float) $row['opening_balance'] : 0;
             $credit_limit = isset($row['credit_limit']) && is_numeric($row['credit_limit']) ? (float) $row['credit_limit'] : 0;
 
@@ -323,10 +330,10 @@ class ProvidersController extends BaseController
                 $errors[] = "Row {$line}: name is required.";
             }
 
-            // code must be integer
+            // code: if missing, auto-generate sequential integer code
             $code = null;
             if ($codeRaw === null || $codeRaw === '') {
-                $errors[] = "Row {$line}: code is required and must be an integer.";
+                $code = $nextGenerated++;
             } elseif (is_numeric($codeRaw) && intval($codeRaw) == $codeRaw) {
                 $code = intval($codeRaw);
             } else {
@@ -349,6 +356,7 @@ class ProvidersController extends BaseController
             $prepared[] = [
                 'name' => $name,
                 'code' => $code,
+                'account_title' => $account_title,
                 'email' => $email ?: null,
                 'phone' => $phone ?: null,
                 'country' => $country ?: null,
@@ -387,6 +395,7 @@ class ProvidersController extends BaseController
             $insertRows[] = [
                 'name' => $r['name'],
                 'code' => $r['code'],
+                'account_title' => $r['account_title'] ?? null,
                 'email' => $r['email'],
                 'phone' => $r['phone'],
                 'country' => $r['country'],

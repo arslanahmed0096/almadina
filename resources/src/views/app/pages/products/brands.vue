@@ -250,8 +250,8 @@ export default {
       serverParams: {
         columnFilters: {},
         sort: {
-          field: "id",
-          type: "desc"
+          field: "name",
+          type: "asc"
         },
         page: 1,
         perPage: 10

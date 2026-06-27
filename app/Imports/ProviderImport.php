@@ -16,6 +16,7 @@ class ProviderImport implements ToModel, WithHeadingRow, WithValidation
             'name' => $row['name'],
             'code' => $this->getNumberOrder(),
             'adresse' => $row['address'] ?? null,
+            'account_title' => $row['account_title'] ?? null,
             'phone' => $row['phone'] ?? null,
             'email' => $row['email'] ?? null,
             'country' => $row['country'] ?? null,

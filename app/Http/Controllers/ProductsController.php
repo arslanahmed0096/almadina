@@ -50,8 +50,16 @@ class ProductsController extends BaseController
         $perPage = $request->integer('limit', 10);
         $pageStart = (int) ($request->get('page', 1));
         $offSet = ($pageStart * max($perPage, 1)) - max($perPage, 1);
-        $order = $request->get('SortField', 'id');
-        $dir = $request->get('SortType', 'desc');
+        $order = $request->get('SortField', 'name');
+        $dir = strtolower($request->get('SortType', 'asc'));
+        if (! in_array($dir, ['asc', 'desc'], true)) {
+            $dir = 'asc';
+        }
+
+        $allowedSort = ['id', 'name', 'category_id', 'brand_id', 'code', 'sub_category_id'];
+        if (! in_array($order, $allowedSort, true)) {
+            $order = 'name';
+        }
 
         $helpers = new helpers;
         $warehouseId = $request->integer('warehouse_id');

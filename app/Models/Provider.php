@@ -10,6 +10,7 @@ class Provider extends Model
 
     protected $fillable = [
         'name', 'code', 'adresse', 'phone', 'country', 'email', 'city', 'tax_number',
+        'account_title',
         'opening_balance', 'credit_limit',
     ];
 
