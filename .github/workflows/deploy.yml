@@ -33,13 +33,12 @@ jobs:
           npm run production
 
       - name: Setup SSH
+        shell: bash
         run: |
           mkdir -p ~/.ssh
-          cat > ~/.ssh/id_rsa << 'EOF'
-          ${{ secrets.HOSTINGER_SSH_KEY }}
-          EOF
+          printf '%s\n' "${{ secrets.HOSTINGER_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H -p 65002 153.92.10.184 >> ~/.ssh/known_hosts
+          ssh-keyscan -H -p "${{ secrets.HOSTINGER_PORT }}" "${{ secrets.HOSTINGER_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Upload files
         run: |
