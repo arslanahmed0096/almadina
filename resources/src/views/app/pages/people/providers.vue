@@ -3,6 +3,29 @@
     <breadcumb :page="$t('SuppliersManagement')" :folder="$t('Suppliers')"/>
     <div v-if="isLoading" class="loading_page spinner spinner-primary mr-3"></div>
     <div v-else>
+      <div class="row mb-3 align-items-center">
+        <div class="col-12 col-md-8 mb-2 mb-md-0">
+          <b-form-input
+            size="sm"
+            v-model="search"
+            @keyup.enter="Get_Providers(1)"
+            :placeholder="$t('Search_this_table')"
+            class="w-100"
+          />
+        </div>
+        <div class="col-12 col-md-auto text-md-right">
+          <b-button
+            @click="New_Provider()"
+            class="btn-rounded m-1"
+            size="sm"
+            variant="btn btn-primary btn-icon"
+            v-if="currentUserPermissions && currentUserPermissions.includes('Suppliers_add')"
+          >
+            <lucide-icon name="plus" />
+            {{$t('Add')}}
+          </b-button>
+        </div>
+      </div>
       <vue-good-table
         mode="remote"
         :columns="columns"
@@ -11,10 +34,8 @@
         @on-page-change="onPageChange"
         @on-per-page-change="onPerPageChange"
         @on-sort-change="onSortChange"
-        @on-search="onSearch"
         :search-options="{
-        enabled: true,
-        placeholder: $t('Search_this_table'),  
+        enabled: false,
       }"
         :select-options="{ 
           enabled: true ,
@@ -32,43 +53,49 @@
         <div slot="selected-row-actions" v-if="currentUserPermissions.includes('Suppliers_delete')">
           <button class="btn btn-danger btn-sm" @click="delete_by_selected()">{{$t('Del')}}</button>
         </div>
-        <div slot="table-actions" class="mt-2 mb-3">
-          <b-button variant="outline-info m-1" size="sm" v-b-toggle.sidebar-right>
-            <lucide-icon name="filter" />
-            {{ $t("Filter") }}
-          </b-button>
-          <b-button @click="Providers_PDF()" size="sm" variant="outline-success m-1">
-            <lucide-icon name="copy" /> PDF
-          </b-button>
-          <vue-excel-xlsx
-              class="btn btn-sm btn-outline-danger ripple m-1"
-              :data="providers"
-              :columns="columns"
-              :file-name="'providers'"
-              :file-type="'xlsx'"
-              :sheet-name="'providers'"
-              >
-              <lucide-icon name="file-spreadsheet" /> EXCEL
-          </vue-excel-xlsx>
-         
-          <router-link
-            v-if="currentUserPermissions && currentUserPermissions.includes('Suppliers_import')"
-            :to="{ name: 'Import_Suppliers' }"
-            class="btn btn-info btn-sm m-1"
-          >
-            <lucide-icon name="download" />
-            {{ $t("Import_Suppliers") }}
-          </router-link>
+        <div slot="table-actions" class="table-actions-wrapper mt-2 mb-3">
+          <div class="d-flex flex-wrap align-items-center justify-content-between">
+            <div class="d-flex align-items-center flex-wrap">
+              <b-form-select
+                v-model="nameSort"
+                :options="nameSortOptions"
+                size="sm"
+                class="sort-select m-1"
+                @change="applyNameSort"
+              />
+            </div>
 
-          <b-button
-            @click="New_Provider()"
-            size="sm"
-            variant="btn btn-primary btn-icon m-1"
-            v-if="currentUserPermissions && currentUserPermissions.includes('Suppliers_add')"
-          >
-            <lucide-icon name="plus" />
-            {{$t('Add')}}
-          </b-button>
+            <div class="d-flex align-items-center flex-wrap justify-content-end">
+              <b-button class="m-1" size="sm" variant="outline-info" v-b-toggle.sidebar-right>
+                <lucide-icon name="filter" />
+                {{ $t("Filter") }}
+              </b-button>
+
+              <b-button class="m-1" @click="Providers_PDF()" size="sm" variant="outline-success">
+                <lucide-icon name="copy" /> PDF
+              </b-button>
+
+              <vue-excel-xlsx
+                class="btn btn-sm btn-outline-danger m-1"
+                :data="providers"
+                :columns="columns"
+                :file-name="'providers'"
+                :file-type="'xlsx'"
+                :sheet-name="'providers'"
+              >
+                <lucide-icon name="file-spreadsheet" /> EXCEL
+              </vue-excel-xlsx>
+
+              <router-link
+                v-if="currentUserPermissions && currentUserPermissions.includes('Suppliers_import')"
+                :to="{ name: 'Import_Suppliers' }"
+                class="btn btn-sm btn-outline-info m-1"
+              >
+                <lucide-icon name="download" />
+                {{ $t("Import_Suppliers") }}
+              </router-link>
+            </div>
+          </div>
         </div>
 
         <template slot="table-row" slot-scope="props">
@@ -661,8 +688,8 @@ export default {
       serverParams: {
         columnFilters: {},
         sort: {
-          field: "id",
-          type: "desc"
+          field: "name",
+          type: "asc"
         },
         page: 1,
         perPage: 10
@@ -671,6 +698,7 @@ export default {
       totalRows: "",
       search: "",
       limit: "10",
+      nameSort: "az",
       Filter_Name: "",
       Filter_Code: "",
       Filter_Phone: "",
@@ -727,6 +755,12 @@ export default {
 
   computed: {
      ...mapGetters(["currentUserPermissions", "currentUser"]),
+    nameSortOptions() {
+      return [
+        { value: "az", text: "Supplier Name: A-Z" },
+        { value: "za", text: "Supplier Name: Z-A" }
+      ];
+    },
     columns() {
       return [
         {
@@ -749,20 +783,8 @@ export default {
           thClass: "text-left"
         },
         {
-          label: this.$t("Email"),
-          field: "email",
-          tdClass: "text-left",
-          thClass: "text-left"
-        },
-        {
-          label: this.$t("City"),
-          field: "city",
-          tdClass: "text-left",
-          thClass: "text-left"
-        },
-        {
-          label: this.$t("Tax_Number"),
-          field: "tax_number",
+          label: this.$t("Account_Title"),
+          field: "account_title",
           tdClass: "text-left",
           thClass: "text-left"
         },
@@ -771,16 +793,14 @@ export default {
           field: "due",
           type: "decimal",
           tdClass: "text-left",
-          thClass: "text-left",
-          sortable: false
+          thClass: "text-left"
         },
          {
           label: this.$t("Total_Purchase_Return_Due"),
           field: "return_Due",
           type: "decimal",
           tdClass: "text-left",
-          thClass: "text-left",
-          sortable: false
+          thClass: "text-left"
         },
 
         {
@@ -900,13 +920,36 @@ export default {
 
     //------ Event Sort Change
     onSortChange(params) {
+      if (!params || !params.length) {
+        return;
+      }
+
+      const field = params[0].field;
+      const type = params[0].type;
+
       this.updateParams({
         sort: {
-          type: params[0].type,
-          field: params[0].field
+          type,
+          field
         }
       });
+
+      if (field === "name") {
+        this.nameSort = type === "asc" ? "az" : "za";
+      }
+
       this.Get_Providers(this.serverParams.page);
+    },
+
+    applyNameSort() {
+      this.updateParams({
+        page: 1,
+        sort: {
+          field: "name",
+          type: this.nameSort === "za" ? "desc" : "asc"
+        }
+      });
+      this.Get_Providers(1);
     },
 
     //------ Event Search
@@ -955,8 +998,7 @@ export default {
         self.$t("Code"),
         self.$t("Name"),
         self.$t("Phone"),
-        self.$t("Country"),
-        self.$t("City"),
+        self.$t("Account_Title"),
         self.$t("Total_Purchase_Due"),
         self.$t("Total_Purchase_Return_Due")
       ];
@@ -965,8 +1007,7 @@ export default {
         provider.code,
         provider.name,
         provider.phone,
-        provider.country,
-        provider.city,
+        provider.account_title,
         provider.due,
         provider.return_Due
       ]));

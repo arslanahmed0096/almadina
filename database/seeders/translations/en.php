@@ -947,6 +947,7 @@ return [
 'Customer_Credit_Note' => 'Customer Credit Note',
 'Sell_Return' => 'Sell Return',
 'Purchase_Return' => 'Purchase Return',
+'Account_Title' => 'Account Title',
 'Tax_Number' => 'Tax Number',
 'Please_add_return_quantity' => 'Please add return quantity',
 'Return_exist_for_the_Transaction' => 'Return exist for the Transaction',

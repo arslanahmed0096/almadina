@@ -32,8 +32,27 @@ class ProvidersController extends BaseController
         $pageStart = \Request::get('page', 1);
         // Start displaying items from this number;
         $offSet = ($pageStart * $perPage) - $perPage;
-        $order = $request->SortField;
-        $dir = $request->SortType;
+        $order = $request->get('SortField', 'id');
+        $dir = strtolower($request->get('SortType', 'desc'));
+        if (! in_array($dir, ['asc', 'desc'], true)) {
+            $dir = 'desc';
+        }
+
+        $sortableFields = [
+            'id',
+            'code',
+            'name',
+            'phone',
+            'email',
+            'account_title',
+            'city',
+            'tax_number',
+            'due',
+            'return_Due',
+        ];
+        if (! in_array($order, $sortableFields, true)) {
+            $order = 'id';
+        }
         $helpers = new helpers;
         // Filter fields With Params to retrieve
         $columns = [0 => 'name', 1 => 'code', 2 => 'phone', 3 => 'email'];
@@ -42,12 +61,30 @@ class ProvidersController extends BaseController
 
         $providers = Provider::where('deleted_at', '=', null);
 
+        if (in_array($order, ['due', 'return_Due'], true)) {
+            $providers->select('providers.*')
+                ->selectSub(function ($query) {
+                    $query->from('purchases')
+                        ->selectRaw('COALESCE(SUM(GrandTotal), 0) - COALESCE(SUM(paid_amount), 0)')
+                        ->whereNull('deleted_at')
+                        ->where('statut', 'received')
+                        ->whereColumn('provider_id', 'providers.id');
+                }, 'purchase_due_sort')
+                ->selectSub(function ($query) {
+                    $query->from('purchase_returns')
+                        ->selectRaw('COALESCE(SUM(GrandTotal), 0) - COALESCE(SUM(paid_amount), 0)')
+                        ->whereNull('deleted_at')
+                        ->whereColumn('provider_id', 'providers.id');
+                }, 'purchase_return_due_sort');
+        }
+
         // Multiple Filter
         $Filtred = $helpers->filter($providers, $columns, $param, $request)
         // Search With Multiple Param
             ->where(function ($query) use ($request) {
                 return $query->when($request->filled('search'), function ($query) use ($request) {
                     return $query->where('name', 'LIKE', "%{$request->search}%")
+                        ->orWhere('account_title', 'LIKE', "%{$request->search}%")
                         ->orWhere('code', 'LIKE', "%{$request->search}%")
                         ->orWhere('phone', 'LIKE', "%{$request->search}%")
                         ->orWhere('email', 'LIKE', "%{$request->search}%");
@@ -58,9 +95,19 @@ class ProvidersController extends BaseController
             $perPage = $totalRows;
         }
         $providers = $Filtred->offset($offSet)
-            ->limit($perPage)
-            ->orderBy($order, $dir)
-            ->get();
+            ->limit($perPage);
+
+        if ($order === 'due') {
+            $providers->orderBy('purchase_due_sort', $dir);
+        } elseif ($order === 'return_Due') {
+            $providers->orderBy('purchase_return_due_sort', $dir);
+        } elseif (in_array($order, ['code', 'name', 'phone', 'email', 'account_title', 'city', 'tax_number'], true)) {
+            $providers->orderByRaw('LOWER('.$order.') '.$dir);
+        } else {
+            $providers->orderBy($order, $dir);
+        }
+
+        $providers = $providers->get();
 
         foreach ($providers as $provider) {
 
