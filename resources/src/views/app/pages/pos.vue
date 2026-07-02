@@ -2526,7 +2526,7 @@
               <span class="cat-drawer-title-icon"><lucide-icon name="folder" /></span>
               <div>
                 <div class="cat-drawer-title-text">{{ $t('Categories') || 'Categories' }}</div>
-                <div class="cat-drawer-title-sub">{{ categories.length }} {{ ((categories.length === 1) ? ($t('category') || 'category') : ($t('categories') || 'categories')) }}</div>
+                <div class="cat-drawer-title-sub">{{ categoryCount }} {{ ((categoryCount === 1) ? ($t('category') || 'category') : ($t('categories') || 'categories')) }}</div>
               </div>
             </div>
             <button
@@ -2573,7 +2573,7 @@
               type="button"
               class="cat-drawer-item"
               :class="{ active: category_id === c.id }"
-              v-for="c in filteredCategories"
+              v-for="c in drawerFilteredCategories"
               :key="c.id"
               @click="selectCategory(c.id)"
             >
@@ -2582,7 +2582,7 @@
               <lucide-icon v-if="category_id === c.id" name="check-circle" class="cat-drawer-item-check" />
             </button>
 
-            <div class="cat-drawer-empty" v-if="!filteredCategories.length && catDrawerSearch">
+            <div class="cat-drawer-empty" v-if="drawerFilteredCategories.length === 0 && catDrawerSearch">
               <div class="cat-drawer-empty-icon"><lucide-icon name="search" /></div>
               <div class="cat-drawer-empty-text">{{ $t('No_results') || 'No results' }}</div>
             </div>
@@ -2605,7 +2605,7 @@
               <span class="cat-drawer-title-icon"><lucide-icon name="tag" /></span>
               <div>
                 <div class="cat-drawer-title-text">{{ $t('Brands') || 'Brands' }}</div>
-                <div class="cat-drawer-title-sub">{{ brands.length }} {{ ((brands.length === 1) ? ($t('brand') || 'brand') : ($t('brands') || 'brands')) }}</div>
+                <div class="cat-drawer-title-sub">{{ brandCount }} {{ ((brandCount === 1) ? ($t('brand') || 'brand') : ($t('brands') || 'brands')) }}</div>
               </div>
             </div>
             <button
@@ -2652,7 +2652,7 @@
               type="button"
               class="cat-drawer-item"
               :class="{ active: brand_id === b.id }"
-              v-for="b in filteredBrands"
+              v-for="b in drawerFilteredBrands"
               :key="b.id"
               @click="selectBrand(b.id)"
             >
@@ -2661,7 +2661,7 @@
               <lucide-icon v-if="brand_id === b.id" name="check-circle" class="cat-drawer-item-check" />
             </button>
 
-            <div class="cat-drawer-empty" v-if="!filteredBrands.length && brandDrawerSearch">
+            <div class="cat-drawer-empty" v-if="drawerFilteredBrands.length === 0 && brandDrawerSearch">
               <div class="cat-drawer-empty-icon"><lucide-icon name="search" /></div>
               <div class="cat-drawer-empty-text">{{ $t('No_results') || 'No results' }}</div>
             </div>
@@ -2695,7 +2695,7 @@
               <div class="wh-drawer-hero-eyebrow">{{ $t('Locations') || 'Locations' }}</div>
               <div class="wh-drawer-hero-title">{{ $t('Warehouses') || 'Warehouses' }}</div>
               <div class="wh-drawer-hero-sub">
-                {{ warehouses.length }} {{ ((warehouses.length === 1) ? ($t('warehouse') || 'warehouse') : ($t('warehouses') || 'warehouses')) }}<span v-if="sale.warehouse_id"> · {{ $t('Currently_Active') || '1 active' }}</span>
+                {{ warehouseCount }} {{ ((warehouseCount === 1) ? ($t('warehouse') || 'warehouse') : ($t('warehouses') || 'warehouses')) }}<span v-if="sale.warehouse_id"> · {{ $t('Currently_Active') || '1 active' }}</span>
               </div>
             </div>
           </header>
@@ -2767,11 +2767,11 @@
               </div>
             </button>
 
-            <div class="wh-drawer-empty" v-if="!filteredWarehouses.length && whDrawerSearch">
+            <div class="wh-drawer-empty" v-if="filteredWarehouses.length === 0 && whDrawerSearch">
               <div class="wh-drawer-empty-icon"><lucide-icon name="search" /></div>
               <div class="wh-drawer-empty-text">{{ $t('No_results') || 'No results' }}</div>
             </div>
-            <div class="wh-drawer-empty" v-else-if="!warehouses.length">
+            <div class="wh-drawer-empty" v-else-if="warehouseCount === 0">
               <div class="wh-drawer-empty-icon"><lucide-icon name="warehouse" /></div>
               <div class="wh-drawer-empty-text">{{ $t('No_Warehouses') || 'No warehouses available' }}</div>
             </div>
@@ -2806,7 +2806,7 @@
               <div class="cust-drawer-hero-eyebrow">{{ $t('Customer') || 'Customer' }}</div>
               <div class="cust-drawer-hero-title">{{ $t('Select_Customer') || 'Select Customer' }}</div>
               <div class="cust-drawer-hero-sub">
-                {{ filteredCustomers.length }} / {{ clients.length }}
+                {{ filteredCustomers.length }} / {{ clientCount }}
               </div>
             </div>
             <button
@@ -2883,7 +2883,7 @@
               </span>
             </button>
 
-            <div class="cust-drawer-empty" v-if="!filteredCustomers.length">
+            <div class="cust-drawer-empty" v-if="filteredCustomers.length === 0">
               <div class="cust-drawer-empty-icon"><lucide-icon name="users" /></div>
               <div class="cust-drawer-empty-text">
                 {{ custDrawerSearch ? ($t('No_results') || 'No results') : ($t('No_Customers') || 'No customers') }}
@@ -3288,7 +3288,8 @@ export default {
 
     // Customer options for v-select with phone search capability
     customerOptions() {
-      return this.clients.map(client => ({
+      const clients = Array.isArray(this.clients) ? this.clients : [];
+      return clients.map(client => ({
         label: client.name,
         value: client.id,
         phone: client.phone || '',
@@ -3314,17 +3315,33 @@ export default {
       return value === true || value === 'true' || value === '1';
     },
 
+    categoryCount() {
+      return Array.isArray(this.categories) ? this.categories.length : 0;
+    },
+
+    brandCount() {
+      return Array.isArray(this.brands) ? this.brands.length : 0;
+    },
+
+    warehouseCount() {
+      return Array.isArray(this.warehouses) ? this.warehouses.length : 0;
+    },
+
+    clientCount() {
+      return Array.isArray(this.clients) ? this.clients.length : 0;
+    },
+
     // Label shown on the categories trigger button — falls back to "All Categories"
     selectedCategoryLabel() {
       if (!this.category_id) return this.$t('pos.All_Categories') || 'All Categories';
-      const c = (this.categories || []).find(x => x.id === this.category_id);
+      const c = (Array.isArray(this.categories) ? this.categories : []).find(x => x.id === this.category_id);
       return c ? c.name : (this.$t('pos.All_Categories') || 'All Categories');
     },
 
     // Categories filtered by the drawer's search box
-    filteredCategories() {
+    drawerFilteredCategories() {
       const q = (this.catDrawerSearch || '').trim().toLowerCase();
-      const list = this.categories || [];
+      const list = Array.isArray(this.categories) ? this.categories : [];
       if (!q) return list;
       return list.filter(c => (c.name || '').toLowerCase().includes(q));
     },
@@ -3332,14 +3349,14 @@ export default {
     // Label shown on the brands trigger button — falls back to "All Brands"
     selectedBrandLabel() {
       if (!this.brand_id) return this.$t('pos.All_Brands') || 'All Brands';
-      const b = (this.brands || []).find(x => x.id === this.brand_id);
+      const b = (Array.isArray(this.brands) ? this.brands : []).find(x => x.id === this.brand_id);
       return b ? b.name : (this.$t('pos.All_Brands') || 'All Brands');
     },
 
     // Brands filtered by the drawer's search box
-    filteredBrands() {
+    drawerFilteredBrands() {
       const q = (this.brandDrawerSearch || '').trim().toLowerCase();
-      const list = this.brands || [];
+      const list = Array.isArray(this.brands) ? this.brands : [];
       if (!q) return list;
       return list.filter(b => (b.name || '').toLowerCase().includes(q));
     },
@@ -3347,14 +3364,14 @@ export default {
     // Label shown on the warehouse trigger
     selectedWarehouseLabel() {
       if (!this.sale.warehouse_id) return this.$t('Select_Warehouse') || 'Select warehouse';
-      const wh = (this.warehouses || []).find(x => x.id === this.sale.warehouse_id);
+      const wh = (Array.isArray(this.warehouses) ? this.warehouses : []).find(x => x.id === this.sale.warehouse_id);
       return wh ? wh.name : (this.$t('Select_Warehouse') || 'Select warehouse');
     },
 
     // Warehouses filtered by the drawer's search box
     filteredWarehouses() {
       const q = (this.whDrawerSearch || '').trim().toLowerCase();
-      const list = this.warehouses || [];
+      const list = Array.isArray(this.warehouses) ? this.warehouses : [];
       if (!q) return list;
       return list.filter(wh => (wh.name || '').toLowerCase().includes(q));
     },
@@ -3362,14 +3379,14 @@ export default {
     // Label shown on the customer trigger button
     selectedCustomerLabel() {
       if (!this.selectedClientId) return this.$t('Select_Customer') || 'Select customer';
-      const c = (this.clients || []).find(x => x.id === this.selectedClientId);
+      const c = (Array.isArray(this.clients) ? this.clients : []).find(x => x.id === this.selectedClientId);
       return c ? c.name : (this.$t('Select_Customer') || 'Select customer');
     },
 
     // Customers filtered by the drawer's search box (matches name OR phone)
     filteredCustomers() {
       const q = (this.custDrawerSearch || '').trim().toLowerCase();
-      const list = this.customerOptions || [];
+      const list = Array.isArray(this.customerOptions) ? this.customerOptions : [];
       if (!q) return list;
       return list.filter(c => {
         const name = (c.name || c.label || '').toLowerCase();
@@ -3487,11 +3504,11 @@ export default {
     },
 
     brand_totalRows() {
-      return this.brands.length;
+      return this.brandCount;
     },
 
     category_totalRows() {
-      return this.categories.length;
+      return this.categoryCount;
     },
 
     offlineStatusTitle() {
@@ -3506,24 +3523,6 @@ export default {
       } catch (e) {
         return 'POS';
       }
-    },
-
-    filteredCategories() {
-      if (this.search_category.trim() === '') {
-        return this.paginated_Category;
-      }
-      return this.paginated_Category.filter(category =>
-        category.name.toLowerCase().includes(this.search_category.toLowerCase())
-      );
-    },
-
-    filteredBrands() {
-      if (this.search_brand.trim() === '') {
-        return this.paginated_Brands;
-      }
-      return this.paginated_Brands.filter(brand =>
-        brand.name.toLowerCase().includes(this.search_brand.toLowerCase())
-      );
     },
 
     displaySavedPaymentMethods() {

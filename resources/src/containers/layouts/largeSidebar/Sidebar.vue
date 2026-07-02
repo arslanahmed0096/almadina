@@ -419,7 +419,7 @@
           </li>
 
           <!-- Knowledge Base -->
-          <li
+          <!-- <li
             v-show="currentUserPermissions && currentUserPermissions.includes('knowledge_base_view')"
             @mouseenter="toggleSubMenu"
             :class="{ active: selectedParentMenu == 'knowledge-base' }"
@@ -430,7 +430,7 @@
               <lucide-icon class="nav-icon" name="book" />
               <span class="nav-text">{{ $t('Knowledge_Base') || 'Knowledge Base' }}</span>
             </router-link>
-          </li>
+          </li> -->
 
           <li
             v-show="currentUserPermissions && (currentUserPermissions.includes('setting_system')
@@ -466,7 +466,7 @@
           </li>
 
           <!-- AI Reports -->
-          <li
+          <!-- <li
             v-show="currentUserPermissions && currentUserPermissions.includes('AI_Reports')"
             :class="{ active: selectedParentMenu == 'ai_reports' }"
             class="nav-item"
@@ -476,7 +476,7 @@
               <lucide-icon class="nav-icon" name="lightbulb" />
               <span class="nav-text">{{$t('AI_Reports') || 'AI Reports'}}</span>
             </router-link>
-          </li>
+          </li> -->
 
           <li
             v-show="currentUserPermissions && 

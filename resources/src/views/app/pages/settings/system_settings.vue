@@ -3908,13 +3908,13 @@ export default {
         { id: 'pos_settings', label: this.$t('Pos_Settings'), icon: 'database-zap', description: 'POS functionality and display settings' },
         { id: 'cash_drawer', label: this.$t('Cash_drawer'), icon: 'calculator', description: this.$t('Cash_Drawer_Auto_Open_Help') },
         { id: 'direct_network_printing', label: this.$t('Direct_Network_Printing') || 'Direct Network Printing', icon: 'printer', description: this.$t('Direct_Network_Printing_Help') || 'Send receipts directly to a network printer (RAW / port 9100) without relying on the OS print dialog.' },
-        { id: 'zatca', label: 'ZATCA', icon: 'clipboard-list', description: 'ZATCA (Fatoorah) integration settings' },
+        // { id: 'zatca', label: 'ZATCA', icon: 'clipboard-list', description: 'ZATCA (Fatoorah) integration settings' },
         { id: 'invoice', label: this.$t('Invoice'), icon: 'receipt', description: 'Invoice and quotation settings' },
         { id: 'backup', label: this.$t('BackupDatabase'), icon: 'database-backup', description: 'Database backup and restore management' },
         { id: 'security', label: this.$t('Security_Settings'), icon: 'shield-check', description: 'Session timeout and active login sessions' },
         { id: 'system', label: this.$t('System'), icon: 'settings', description: 'System maintenance and cache management' },
-        { id: 'pharmacy', label: this.$t('Pharmacy_Settings'), icon: 'heart-pulse', description: this.$t('Pharmacy_Settings_Help') || 'Enable batch & expiry tracking for pharmacy inventory.' },
-        { id: 'custom_fields', label: this.$t('CustomFields') || 'Custom Fields', icon: 'database-zap', description: 'Manage custom fields for customers and suppliers' },
+        // { id: 'pharmacy', label: this.$t('Pharmacy_Settings'), icon: 'heart-pulse', description: this.$t('Pharmacy_Settings_Help') || 'Enable batch & expiry tracking for pharmacy inventory.' },
+        // { id: 'custom_fields', label: this.$t('CustomFields') || 'Custom Fields', icon: 'database-zap', description: 'Manage custom fields for customers and suppliers' },
       ];
 
       // Hide the legacy "Tax & Pricing" tab now that its fields live under "Defaults"
@@ -5514,7 +5514,7 @@ export default {
           if (submittedTab) {
             // Valid tab IDs that can be restored
             const validTabs = ['general', 'appearance', 'localization', 'defaults', 'dashboard', 'prefixes', 
-                              'payment', 'mail', 'sms', 'pos', 'pos_settings', 'zatca', 
+                              'payment', 'mail', 'sms', 'pos', 'pos_settings', 
                               'invoice', 'backup', 'security', 'system'];
             if (validTabs.includes(submittedTab)) {
               // Restore the tab that was active when form was submitted
