@@ -94,6 +94,7 @@ class Kernel extends HttpKernel
         'store.enabled' => \App\Http\Middleware\EnsureStoreEnabled::class,
         // Security: inactivity auto-logout + token activity tracking (Passport)
         'token.timeout' => \App\Http\Middleware\EnforceApiTokenTimeout::class,
+        'allowed.ips' => \App\Http\Middleware\EnforceAllowedIps::class,
         'pdf.locale' => \App\Http\Middleware\SetPdfLocale::class,
         // Client portal: separate auth from admin/store
         'portal.auth' => \App\Http\Middleware\EnsurePortalAuth::class,

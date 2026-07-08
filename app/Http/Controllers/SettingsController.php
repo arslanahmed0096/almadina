@@ -110,6 +110,15 @@ class SettingsController extends Controller
         // Dark Mode and RTL settings
         $dark_mode = ($request['dark_mode'] == '1' || $request['dark_mode'] == 'true' || $request['dark_mode'] === 1 || $request['dark_mode'] === true) ? 1 : 0;
         $rtl = ($request['rtl'] == '1' || $request['rtl'] == 'true' || $request['rtl'] === 1 || $request['rtl'] === true) ? 1 : 0;
+        $allowed_ips_enabled = ($request['allowed_ips_enabled'] == '1' || $request['allowed_ips_enabled'] == 'true' || $request['allowed_ips_enabled'] === 1 || $request['allowed_ips_enabled'] === true) ? 1 : 0;
+        $allowed_ip_role_ids = $this->normalizeAllowedIpRoleIds($request->input('allowed_ip_role_ids', []));
+        $allowed_ips = trim((string) ($request['allowed_ips'] ?? ''));
+
+        if ($allowed_ips_enabled && $allowed_ips === '' && empty($allowed_ip_role_ids)) {
+            return response()->json([
+                'message' => 'Add at least one allowed IP or bypass role before enabling IP restriction.',
+            ], 422);
+        }
 
         // Normalize invoice_format: only allow 'thermal' or 'a4', default to 'thermal'
         $invoice_format = 'thermal';
@@ -201,6 +210,9 @@ class SettingsController extends Controller
             // Dropbox settings
             'backup_dropbox_path' => $request['backup_dropbox_path'] ?? null,
             'backup_dropbox_access_token' => $request->has('backup_dropbox_access_token') && $request['backup_dropbox_access_token'] !== '' ? $request['backup_dropbox_access_token'] : $setting->backup_dropbox_access_token,
+            'allowed_ips_enabled' => $allowed_ips_enabled,
+            'allowed_ips' => $allowed_ips ?: null,
+            'allowed_ip_role_ids' => $allowed_ip_role_ids,
         ] + $this->pharmacySettingsPayload($request, $setting));
 
         if (! empty($currency)) {
@@ -659,6 +671,9 @@ class SettingsController extends Controller
             $item['date_format'] = $settings->date_format ?? 'YYYY-MM-DD';
             // Optional price format for frontend display (used by POS)
             $item['price_format'] = $settings->price_format;
+            $item['allowed_ips_enabled'] = (bool) ($settings->allowed_ips_enabled ?? false);
+            $item['allowed_ips'] = $settings->allowed_ips ?? '';
+            $item['allowed_ip_role_ids'] = $this->normalizeAllowedIpRoleIds($settings->allowed_ip_role_ids ?? []);
             // Cloud backup settings
             $item['backup_cloud_enabled'] = (bool) ($settings->backup_cloud_enabled ?? false);
             $item['backup_keep_local'] = (bool) ($settings->backup_keep_local ?? true);
@@ -763,6 +778,20 @@ class SettingsController extends Controller
         $setting->dashboard_grid_layout = $layout;
         $setting->save();
         return response()->json(['success' => true, 'dashboard_grid_layout' => $setting->dashboard_grid_layout]);
+    }
+
+    private function normalizeAllowedIpRoleIds($value): array
+    {
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            $value = is_array($decoded) ? $decoded : explode(',', $value);
+        }
+
+        if (! is_array($value)) {
+            return [];
+        }
+
+        return array_values(array_unique(array_filter(array_map('intval', $value))));
     }
 
     public function getSettings(Request $request)

@@ -74,7 +74,7 @@ Route::get('/languages', 'LanguageController@load_language');
 // Namespaced under /webhooks/incoming/{source} — never collides with existing routes.
 Route::post('/webhooks/incoming/{source}', [\App\Http\Controllers\Webhooks\IncomingWebhooksController::class, 'handle']);
 
-Route::middleware(['auth:api', 'Is_Active', 'request.safety', 'token.timeout'])->group(function () {
+Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'token.timeout'])->group(function () {
 
     Route::get('/admin/store/settings', [SettingsApiController::class, 'show']);
     Route::post('/admin/store/settings', [SettingsApiController::class, 'update']);

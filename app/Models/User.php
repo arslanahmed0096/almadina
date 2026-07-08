@@ -53,6 +53,23 @@ class User extends Authenticatable
         return $this->belongsToMany(Role::class);
     }
 
+    public function permissionOverrides()
+    {
+        return $this->belongsToMany(Permission::class)
+            ->withPivot('type')
+            ->withTimestamps();
+    }
+
+    public function allowedPermissionOverrides()
+    {
+        return $this->permissionOverrides()->wherePivot('type', 'allow');
+    }
+
+    public function deniedPermissionOverrides()
+    {
+        return $this->permissionOverrides()->wherePivot('type', 'deny');
+    }
+
     public function assignRole(Role $role)
     {
         return $this->roles()->save($role);
@@ -60,11 +77,70 @@ class User extends Authenticatable
 
     public function hasRole($role)
     {
+        $this->loadMissing('roles', 'permissionOverrides');
+
         if (is_string($role)) {
             return $this->roles->contains('name', $role);
         }
 
+        $permissionId = $this->permissionIdFromRoleCollection($role);
+        if ($permissionId && $this->hasPermissionOverride($permissionId, 'deny')) {
+            return false;
+        }
+
+        if ($permissionId && $this->hasPermissionOverride($permissionId, 'allow')) {
+            return true;
+        }
+
         return (bool) $role->intersect($this->roles)->count();
+    }
+
+    public function effectivePermissionNames()
+    {
+        $this->loadMissing('roles.permissions', 'permissionOverrides');
+
+        $permissionNames = $this->roles
+            ->flatMap(function ($role) {
+                return $role->permissions->pluck('name');
+            });
+
+        $allowed = $this->permissionOverrides
+            ->where('pivot.type', 'allow')
+            ->pluck('name');
+
+        $denied = $this->permissionOverrides
+            ->where('pivot.type', 'deny')
+            ->pluck('name');
+
+        return $permissionNames
+            ->merge($allowed)
+            ->unique()
+            ->diff($denied)
+            ->values();
+    }
+
+    private function permissionIdFromRoleCollection($role)
+    {
+        if (! $role || ! method_exists($role, 'first')) {
+            return null;
+        }
+
+        $firstRole = $role->first();
+        if (! $firstRole || ! isset($firstRole->pivot) || ! isset($firstRole->pivot->permission_id)) {
+            return null;
+        }
+
+        return (int) $firstRole->pivot->permission_id;
+    }
+
+    private function hasPermissionOverride(int $permissionId, string $type): bool
+    {
+        return $this->permissionOverrides
+            ->contains(function ($permission) use ($permissionId, $type) {
+                return (int) $permission->id === $permissionId
+                    && isset($permission->pivot)
+                    && $permission->pivot->type === $type;
+            });
     }
 
     public function assignedWarehouses()

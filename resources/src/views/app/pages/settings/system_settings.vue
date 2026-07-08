@@ -2885,6 +2885,63 @@
                   <!-- Security Settings Tab -->
                   <div v-show="activeTab === 'security'" class="tab-content">
                     <b-row>
+                      <b-col lg="12" md="12" sm="12" class="mb-3">
+                        <div class="system-actions-card">
+                          <div class="d-flex justify-content-between align-items-center mb-3">
+                            <div>
+                              <h5 class="mb-1">Allowed IPs</h5>
+                              <p class="text-muted mb-0">
+                                Restrict system access to trusted IP addresses. Super Admin always has access.
+                              </p>
+                            </div>
+                            <label class="switch switch-primary mb-0">
+                              <input type="checkbox" v-model="setting.allowed_ips_enabled">
+                              <span class="slider"></span>
+                            </label>
+                          </div>
+
+                          <b-row>
+                            <b-col lg="6" md="12" sm="12" class="mb-3">
+                              <b-form-group label="Allowed IP addresses">
+                                <b-form-textarea
+                                  v-model="setting.allowed_ips"
+                                  rows="6"
+                                  placeholder="192.168.1.10&#10;203.0.113.0/24"
+                                ></b-form-textarea>
+                                <small class="text-muted d-block mt-1">Enter one IP or CIDR range per line. Commas are also accepted.</small>
+                              </b-form-group>
+                            </b-col>
+
+                            <b-col lg="6" md="12" sm="12" class="mb-3">
+                              <b-form-group label="Roles allowed from any IP">
+                                <v-select
+                                  class="allowed-ip-role-select"
+                                  v-model="setting.allowed_ip_role_ids"
+                                  :options="allowedIpRoleOptions"
+                                  :reduce="role => role.value"
+                                  label="text"
+                                  multiple
+                                  :close-on-select="false"
+                                  :clearable="true"
+                                  :searchable="true"
+                                  :disabled="allowedIpRolesLoading"
+                                  placeholder="Select bypass roles"
+                                >
+                                  <template #no-options>
+                                    No roles found
+                                  </template>
+                                </v-select>
+                                <small class="text-muted d-block mt-1">Users in these roles bypass the IP list. Super Admin is always bypassed.</small>
+                              </b-form-group>
+                            </b-col>
+                          </b-row>
+
+                          <b-button variant="primary" @click="Submit_General_Settings()">
+                            <lucide-icon name="check" /> {{$t('Save')}}
+                          </b-button>
+                        </div>
+                      </b-col>
+
                       <b-col lg="12" md="12" sm="12">
                         <div class="system-actions-card">
                           <div class="d-flex justify-content-between align-items-center mb-2">
@@ -3565,6 +3622,9 @@ export default {
         // A4 invoice logo dimensions (pixels)
         invoice_logo_width: 180,
         invoice_logo_height: 60,
+        allowed_ips_enabled: false,
+        allowed_ips: '',
+        allowed_ip_role_ids: [],
 
 
         // Security: inactivity auto-logout (minutes) - null means disabled
@@ -3747,6 +3807,8 @@ export default {
       securitySessions: [],
       securitySessionsLoading: false,
       securitySessionsActionLoading: false,
+      allowedIpRoles: [],
+      allowedIpRolesLoading: false,
       sessionTimeoutCustom: null,
 
       // Custom Fields data
@@ -3855,6 +3917,12 @@ export default {
 
     hasOtherSessions() {
       return (this.securitySessions || []).some(s => !s.is_current);
+    },
+
+    allowedIpRoleOptions() {
+      return (this.allowedIpRoles || [])
+        .filter(role => role && Number(role.id) !== 1)
+        .map(role => ({ value: Number(role.id), text: role.name }));
     },
 
     securitySessionFields() {
@@ -3985,6 +4053,7 @@ export default {
     activeTab(val) {
       if (val === 'security') {
         this.LoadSecuritySessions();
+        this.LoadAllowedIpRoles();
       }
       if (val === 'calendar') {
         this.Load_Calendar_Settings();
@@ -4011,6 +4080,29 @@ export default {
   methods: {
 
     // ---------------- Security Settings ----------------
+    LoadAllowedIpRoles() {
+      if (this.allowedIpRolesLoading || (this.allowedIpRoles && this.allowedIpRoles.length)) return;
+      this.allowedIpRolesLoading = true;
+      axios
+        .get("roles", {
+          params: {
+            page: 1,
+            limit: -1,
+            SortField: "id",
+            SortType: "asc"
+          }
+        })
+        .then(response => {
+          this.allowedIpRoles = (response && response.data && response.data.roles) ? response.data.roles : [];
+        })
+        .catch(() => {
+          this.allowedIpRoles = [];
+        })
+        .finally(() => {
+          this.allowedIpRolesLoading = false;
+        });
+    },
+
     formatDateTime(v) {
       try {
         if (!v) return '';
@@ -4350,6 +4442,15 @@ export default {
 
     //---------------------------------- Update Settings ----------------\\
     Update_Settings() {
+      if (
+        this.setting.allowed_ips_enabled &&
+        !(this.setting.allowed_ips || '').trim() &&
+        !(this.setting.allowed_ip_role_ids || []).length
+      ) {
+        this.makeToast("danger", "Add at least one allowed IP or bypass role before enabling IP restriction.", this.$t("Failed"));
+        return;
+      }
+
       NProgress.start();
       NProgress.set(0.1);
       var self = this;
@@ -4391,6 +4492,9 @@ export default {
       self.data.append("dark_mode", self.setting.dark_mode ? 1 : 0);
       self.data.append("rtl", self.setting.rtl ? 1 : 0);
       self.data.append("debug_mode", self.setting.debug_mode ? 1 : 0);
+      self.data.append("allowed_ips_enabled", self.setting.allowed_ips_enabled ? 1 : 0);
+      self.data.append("allowed_ips", self.setting.allowed_ips || "");
+      self.data.append("allowed_ip_role_ids", JSON.stringify(self.setting.allowed_ip_role_ids || []));
       self.data.append("sale_prefix", self.setting.sale_prefix || '');
       self.data.append("purchase_prefix", self.setting.purchase_prefix || '');
       self.data.append("quotation_prefix", self.setting.quotation_prefix || '');
@@ -5226,6 +5330,7 @@ export default {
         .then(response => {
           // Merge to preserve default keys/reactivity for newly added settings fields
           this.setting         = { ...this.setting, ...(response.data.settings || {}) };
+          this.setting.allowed_ip_role_ids = (this.setting.allowed_ip_role_ids || []).map(id => Number(id));
           this.syncDashboardSectionOrderList();
           // Update date_format in Vuex store and localStorage cache
           try {
@@ -5545,6 +5650,10 @@ export default {
 
     // Always load data regardless of which tab is active
     this.Get_Settings();
+    if (this.activeTab === 'security') {
+      this.LoadSecuritySessions();
+      this.LoadAllowedIpRoles();
+    }
     this.syncDashboardSectionOrderList();
     this.Get_Payment_Gateway();
     this.Get_Pos_Settings();
@@ -6218,6 +6327,59 @@ export default {
 
 .btn-delete-backup:hover {
   transform: scale(1.05);
+}
+
+/* Security Settings tab */
+.allowed-ip-role-select {
+  width: 100%;
+}
+
+.allowed-ip-role-select ::v-deep .vs__dropdown-toggle {
+  min-height: 46px;
+  padding: 4px 8px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.allowed-ip-role-select ::v-deep .vs__selected-options {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+  padding: 0;
+}
+
+.allowed-ip-role-select ::v-deep .vs__selected {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  margin: 2px 2px 2px 0;
+  padding: 3px 8px;
+  color: #2f365f;
+  background: #eef2ff;
+  border: 1px solid #dbe4ff;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.allowed-ip-role-select ::v-deep .vs__search {
+  min-width: 140px;
+  margin: 2px 0;
+  padding: 3px 0;
+}
+
+.allowed-ip-role-select ::v-deep .vs__dropdown-menu {
+  max-height: 220px;
+  border-color: #ced4da;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+}
+
+.allowed-ip-role-select ::v-deep .vs__dropdown-option {
+  padding: 8px 12px;
+  font-size: 13px;
 }
 
 /* Dashboard Settings tab */

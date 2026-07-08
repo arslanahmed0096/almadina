@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\product_warehouse;
+use App\Models\Permission;
 use App\Models\Role;
 use App\Models\role_user;
 use App\Models\Setting;
@@ -72,11 +73,15 @@ class UserController extends BaseController
 
         $roles = Role::where('deleted_at', null)->get(['id', 'name']);
         $warehouses = Warehouse::where('deleted_at', '=', null)->get(['id', 'name']);
+        $permissions = Permission::where('deleted_at', null)
+            ->orderBy('name')
+            ->get(['id', 'name', 'label']);
 
         return response()->json([
             'users' => $users,
             'roles' => $roles,
             'warehouses' => $warehouses,
+            'permissions' => $permissions,
             'totalRows' => $totalRows,
         ]);
     }
@@ -110,7 +115,7 @@ class UserController extends BaseController
             'timezone' => $this->getEnvValue('APP_TIMEZONE', 'UTC'),
         ];
 
-        $permissions = $user->roles()->first()?->permissions->pluck('name') ?? [];
+        $permissions = $user->effectivePermissionNames();
 
         $productsAlerts = product_warehouse::join('products', 'product_warehouse.product_id', '=', 'products.id')
             ->whereRaw('qte <= stock_alert')
@@ -129,18 +134,10 @@ class UserController extends BaseController
 
     public function GetUserRole(Request $request)
     {
-
-        $roles = Auth::user()->roles()->with('permissions')->first();
-
-        $data = [];
-        if ($roles) {
-            foreach ($roles->permissions as $permission) {
-                $data[] = $permission->name;
-
-            }
-
-            return response()->json(['success' => true, 'data' => $data]);
-        }
+        return response()->json([
+            'success' => true,
+            'data' => Auth::user()->effectivePermissionNames(),
+        ]);
 
     }
 
@@ -201,6 +198,12 @@ class UserController extends BaseController
                 $User->assignedWarehouses()->sync($request['assigned_to']);
             }
 
+            $this->syncUserPermissionOverrides(
+                $User,
+                $request->input('allowed_permission_ids', []),
+                $request->input('denied_permission_ids', [])
+            );
+
         }, 10);
 
         return response()->json(['success' => true]);
@@ -223,12 +226,18 @@ class UserController extends BaseController
         $warehouses = Warehouse::where('deleted_at', '=', null)->whereIn('id', $assigned_warehouses)->pluck('id')->toArray();
         $roles = Role::where('deleted_at', null)->get(['id', 'name']);
         $all_warehouses = Warehouse::where('deleted_at', '=', null)->get(['id', 'name']);
+        $permissions = Permission::where('deleted_at', null)
+            ->orderBy('name')
+            ->get(['id', 'name', 'label']);
+        $permission_overrides = $this->userPermissionOverrideIds($user);
 
         return response()->json([
             'user' => $user,
             'assigned_warehouses' => $warehouses,
             'roles' => $roles,
             'warehouses' => $all_warehouses,
+            'permissions' => $permissions,
+            'permission_overrides' => $permission_overrides,
         ]);
     }
 
@@ -319,11 +328,69 @@ class UserController extends BaseController
 
             $user_saved = User::where('deleted_at', '=', null)->findOrFail($id);
             $user_saved->assignedWarehouses()->sync($request['assigned_to']);
+            $this->syncUserPermissionOverrides(
+                $user_saved,
+                $request->input('allowed_permission_ids', []),
+                $request->input('denied_permission_ids', [])
+            );
 
         }, 10);
 
         return response()->json(['success' => true]);
 
+    }
+
+    private function userPermissionOverrideIds(User $user): array
+    {
+        $user->loadMissing('permissionOverrides');
+
+        return [
+            'allow' => $user->permissionOverrides
+                ->where('pivot.type', 'allow')
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->values()
+                ->all(),
+            'deny' => $user->permissionOverrides
+                ->where('pivot.type', 'deny')
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->values()
+                ->all(),
+        ];
+    }
+
+    private function syncUserPermissionOverrides(User $user, $allowedPermissionIds, $deniedPermissionIds): void
+    {
+        $allowedPermissionIds = $this->normalizePermissionIds($allowedPermissionIds);
+        $deniedPermissionIds = $this->normalizePermissionIds($deniedPermissionIds);
+
+        // Deny wins if the same permission is accidentally selected in both lists.
+        $allowedPermissionIds = array_values(array_diff($allowedPermissionIds, $deniedPermissionIds));
+
+        $sync = [];
+        foreach ($allowedPermissionIds as $permissionId) {
+            $sync[$permissionId] = ['type' => 'allow'];
+        }
+        foreach ($deniedPermissionIds as $permissionId) {
+            $sync[$permissionId] = ['type' => 'deny'];
+        }
+
+        $user->permissionOverrides()->sync($sync);
+    }
+
+    private function normalizePermissionIds($value): array
+    {
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            $value = is_array($decoded) ? $decoded : explode(',', $value);
+        }
+
+        if (! is_array($value)) {
+            return [];
+        }
+
+        return array_values(array_unique(array_filter(array_map('intval', $value))));
     }
 
     // ------------- UPDATE PROFILE ---------\\

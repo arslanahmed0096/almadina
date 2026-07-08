@@ -195,7 +195,7 @@ if ($installed === false) {
     });
 }
 
-Route::group(['middleware' => ['web', 'auth:web', 'Is_Active']], function () {
+Route::group(['middleware' => ['web', 'auth:web', 'Is_Active', 'allowed.ips']], function () {
 
     // QuickBooks OAuth + status
     Route::get('/quickbooks/connect', [QuickBooksController::class, 'connect'])->name('quickbooks.connect');
@@ -234,7 +234,7 @@ Route::get('csrf-token', function (\Illuminate\Http\Request $request) {
         ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
 })->middleware('web')->name('csrf.token');
 
-Route::group(['middleware' => ['web', 'auth:web', 'Is_Active', 'request.safety']], function () {
+Route::group(['middleware' => ['web', 'auth:web', 'Is_Active', 'allowed.ips', 'request.safety']], function () {
 
     Route::get('/{vue?}',
         function () {
@@ -271,7 +271,7 @@ Route::post('email/resend', 'Auth\\VerificationController@resend')->name('verifi
 
 // ------------------------- -UPDATE ----------------------------------------\\
 
-Route::group(['middleware' => ['web', 'auth:web', 'Is_Active']], function () {
+Route::group(['middleware' => ['web', 'auth:web', 'Is_Active', 'allowed.ips']], function () {
 
     Route::get('/update', 'UpdateController@viewStep1');
 

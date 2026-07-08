@@ -216,6 +216,57 @@
               </b-card>
             </b-col>
 
+            <!-- Custom Permission Overrides -->
+            <b-col md="12" sm="12" class="mb-3">
+              <b-card>
+                <b-card-header class="pb-2">
+                  <h6 class="mb-0">Custom Permissions</h6>
+                </b-card-header>
+                <b-card-body class="pt-3">
+                  <p class="text-muted mb-3">
+                    Leave both unchecked to use the selected role. Deny removes access even when the role allows it.
+                  </p>
+                  <div class="permission-overrides">
+                    <div
+                      v-for="group in permissionGroups"
+                      :key="group.name"
+                      class="permission-group mb-3"
+                    >
+                      <div class="permission-group-title">{{ group.name }}</div>
+                      <div class="permission-row permission-row-head">
+                        <span>Permission</span>
+                        <span class="text-center">Allow</span>
+                        <span class="text-center">Deny</span>
+                      </div>
+                      <div
+                        v-for="permission in group.permissions"
+                        :key="permission.id"
+                        class="permission-row"
+                      >
+                        <span class="permission-name">{{ permission.label }}</span>
+                        <label class="checkbox checkbox-outline-primary justify-content-center mb-0">
+                          <input
+                            type="checkbox"
+                            :checked="isPermissionAllowed(permission.id)"
+                            @change="togglePermissionOverride(permission.id, 'allow')"
+                          >
+                          <span class="checkmark"></span>
+                        </label>
+                        <label class="checkbox checkbox-outline-danger justify-content-center mb-0">
+                          <input
+                            type="checkbox"
+                            :checked="isPermissionDenied(permission.id)"
+                            @change="togglePermissionOverride(permission.id, 'deny')"
+                          >
+                          <span class="checkmark"></span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </b-card-body>
+              </b-card>
+            </b-col>
+
             <b-col md="12" class="mt-3">
                 <b-button variant="primary" type="submit" :disabled="SubmitProcessing"><lucide-icon class="me-2 font-weight-bold" name="check" /> {{$t('submit')}}</b-button>
                 <b-button variant="secondary" class="ml-2" @click="$router.push({ name: 'Users' })">{{$t('Cancel')}}</b-button>
@@ -245,6 +296,7 @@ export default {
       email_exist: "",
       roles: [],
       warehouses: [],
+      permissions: [],
       data: new FormData(),
       user: {
         id: "",
@@ -261,7 +313,32 @@ export default {
         record_view: false,
       },
       assigned_warehouses: [],
+      allowed_permission_ids: [],
+      denied_permission_ids: [],
     };
+  },
+
+  computed: {
+    permissionGroups() {
+      const groups = {};
+      (this.permissions || []).forEach(permission => {
+        const label = permission.label || this.formatPermissionName(permission.name);
+        const groupName = this.formatPermissionGroup(permission.name);
+        if (!groups[groupName]) groups[groupName] = [];
+        groups[groupName].push({
+          id: permission.id,
+          label,
+          name: permission.name,
+        });
+      });
+
+      return Object.keys(groups)
+        .sort()
+        .map(name => ({
+          name,
+          permissions: groups[name].sort((a, b) => a.label.localeCompare(b.label)),
+        }));
+    },
   },
 
   methods: {
@@ -296,6 +373,8 @@ export default {
       self.data.append("is_all_warehouses", self.user.is_all_warehouses);
       self.data.append("record_view", self.user.record_view ? 1 : 0);
       self.data.append("avatar", self.user.avatar);
+      self.data.append("allowed_permission_ids", JSON.stringify(self.allowed_permission_ids || []));
+      self.data.append("denied_permission_ids", JSON.stringify(self.denied_permission_ids || []));
 
       // append array assigned_warehouses
       if (self.assigned_warehouses.length) {
@@ -340,6 +419,9 @@ export default {
           this.roles = response.data.roles;
           this.warehouses = response.data.warehouses;
           this.assigned_warehouses = response.data.assigned_warehouses || [];
+          this.permissions = response.data.permissions || [];
+          this.allowed_permission_ids = (response.data.permission_overrides && response.data.permission_overrides.allow) ? response.data.permission_overrides.allow : [];
+          this.denied_permission_ids = (response.data.permission_overrides && response.data.permission_overrides.deny) ? response.data.permission_overrides.deny : [];
           this.user.NewPassword = null;
           NProgress.done();
           this.isLoading = false;
@@ -352,6 +434,39 @@ export default {
             this.$router.push({ name: 'Users' });
           }, 500);
         });
+    },
+
+    isPermissionAllowed(permissionId) {
+      return (this.allowed_permission_ids || []).includes(permissionId);
+    },
+
+    isPermissionDenied(permissionId) {
+      return (this.denied_permission_ids || []).includes(permissionId);
+    },
+
+    togglePermissionOverride(permissionId, type) {
+      const source = type === 'allow' ? 'allowed_permission_ids' : 'denied_permission_ids';
+      const opposite = type === 'allow' ? 'denied_permission_ids' : 'allowed_permission_ids';
+      const selected = this[source].includes(permissionId);
+
+      this[source] = selected
+        ? this[source].filter(id => id !== permissionId)
+        : this[source].concat(permissionId);
+
+      if (!selected) {
+        this[opposite] = this[opposite].filter(id => id !== permissionId);
+      }
+    },
+
+    formatPermissionGroup(name) {
+      const first = String(name || '').split('_')[0] || 'Other';
+      return this.formatPermissionName(first);
+    },
+
+    formatPermissionName(name) {
+      return String(name || '')
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, c => c.toUpperCase());
     },
 
     Selected_Warehouse(value) {
@@ -392,3 +507,69 @@ export default {
   }
 };
 </script>
+
+<style scoped>
+.permission-overrides {
+  max-height: 520px;
+  overflow: auto;
+  border: 1px solid #e9ecef;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.permission-group {
+  border-bottom: 1px solid #edf0f2;
+}
+
+.permission-group:last-child {
+  border-bottom: 0;
+  margin-bottom: 0 !important;
+}
+
+.permission-group-title {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 9px 12px;
+  font-weight: 700;
+  color: #2f365f;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.permission-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 86px 86px;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 7px 12px;
+  border-bottom: 1px solid #f1f3f5;
+}
+
+.permission-row:last-child {
+  border-bottom: 0;
+}
+
+.permission-row-head {
+  min-height: 32px;
+  color: #6c757d;
+  background: #fbfbfc;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.permission-name {
+  min-width: 0;
+  color: #212529;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 575.98px) {
+  .permission-row {
+    grid-template-columns: minmax(0, 1fr) 64px 64px;
+    padding: 7px 8px;
+  }
+}
+</style>

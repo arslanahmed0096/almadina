@@ -26,6 +26,7 @@ class Setting extends Model
         'backup_dropbox_path', 'backup_dropbox_access_token',
         'google_calendar_refresh_token', 'google_calendar_calendar_id', 'timezone',
         'google_calendar_client_id', 'google_calendar_client_secret', 'google_calendar_redirect_uri',
+        'allowed_ips_enabled', 'allowed_ips', 'allowed_ip_role_ids',
     ];
 
     protected $casts = [
@@ -49,6 +50,8 @@ class Setting extends Model
         'backup_s3_path_style' => 'boolean',
         'google_calendar_client_secret' => 'encrypted',
         'google_calendar_refresh_token' => 'encrypted',
+        'allowed_ips_enabled' => 'boolean',
+        'allowed_ip_role_ids' => 'array',
     ];
 
     public function Currency()
