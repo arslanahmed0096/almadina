@@ -438,7 +438,11 @@
 
                 <b-col md="12">
                   <b-form-group>
-                    <b-button variant="primary" @click="Submit_Transfer" :disabled="SubmitProcessing || hasBatchValidationErrors"><lucide-icon class="me-2 font-weight-bold" name="check" /> {{$t('submit')}}</b-button>
+                    <b-button variant="primary" @click="Submit_Transfer" :disabled="SubmitProcessing || hasBatchValidationErrors">
+                      <span v-if="SubmitProcessing" class="spinner sm spinner-white mr-2"></span>
+                      <lucide-icon v-else class="me-2 font-weight-bold" name="check" />
+                      {{ SubmitProcessing ? ($t('Saving') || 'Saving...') : $t('submit') }}
+                    </b-button>
                      <div v-once class="typo__p" v-if="SubmitProcessing">
                       <div class="spinner sm spinner-primary mt-3"></div>
                     </div>
@@ -767,8 +771,14 @@ export default {
     
     //------------- Submit Validation Create Transfer
     Submit_Transfer() {
+      if (this.SubmitProcessing) {
+        return;
+      }
+
+      this.SubmitProcessing = true;
       this.$refs.Create_transfer.validate().then(success => {
         if (!success) {
+          this.SubmitProcessing = false;
           this.makeToast(
             "danger",
             this.$t("Please_fill_the_form_correctly"),
@@ -777,6 +787,8 @@ export default {
         } else {
           this.Create_Transfer();
         }
+      }).catch(() => {
+        this.SubmitProcessing = false;
       });
     },
 
@@ -1140,6 +1152,8 @@ export default {
             this.makeToast("danger", this.$t("InvalidData"), this.$t("Failed"));
             this.SubmitProcessing = false;
           });
+      } else {
+        this.SubmitProcessing = false;
       }
     },
 

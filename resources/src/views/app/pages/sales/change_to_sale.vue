@@ -439,7 +439,11 @@
                 </b-col>
                 <b-col md="12">
                   <b-form-group>
-                    <b-button variant="primary" @click="Submit_Sale" :disabled="SubmitProcessing"><lucide-icon class="me-2 font-weight-bold" name="check" /> {{$t('submit')}}</b-button>
+                    <b-button variant="primary" @click="Submit_Sale" :disabled="SubmitProcessing">
+                      <span v-if="SubmitProcessing" class="spinner sm spinner-white mr-2"></span>
+                      <lucide-icon v-else class="me-2 font-weight-bold" name="check" />
+                      {{ SubmitProcessing ? ($t('Saving') || 'Saving...') : $t('submit') }}
+                    </b-button>
                      <div v-once class="typo__p" v-if="SubmitProcessing">
                       <div class="spinner sm spinner-primary mt-3"></div>
                     </div>
@@ -710,14 +714,21 @@ export default {
     
     //--- Submit Validate Create Sale
     Submit_Sale() {
+      if (this.SubmitProcessing) {
+        return;
+      }
+
+      this.SubmitProcessing = true;
       this.$refs.create_sale.validate().then(success => {
         if (!success) {
+          this.SubmitProcessing = false;
           this.makeToast(
             "danger",
             this.$t("Please_fill_the_form_correctly"),
             this.$t("Failed")
           );
         } else if (this.payment.amount > this.payment.received_amount) {
+              this.SubmitProcessing = false;
               this.makeToast(
                 "warning",
                 this.$t("Paying_amount_is_greater_than_Received_amount"),
@@ -726,6 +737,7 @@ export default {
               this.payment.received_amount = 0;
           }
           else if (this.payment.amount > this.GrandTotal) {
+            this.SubmitProcessing = false;
             this.makeToast(
               "warning",
               this.$t("Paying_amount_is_greater_than_Grand_Total"),
@@ -735,6 +747,8 @@ export default {
           }else{
             this.Create_Sale();
           }
+      }).catch(() => {
+        this.SubmitProcessing = false;
       });
     },
     //---Submit Validation Update Detail
@@ -1354,6 +1368,8 @@ export default {
             this.makeToast("danger", this.$t("InvalidData"), this.$t("Failed"));
             this.SubmitProcessing = false;
           });
+      } else {
+        this.SubmitProcessing = false;
       }
     },
 

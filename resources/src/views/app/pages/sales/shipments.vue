@@ -160,7 +160,11 @@
                 variant="primary"
                 type="submit"
                 :disabled="SubmitProcessing"
-              ><lucide-icon class="me-2 font-weight-bold" name="check" /> {{$t('submit')}}</b-button>
+              >
+                <span v-if="SubmitProcessing" class="spinner sm spinner-white mr-2"></span>
+                <lucide-icon v-else class="me-2 font-weight-bold" name="check" />
+                {{ SubmitProcessing ? ($t('Saving') || 'Saving...') : $t('submit') }}
+              </b-button>
               <div v-once class="typo__p" v-if="SubmitProcessing">
                 <div class="spinner sm spinner-primary mt-3"></div>
               </div>
@@ -261,8 +265,14 @@ export default {
   methods: {
     //------------- Submit Validation Edit shipment
     Submit_Shipment() {
+      if (this.SubmitProcessing) {
+        return;
+      }
+
+      this.SubmitProcessing = true;
       this.$refs.shipment_ref.validate().then(success => {
         if (!success) {
+          this.SubmitProcessing = false;
           this.makeToast(
             "danger",
             this.$t("Please_fill_the_form_correctly"),
@@ -271,6 +281,8 @@ export default {
         } else {
           this.Update_Shipment();
         }
+      }).catch(() => {
+        this.SubmitProcessing = false;
       });
     },
 

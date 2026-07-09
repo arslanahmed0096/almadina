@@ -525,7 +525,11 @@
                       @click="Submit_Purchase"
                       :disabled="SubmitProcessing || hasBatchValidationErrors"
                       :title="hasBatchValidationErrors ? $t('Batch_Qty_Mismatch') : ''"
-                    ><lucide-icon class="me-2 font-weight-bold" name="check" /> {{$t('submit')}}</b-button>
+                    >
+                      <span v-if="SubmitProcessing" class="spinner sm spinner-white mr-2"></span>
+                      <lucide-icon v-else class="me-2 font-weight-bold" name="check" />
+                      {{ SubmitProcessing ? ($t('Saving') || 'Saving...') : $t('submit') }}
+                    </b-button>
                     <div v-if="hasBatchValidationErrors" class="text-danger mt-2" style="font-size: 13px;">
                       <lucide-icon name="alert-triangle" style="vertical-align: middle; margin-right: 4px;" />
                       <template v-if="firstBatchErrorDetail && (!firstBatchErrorDetail.batches || firstBatchErrorDetail.batches.length === 0)">
@@ -821,9 +825,15 @@ export default {
 
     //--- Submit Validate Update Purchase
     Submit_Purchase() {
+      if (this.SubmitProcessing) {
+        return;
+      }
+
+      this.SubmitProcessing = true;
       // Block submission when any active batch-tracked line has missing
       // batches or batch quantities that don't sum to the line quantity.
       if (this.hasBatchValidationErrors) {
+        this.SubmitProcessing = false;
         const d = this.firstBatchErrorDetail;
         const missing = d && (!Array.isArray(d.batches) || d.batches.length === 0);
         const msg = missing
@@ -834,6 +844,7 @@ export default {
       }
       this.$refs.edit_purchase.validate().then(success => {
         if (!success) {
+          this.SubmitProcessing = false;
           this.makeToast(
             "danger",
             this.$t("Please_fill_the_form_correctly"),
@@ -842,6 +853,8 @@ export default {
         } else {
           this.Update_Purchase();
         }
+      }).catch(() => {
+        this.SubmitProcessing = false;
       });
     },
     //---Submit Validation Update Detail
@@ -1298,6 +1311,8 @@ export default {
             this.makeToast("danger", this.$t("InvalidData"), this.$t("Failed"));
             this.SubmitProcessing = false;
           });
+      } else {
+        this.SubmitProcessing = false;
       }
     },
 

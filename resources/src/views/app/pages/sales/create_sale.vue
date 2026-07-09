@@ -665,7 +665,11 @@
 
                 <b-col md="12">
                   <b-form-group>
-                    <b-button variant="primary" :disabled="paymentProcessing || hasMinPriceViolation || (sale.statut === 'completed' && hasBatchValidationErrors)" @click="Submit_Sale"><lucide-icon class="me-2 font-weight-bold" name="check" /> {{$t('submit')}}</b-button>
+                    <b-button variant="primary" :disabled="paymentProcessing || hasMinPriceViolation || (sale.statut === 'completed' && hasBatchValidationErrors)" @click="Submit_Sale">
+                      <span v-if="paymentProcessing" class="spinner sm spinner-white mr-2"></span>
+                      <lucide-icon v-else class="me-2 font-weight-bold" name="check" />
+                      {{ paymentProcessing ? ($t('Saving') || 'Saving...') : $t('submit') }}
+                    </b-button>
                     <div v-once class="typo__p" v-if="paymentProcessing">
                     <div class="spinner sm spinner-primary mt-3"></div>
                   </div>
@@ -1415,23 +1419,32 @@ export default {
   
     //--- Submit Validate Create Sale
     Submit_Sale() {
+      if (this.paymentProcessing) {
+        return;
+      }
+
       // hard block if any line violates min price
       if (this.hasMinPriceViolation) {
         this.makeToast('warning', this.$t('Price_below_min_not_allowed'), this.$t('Warning'));
         return;
       }
+
+      this.paymentProcessing = true;
       this.$refs.create_sale.validate().then(success => {
         if (!success) {
+          this.paymentProcessing = false;
           this.makeToast(
             "danger",
             this.$t("Please_fill_the_form_correctly"),
             this.$t("Failed")
           );
         } else if (Number(this.GrandTotal) < 0) {
+          this.paymentProcessing = false;
           const msg = this.$t ? `${this.$t('pos.Total_Payable')} ${this.$t('cannot_be_negative') || 'cannot be negative'}` : 'Total Payable cannot be negative';
           this.makeToast('warning', msg, this.$t ? this.$t('Warning') : 'Warning');
           return;
         } else if (this.payment.amount > this.payment.received_amount) {
+          this.paymentProcessing = false;
           this.makeToast(
             "warning",
             this.$t("Paying_amount_is_greater_than_Received_amount"),
@@ -1440,6 +1453,7 @@ export default {
           this.payment.received_amount = 0;
         }
           else if (this.payment.amount > this.GrandTotal) {
+            this.paymentProcessing = false;
             this.makeToast(
               "warning",
               this.$t("Paying_amount_is_greater_than_Grand_Total"),
@@ -1459,6 +1473,7 @@ export default {
                 const newTotalDue = currentDue + newSaleDue;
 
                 if (newTotalDue > this.selectedClientCreditLimit) {
+                  this.paymentProcessing = false;
                   const exceededAmount = newTotalDue - this.selectedClientCreditLimit;
                   this.makeToast(
                     "danger",
@@ -1475,6 +1490,8 @@ export default {
 
             this.Create_Sale();
           }
+      }).catch(() => {
+        this.paymentProcessing = false;
       });
     },
     //---Submit Validation Update Detail
@@ -2333,6 +2350,7 @@ export default {
     Create_Sale() {
       if (this.verifiedForm()) {
         if (Number(this.GrandTotal) < 0) {
+          this.paymentProcessing = false;
           const msg = this.$t ? `${this.$t('pos.Total_Payable')} ${this.$t('cannot_be_negative') || 'cannot be negative'}` : 'Total Payable cannot be negative';
           this.makeToast('warning', msg, this.$t ? this.$t('Warning') : 'Warning');
           return;
@@ -2340,6 +2358,7 @@ export default {
 
         // Batch validation for batch-tracked products (only enforced when completed).
         if (this.sale.statut === 'completed' && this.hasBatchValidationErrors) {
+          this.paymentProcessing = false;
           this.makeToast('warning', this.firstBatchErrorMessage, this.$t('Warning') || 'Warning');
           return;
         }
@@ -2410,6 +2429,8 @@ export default {
               );
             });
         }
+      } else {
+        this.paymentProcessing = false;
       }
     },
 

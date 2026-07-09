@@ -22,8 +22,9 @@
               <lucide-icon name="arrow-left" /> {{ $t('Cancel') || 'Cancel' }}
             </b-button>
             <b-button variant="primary" type="submit" class="hero-btn hero-btn--primary" :disabled="SubmitProcessing">
-              <lucide-icon name="check" />
-              <span>{{ $t('Save_Product') || $t('submit') }}</span>
+              <span v-if="SubmitProcessing" class="spinner sm spinner-white mr-2"></span>
+              <lucide-icon v-else name="check" />
+              <span>{{ SubmitProcessing ? ($t('Saving') || 'Saving...') : ($t('Save_Product') || $t('submit')) }}</span>
             </b-button>
           </div>
         </div>
@@ -1718,8 +1719,9 @@
                 {{ $t('Cancel') || 'Cancel' }}
               </b-button>
               <b-button variant="primary" type="submit" :disabled="SubmitProcessing">
-                <lucide-icon name="check" />
-                <span>{{ SubmitProcessing ? ($t('Saving') || 'Saving…') : ($t('Save_Product') || $t('submit')) }}</span>
+                <span v-if="SubmitProcessing" class="spinner sm spinner-white mr-2"></span>
+                <lucide-icon v-else name="check" />
+                <span>{{ SubmitProcessing ? ($t('Saving') || 'Saving...') : ($t('Save_Product') || $t('submit')) }}</span>
               </b-button>
             </div>
           </div>
@@ -2477,9 +2479,15 @@ export default {
 
     //------------- Submit Validation Create Product
     Submit_Product() {
+      if (this.SubmitProcessing) {
+        return;
+      }
+
+      this.SubmitProcessing = true;
       this.syncLegacyCategoryFields();
       this.$refs.Create_Product.validate().then(success => {
         if (!success) {
+          this.SubmitProcessing = false;
           this.makeToast(
             "danger",
             this.$t("Please_fill_the_form_correctly"),
@@ -2488,12 +2496,15 @@ export default {
         } else {
 
             if (this.product.type == 'is_variant' && this.variants.length <= 0) {
+              this.SubmitProcessing = false;
               this.makeToast("danger", "The variants array is required.", this.$t("Failed"));
             }else{
               this.Create_Product();
             }
 
         }
+      }).catch(() => {
+        this.SubmitProcessing = false;
       });
     },
 

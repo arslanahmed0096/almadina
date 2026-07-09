@@ -538,7 +538,11 @@
                 </b-col>
                 <b-col md="12">
                   <b-form-group>
-                    <b-button variant="primary" @click="Submit_Sale" :disabled="SubmitProcessing || (sale.statut === 'completed' && hasBatchValidationErrors)"><lucide-icon class="me-2 font-weight-bold" name="check" /> {{$t('submit')}}</b-button>
+                    <b-button variant="primary" @click="Submit_Sale" :disabled="SubmitProcessing || (sale.statut === 'completed' && hasBatchValidationErrors)">
+                      <span v-if="SubmitProcessing" class="spinner sm spinner-white mr-2"></span>
+                      <lucide-icon v-else class="me-2 font-weight-bold" name="check" />
+                      {{ SubmitProcessing ? ($t('Saving') || 'Saving...') : $t('submit') }}
+                    </b-button>
                      <div v-once class="typo__p" v-if="SubmitProcessing">
                       <div class="spinner sm spinner-primary mt-3"></div>
                     </div>
@@ -864,20 +868,29 @@ export default {
 
     //--- Submit Validate Update Sale
     Submit_Sale() {
+      if (this.SubmitProcessing) {
+        return;
+      }
+
+      this.SubmitProcessing = true;
       this.$refs.edit_sale.validate().then(success => {
         if (!success) {
+          this.SubmitProcessing = false;
           this.makeToast(
             "danger",
             this.$t("Please_fill_the_form_correctly"),
             this.$t("Failed")
           );
         } else if (Number(this.GrandTotal) < 0) {
+          this.SubmitProcessing = false;
           const msg = this.$t ? `${this.$t('pos.Total_Payable')} ${this.$t('cannot_be_negative') || 'cannot be negative'}` : 'Total Payable cannot be negative';
           this.makeToast('warning', msg, this.$t ? this.$t('Warning') : 'Warning');
           return;
         } else {
           this.Update_Sale();
         }
+      }).catch(() => {
+        this.SubmitProcessing = false;
       });
     },
     //---Submit Validation Update Detail
@@ -1691,6 +1704,7 @@ export default {
     Update_Sale() {
       if (this.verifiedForm()) {
         if (Number(this.GrandTotal) < 0) {
+          this.SubmitProcessing = false;
           const msg = this.$t ? `${this.$t('pos.Total_Payable')} ${this.$t('cannot_be_negative') || 'cannot be negative'}` : 'Total Payable cannot be negative';
           this.makeToast('warning', msg, this.$t ? this.$t('Warning') : 'Warning');
           return;
@@ -1698,6 +1712,7 @@ export default {
         // Batch validation (only enforced when completed and the user has
         // touched the optional override). Empty batches => backend auto-FEFO.
         if (this.sale.statut === 'completed' && this.hasBatchValidationErrors) {
+          this.SubmitProcessing = false;
           this.makeToast('warning', this.firstBatchErrorMessage, this.$t('Warning') || 'Warning');
           return;
         }
@@ -1758,6 +1773,8 @@ export default {
             this.makeToast("danger", this.$t("InvalidData"), this.$t("Failed"));
             this.SubmitProcessing = false;
           });
+      } else {
+        this.SubmitProcessing = false;
       }
     },
 
