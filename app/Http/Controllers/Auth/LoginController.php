@@ -101,7 +101,13 @@ class LoginController extends Controller
                 // Never break login if tracking fails
             }
 
-            return redirect()->intended($this->redirectTo);
+            $intended = $request->session()->pull('url.intended');
+
+            if ($this->isValidPostLoginRedirect($request, $intended)) {
+                return redirect()->to($intended);
+            }
+
+            return redirect($this->redirectTo);
         }
 
         // Failed login
@@ -159,5 +165,47 @@ class LoginController extends Controller
     public function username()
     {
         return 'email';
+    }
+
+    private function isValidPostLoginRedirect(Request $request, $url): bool
+    {
+        if (! is_string($url) || trim($url) === '') {
+            return false;
+        }
+
+        $parts = parse_url($url);
+        if ($parts === false) {
+            return false;
+        }
+
+        if (isset($parts['host']) && strcasecmp($parts['host'], $request->getHost()) !== 0) {
+            return false;
+        }
+
+        $path = $parts['path'] ?? '/';
+        $path = '/' . ltrim($path, '/');
+        $lowerPath = strtolower($path);
+
+        $blockedPrefixes = [
+            '/images/',
+            '/css/',
+            '/js/',
+            '/assets/',
+            '/fonts/',
+            '/vendor/',
+            '/storage/',
+        ];
+
+        foreach ($blockedPrefixes as $prefix) {
+            if (strpos($lowerPath, $prefix) === 0) {
+                return false;
+            }
+        }
+
+        if (in_array($lowerPath, ['/login', '/logout', '/csrf-token', '/favicon.ico', '/sw.js'], true)) {
+            return false;
+        }
+
+        return ! preg_match('/\.(?:jpg|jpeg|png|gif|webp|svg|ico|css|js|map|woff2?|ttf|eot|pdf|xlsx?|csv)$/i', $lowerPath);
     }
 }

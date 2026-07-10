@@ -66,57 +66,27 @@
               <table class="table table-sm table-bordered example-table">
                 <thead class="thead-light">
                   <tr>
-                    <th class="req">Username</th>
-                    <th>firstname</th>
-                    <th>lastname</th>
-                    <th class="req">code (integer)</th>
-                    <th>email</th>
-                    <th>phone</th>
-                    <th>tax_number</th>
-                    <th>country</th>
-                    <th>city</th>
-                    <th>Address</th>
-                    <th>opening_balance</th>
+                    <th class="req">full name</th>
+                    <th class="req">phone</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
-                    <td>Acme Trading</td>
-                    <td>Acme</td>
-                    <td>Trading</td>
-                    <td>10001</td>
-                    <td>info@acme.com</td>
-                    <td>+1 555 0123</td>
-                    <td>TAX-9988</td>
-                    <td>USA</td>
-                    <td>New York</td>
-                    <td>5th Ave, Suite 2</td>
-                    <td>150.50</td>
+                    <td>Ali</td>
+                    <td>3001234567</td>
                   </tr>
                   <tr>
-                    <td>Jane Smith</td>
-                    <td>Jane</td>
-                    <td>Smith</td>
-                    <td>10002</td>
-                    <td>jane@example.com</td>
-                    <td>+44 20 7946 0958</td>
-                    <td></td>
-                    <td>UK</td>
-                    <td>London</td>
-                    <td>221B Baker Street</td>
-                    <td>0</td>
+                    <td>Sara</td>
+                    <td>3012345678</td>
                   </tr>
                 </tbody>
               </table>
             </div>
 
             <ul class="mini-notes mt-2">
-              <li><strong>code</strong> must be an integer and unique (the database column is INT).</li>
-              <li><strong>Username</strong> is required (column name in file: <strong>name</strong>).</li>
-              <li><strong>firstname</strong> and <strong>lastname</strong> are optional.</li>
-              <li><strong>Address</strong> is the address field name expected by the backend.</li>
-              <li><strong>opening_balance</strong> is optional; if present it must be numeric and represents previous dues for this customer.</li>
-              <li>You can leave optional columns empty if not applicable.</li>
+              <li><strong>full name</strong> is required.</li>
+              <li><strong>phone</strong> is required; use a 10 digit number starting with 3.</li>
+              <li>Other customer fields are optional and do not need to be included in the sample file.</li>
             </ul>
           </b-card>
 
@@ -197,10 +167,10 @@
               </span>
             </div>
             <ul class="mini-notes mt-3">
-              <li><strong>code</strong> — Integer only (no letters or punctuation).</li>
-              <li><strong>firstname</strong> / <strong>lastname</strong> — Optional; accepted column names.</li>
-              <li><strong>email</strong> — Should be a valid email address if provided.</li>
-              <li><strong>phone</strong> — Include country code when possible.</li>
+              <li><strong>full name</strong> and <strong>phone</strong> are required.</li>
+              <li>Customer code is generated automatically when it is not included.</li>
+              <li><strong>phone</strong> should be 10 digits and start with 3.</li>
+              <li>Optional columns can still be imported if present, but they are not part of the sample file.</li>
             </ul>
           </b-card>
 
@@ -251,17 +221,8 @@ export default {
 
       // guide
       columnsGuide: [
-        { key: 'name',            label: 'Username',         required: true  },
-        { key: 'firstname',       label: 'firstname',        required: false },
-        { key: 'lastname',        label: 'lastname',         required: false },
-        { key: 'code',            label: 'code (integer)',   required: true  },
-        { key: 'email',           label: 'email',            required: false },
-        { key: 'phone',           label: 'phone',            required: false },
-        { key: 'tax_number',      label: 'tax_number',       required: false },
-        { key: 'country',         label: 'country',          required: false },
-        { key: 'city',            label: 'city',             required: false },
-        { key: 'adresse',         label: 'adresse',          required: false },
-        { key: 'opening_balance', label: 'opening_balance',  required: false }
+        { key: 'name',  label: 'full name', required: true },
+        { key: 'phone', label: 'phone',     required: true }
       ]
     };
   },
@@ -273,7 +234,7 @@ export default {
       return this.formatBytes(this.fileSize);
     },
     exampleHref: function () {
-      return '/import/exemples/customers.xlsx';
+      return '/import/exemples/customers.xlsx?v=20260710-2';
     }
   },
   methods: {

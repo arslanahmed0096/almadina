@@ -22,7 +22,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use ArPHP\I18N\Arabic;
-use Maatwebsite\Excel\Facades\Excel;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class ClientController extends BaseController
 {
@@ -438,8 +438,15 @@ class ClientController extends BaseController
             ], 422);
         }
 
-        $rows = Excel::toArray([], $request->file('customers'));
-        $sheet = $rows[0] ?? [];
+        try {
+            $sheet = $this->readImportSheet($request->file('customers')->getRealPath());
+        } catch (\Throwable $e) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Validation failed',
+                'errors' => ['Unable to read the Excel file. Please save it as a real .xlsx file and try again.'],
+            ], 422);
+        }
         if (empty($sheet)) {
             return response()->json([
                 'status' => false,
@@ -472,13 +479,36 @@ class ClientController extends BaseController
         }
 
         $errors = [];
+        $warnings = [];
         $prepared = [];
         $codesInFile = [];
         $emailsInFile = [];
+        $phonesInFile = [];
         $lineBase = 2; // data start line if first row is header
+        $nextCode = ((int) DB::table('clients')->max('code')) + 1;
+        $explicitCodesInFile = [];
+        $existingPhones = [];
+
+        Client::whereNull('deleted_at')
+            ->whereNotNull('phone')
+            ->pluck('phone')
+            ->each(function ($phone) use (&$existingPhones) {
+                $phoneKey = $this->normalizePhoneForImport((string) $phone);
+                if ($phoneKey !== '') {
+                    $existingPhones[$phoneKey] = (string) $phone;
+                }
+            });
+
+        foreach ($normalized as $row) {
+            $codeRaw = $row['code'] ?? null;
+            if ($codeRaw !== null && $codeRaw !== '' && is_numeric($codeRaw) && intval($codeRaw) == $codeRaw) {
+                $explicitCodesInFile[intval($codeRaw)] = true;
+            }
+        }
 
         foreach ($normalized as $i => $row) {
             $line = $i + $lineBase;
+            $skipRow = false;
             $name = isset($row['name']) ? trim((string) $row['name']) : '';
             $firstname = isset($row['firstname']) ? trim((string) $row['firstname']) : '';
             $lastname = isset($row['lastname']) ? trim((string) $row['lastname']) : '';
@@ -494,12 +524,42 @@ class ClientController extends BaseController
             $opening_balance_raw = $row['opening_balance'] ?? null;
 
             if ($name === '') {
-                $errors[] = "Row {$line}: name is required.";
+                $warnings[] = "Row {$line} skipped: full name is required.";
+                $skipRow = true;
+            }
+
+            if ($phone === '') {
+                $warnings[] = "Row {$line} skipped: phone is required.";
+                $skipRow = true;
+            } else {
+                $phoneKey = $this->normalizePhoneForImport($phone);
+                if ($phoneKey === '') {
+                    $warnings[] = "Row {$line} skipped: phone '{$phone}' is not valid.";
+                    $skipRow = true;
+                } elseif (! preg_match('/^3\d{9}$/', $phoneKey)) {
+                    $warnings[] = "Row {$line} skipped: phone '{$phone}' must be a 10 digit number starting with 3.";
+                    $skipRow = true;
+                } elseif (isset($phonesInFile[$phoneKey])) {
+                    $warnings[] = "Row {$line} skipped: duplicate phone '{$phone}' found in the file (also on row {$phonesInFile[$phoneKey]}).";
+                    $skipRow = true;
+                } elseif (isset($existingPhones[$phoneKey])) {
+                    $warnings[] = "Row {$line} skipped: phone '{$phone}' already exists for another customer.";
+                    $skipRow = true;
+                } else {
+                    $phonesInFile[$phoneKey] = $line;
+                }
+            }
+
+            if ($skipRow) {
+                continue;
             }
 
             $code = null;
             if ($codeRaw === null || $codeRaw === '') {
-                $errors[] = "Row {$line}: code is required and must be an integer.";
+                while (isset($codesInFile[$nextCode]) || isset($explicitCodesInFile[$nextCode])) {
+                    $nextCode++;
+                }
+                $code = $nextCode++;
             } elseif (is_numeric($codeRaw) && intval($codeRaw) == $codeRaw) {
                 $code = intval($codeRaw);
             } else {
@@ -601,6 +661,14 @@ class ClientController extends BaseController
             ], 422);
         }
 
+        if (empty($prepared)) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Validation failed',
+                'errors' => ['No valid customer rows found. Phone must be a unique 10 digit number starting with 3.'],
+            ], 422);
+        }
+
         // Insert
         $now = now();
         $insertRows = [];
@@ -633,7 +701,37 @@ class ClientController extends BaseController
         return response()->json([
             'status' => true,
             'imported' => count($insertRows),
+            'warnings' => $warnings,
         ]);
+    }
+
+    private function readImportSheet(string $path): array
+    {
+        $readerType = IOFactory::identify($path);
+        $reader = IOFactory::createReader($readerType);
+
+        if (method_exists($reader, 'setReadDataOnly')) {
+            $reader->setReadDataOnly(true);
+        }
+
+        $spreadsheet = $reader->load($path);
+        $sheet = $spreadsheet->getActiveSheet()->toArray(null, true, true, false);
+        $spreadsheet->disconnectWorksheets();
+        unset($spreadsheet);
+
+        return array_values(array_filter($sheet, function ($row) {
+            if (! is_array($row)) {
+                return false;
+            }
+
+            foreach ($row as $value) {
+                if ($value !== null && trim((string) $value) !== '') {
+                    return true;
+                }
+            }
+
+            return false;
+        }));
     }
 
     private function normalizeAssocRow(array $row): array
@@ -674,6 +772,21 @@ class ClientController extends BaseController
         ];
 
         return isset($map[$key]) ? $map[$key] : $key;
+    }
+
+    private function normalizePhoneForImport(string $phone): string
+    {
+        $digits = preg_replace('/\D+/', '', $phone) ?? '';
+
+        if (strlen($digits) === 11 && strpos($digits, '03') === 0) {
+            return substr($digits, 1);
+        }
+
+        if (strlen($digits) === 12 && strpos($digits, '923') === 0) {
+            return substr($digits, 2);
+        }
+
+        return $digits;
     }
 
     // ------------- clients_pay_due -------------\\
