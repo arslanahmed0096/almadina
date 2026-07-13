@@ -178,7 +178,7 @@ class SalesController extends BaseController
         }
 
         $stripe_key = config('app.STRIPE_KEY');
-        $customers = client::where('deleted_at', '=', null)->get(['id', 'name']);
+        $customers = Client::where('deleted_at', '=', null)->get(['id', 'name', 'phone']);
         $accounts = Account::where('deleted_at', '=', null)->orderBy('id', 'desc')->get(['id', 'account_name']);
         $payment_methods = PaymentMethod::whereNull('deleted_at')->get(['id', 'name']);
 
@@ -1708,7 +1708,7 @@ class SalesController extends BaseController
             $warehouses = Warehouse::whereNull('deleted_at')->whereIn('id', $warehouses_id)->get(['id', 'name']);
         }
 
-        $clients = Client::whereNull('deleted_at')->get(['id', 'name']);
+        $clients = Client::whereNull('deleted_at')->get(['id', 'name', 'phone']);
         $sales_agents = SalesAgent::where('deleted_at', '=', null)->get(['id', 'name']);
 
         return response()->json([
@@ -2467,7 +2467,7 @@ class SalesController extends BaseController
             $warehouses = Warehouse::where('deleted_at', '=', null)->whereIn('id', $warehouses_id)->get(['id', 'name']);
         }
 
-        $clients = Client::where('deleted_at', '=', null)->get(['id', 'name']);
+        $clients = Client::where('deleted_at', '=', null)->get(['id', 'name', 'phone']);
         $accounts = Account::where('deleted_at', '=', null)->get(['id', 'account_name']);
         $payment_methods = PaymentMethod::whereNull('deleted_at')->get(['id', 'name']);
         $sales_agents = SalesAgent::where('deleted_at', '=', null)->get(['id', 'name']);
@@ -2687,7 +2687,7 @@ class SalesController extends BaseController
                 $warehouses = Warehouse::where('deleted_at', '=', null)->whereIn('id', $warehouses_id)->get(['id', 'name']);
             }
 
-            $clients = Client::where('deleted_at', '=', null)->get(['id', 'name']);
+            $clients = Client::where('deleted_at', '=', null)->get(['id', 'name', 'phone']);
             $sales_agents = SalesAgent::where('deleted_at', '=', null)->get(['id', 'name']);
             $settings = Setting::where('deleted_at', '=', null)->first();
 
@@ -2880,7 +2880,7 @@ class SalesController extends BaseController
             $warehouses = Warehouse::where('deleted_at', '=', null)->whereIn('id', $warehouses_id)->get(['id', 'name']);
         }
 
-        $clients = Client::where('deleted_at', '=', null)->get(['id', 'name']);
+        $clients = Client::where('deleted_at', '=', null)->get(['id', 'name', 'phone']);
         $sales_agents = SalesAgent::where('deleted_at', '=', null)->get(['id', 'name']);
 
         return response()->json([
