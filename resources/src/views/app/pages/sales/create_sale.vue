@@ -51,10 +51,13 @@
                           :state="errors[0] ? false : (valid ? true : null)"
                           v-model="selectedClientId"
                           @input="Selected_customer"
+                          @search="SearchCustomers"
                           :reduce="label => label.value"
+                          :filterable="false"
+                          :loading="customersLoading"
                           :placeholder="$t('Choose_Customer')"
                           :options="clients.map(client => ({
-                            label: client.phone ? client.name + ' - ' + client.phone : client.name,
+                            label: customerOptionLabel(client),
                             value: client.id
                           }))"
                         />
@@ -1004,6 +1007,8 @@ export default {
       },
       warehouses: [],
       clients: [],
+      customersLoading: false,
+      customersSearchTimer: null,
       accounts: [],
       client: {},
       products: [],
@@ -1220,6 +1225,37 @@ export default {
  
 
   methods: {
+
+    customerOptionLabel(client) {
+      if (!client) return '';
+      return client.phone ? client.name + ' - ' + client.phone : client.name;
+    },
+
+    SearchCustomers(search, loading) {
+      if (this.customersSearchTimer) {
+        clearTimeout(this.customersSearchTimer);
+      }
+
+      if (loading) loading(true);
+      this.customersLoading = true;
+
+      this.customersSearchTimer = setTimeout(() => {
+        axios
+          .get("clients/search", {
+            params: {
+              q: search || "",
+              limit: 20
+            }
+          })
+          .then(response => {
+            this.clients = response.data.clients || [];
+          })
+          .finally(() => {
+            this.customersLoading = false;
+            if (loading) loading(false);
+          });
+      }, 250);
+    },
 
     showModal() {
       this.$bvModal.show('open_scan');

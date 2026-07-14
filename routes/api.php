@@ -406,6 +406,7 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
     // ------------------------------- CLIENTS --------------------------\\
     // ------------------------------------------------------------------\\
 
+    Route::get('clients/search', 'ClientController@search');
     Route::resource('clients', 'ClientController');
     Route::post('customers/import', 'ClientController@import');
     Route::get('get_clients_without_paginate', 'ClientController@Get_Clients_Without_Paginate');

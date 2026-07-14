@@ -2467,7 +2467,10 @@ class SalesController extends BaseController
             $warehouses = Warehouse::where('deleted_at', '=', null)->whereIn('id', $warehouses_id)->get(['id', 'name']);
         }
 
-        $clients = Client::where('deleted_at', '=', null)->get(['id', 'name', 'phone']);
+        $clients = Client::where('deleted_at', '=', null)
+            ->orderBy('name')
+            ->limit(20)
+            ->get(['id', 'name', 'phone']);
         $accounts = Account::where('deleted_at', '=', null)->get(['id', 'account_name']);
         $payment_methods = PaymentMethod::whereNull('deleted_at')->get(['id', 'name']);
         $sales_agents = SalesAgent::where('deleted_at', '=', null)->get(['id', 'name']);

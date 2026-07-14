@@ -407,6 +407,33 @@ class ClientController extends BaseController
         return response()->json($clients);
     }
 
+    public function search(Request $request)
+    {
+        $this->authorizeForUser($request->user('api'), 'create', \App\Models\Sale::class);
+
+        $search = trim((string) $request->input('q', ''));
+        $limit = min(max((int) $request->input('limit', 20), 1), 50);
+        $digits = preg_replace('/\D+/', '', $search) ?? '';
+
+        $clients = Client::query()
+            ->whereNull('deleted_at')
+            ->when($search !== '', function ($query) use ($search, $digits) {
+                $query->where(function ($q) use ($search, $digits) {
+                    $q->where('name', 'LIKE', "%{$search}%")
+                        ->orWhere('phone', 'LIKE', "%{$search}%");
+
+                    if ($digits !== '') {
+                        $q->orWhere('phone', 'LIKE', "%{$digits}%");
+                    }
+                });
+            })
+            ->orderBy('name')
+            ->limit($limit)
+            ->get(['id', 'name', 'phone']);
+
+        return response()->json(['clients' => $clients]);
+    }
+
     // ------------- Get Clients get_client_store_data Paginate -------------\\
 
     public function get_client_store_data($id)
