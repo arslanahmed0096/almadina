@@ -10,6 +10,7 @@ use App\Http\Controllers\QuickBooksController;
 use App\Http\Controllers\StoreAuthController;
 use App\Http\Controllers\StoreFrontController;
 use Illuminate\Http\Request as HttpRequest;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
@@ -45,6 +46,8 @@ $installed = Storage::disk('public')->exists('installed');
 if ($installed === true) {
 
     Route::middleware(['web', 'request.safety', 'store.enabled'])->group(function () {
+
+        Route::get('/', [StoreFrontController::class, 'index'])->name('store.home');
 
         Route::prefix('online_store')->group(function () {
 
@@ -117,6 +120,10 @@ if ($installed === true) {
     });
 
 } else {
+    Route::get('/', function () {
+        return redirect('/setup');
+    });
+
     // if not installed: redirect all /online_store requests to /setup
     Route::any('/online_store/{any?}', function () {
         return redirect('/setup');
@@ -234,6 +241,23 @@ Route::get('csrf-token', function (\Illuminate\Http\Request $request) {
         ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
 })->middleware('web')->name('csrf.token');
 
+Route::get('admin/login', 'Auth\LoginController@showLoginForm')->name('admin.login');
+Route::post('admin/login', 'Auth\LoginController@login')->middleware('throttle:5,1')->name('admin.login.submit');
+
+Route::get('admin', function () {
+    $installed = Storage::disk('public')->exists('installed');
+
+    if ($installed === false) {
+        return redirect('/setup');
+    }
+
+    if (! Auth::guard('web')->check()) {
+        return redirect()->route('admin.login');
+    }
+
+    return redirect('/app/dashboard');
+})->middleware('web')->name('admin');
+
 Route::group(['middleware' => ['web', 'auth:web', 'Is_Active', 'allowed.ips', 'request.safety']], function () {
 
     Route::get('/{vue?}',
@@ -245,7 +269,7 @@ Route::group(['middleware' => ['web', 'auth:web', 'Is_Active', 'allowed.ips', 'r
             } else {
                 return view('layouts.master');
             }
-        })->where('vue', '^(?!api|setup|update|password|online_store|customer-display|quickbooks|portal|recruit|api-docs|csrf-token|login|logout).*$');
+        })->where('vue', '^(?!api|setup|update|password|online_store|customer-display|quickbooks|portal|recruit|api-docs|csrf-token|admin|login|logout).*$');
 
 });
 

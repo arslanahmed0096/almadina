@@ -3,191 +3,232 @@
 @section('content')
 
 @php
+  use Illuminate\Support\Str;
+
   /** @var \App\Models\StoreSetting $s */
   $currency = $s->currency_code ?? '$';
-  $nlBtn    = __('messages.Subscribe');
-  /** @var \Illuminate\Support\Collection $banners */
+  $nlBtn = __('messages.Subscribe');
   $byPos = collect($banners ?? [])->groupBy('position');
-  $printedCenter = false;
+  $heroBlock = collect($blocks ?? [])->firstWhere('type', 'hero') ?? [];
+  $collectionBlocks = collect($blocks ?? [])
+      ->where('type', 'collection')
+      ->filter(fn ($block) => collect($block['products'] ?? [])->isNotEmpty())
+      ->values();
 
-  $renderBanners = function($list, $wrapClass = 'block rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow') {
-      foreach ($list ?? collect() as $b) {
-          $src  = $b->image_url ?? ($b->image ? asset($b->image) : asset('images/brands/no-image.png'));
-          $href = $b->link ?: route('store.shop');
-          echo '<a href="'.e($href).'" class="'.e($wrapClass).'"><img src="'.e($src).'" class="w-full h-auto object-cover" alt="'.e($b->title ?? __('messages.Banner')).'"></a>';
-      }
+  $assetUrl = function ($path, $fallback = 'images/products/no-image.png') {
+      if (empty($path)) return asset($fallback);
+      if (Str::startsWith($path, ['http://', 'https://', '//'])) return $path;
+      $clean = ltrim($path, '/');
+      return file_exists(public_path($clean)) ? asset($clean) : asset($fallback);
   };
+
+  $heroPath = $heroBlock['image'] ?? $s->hero_image_path ?? null;
+  if (empty($heroPath) || (!Str::startsWith((string) $heroPath, ['http://', 'https://', '//']) && !file_exists(public_path(ltrim((string) $heroPath, '/'))))) {
+      $heroPath = file_exists(public_path('store_files/hero_image.jpg'))
+          ? 'store_files/hero_image.jpg'
+          : 'images/store/hero_image.jpg';
+  }
+  $heroUrl = $assetUrl($heroPath, 'images/store/hero_image.jpg');
+  $heroTitle = $heroBlock['title'] ?? $s->hero_title ?? 'The new standard for everyday shopping';
+  $heroSubtitle = $heroBlock['subtitle'] ?? $s->hero_subtitle ?? 'Quality products, fair prices, and dependable delivery in one simple place.';
+
+  $topPromos = collect()
+      ->merge($byPos['top_left'] ?? collect())
+      ->merge($byPos['top_right'] ?? collect())
+      ->take(2)
+      ->values();
+  $campaignBanners = collect()
+      ->merge($byPos['center_left'] ?? collect())
+      ->merge($byPos['center_right'] ?? collect())
+      ->merge($byPos['footer_left'] ?? collect())
+      ->merge($byPos['footer_right'] ?? collect())
+      ->values();
 @endphp
 
-{{-- ===== TOP ===== --}}
-@if(($byPos['top_left'] ?? collect())->count() || ($byPos['top_right'] ?? collect())->count())
-  <section class="py-6">
+<div class="retail-home">
+  <section class="retail-hero-section">
     <div class="container">
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div>{!! $renderBanners($byPos['top_left'] ?? collect()) !!}</div>
-        <div>{!! $renderBanners($byPos['top_right'] ?? collect()) !!}</div>
+      <div class="retail-hero-grid">
+        <aside class="retail-category-panel" aria-label="{{ __('messages.Categories') }}">
+          <a href="{{ route('store.shop') }}" class="retail-category-title">
+            <x-store.icon name="grid" class="w-4 h-4" />
+            <span>{{ __('messages.AllProducts') }}</span>
+          </a>
+          <div class="retail-category-list">
+            @forelse($categories->take(9) as $category)
+              <a href="{{ route('store.shop', ['category' => $category->id]) }}">
+                <span class="retail-category-icon"><x-store.icon name="package" class="w-4 h-4" /></span>
+                <span>{{ $category->name }}</span>
+                <x-store.icon name="chevron-right" class="w-3 h-3" />
+              </a>
+            @empty
+              <a href="{{ route('store.shop') }}">
+                <span class="retail-category-icon"><x-store.icon name="bag" class="w-4 h-4" /></span>
+                <span>{{ __('messages.Shop') }}</span>
+                <x-store.icon name="chevron-right" class="w-3 h-3" />
+              </a>
+            @endforelse
+          </div>
+        </aside>
+
+        <a href="{{ route('store.shop') }}" class="retail-main-hero" style="--retail-hero-image: url('{{ $heroUrl }}')">
+          <span class="retail-hero-shade"></span>
+          <span class="retail-hero-content">
+            <span class="retail-eyebrow">New collection</span>
+            <strong>{{ $heroTitle }}</strong>
+            <small>{{ $heroSubtitle }}</small>
+            <span class="retail-price-line">Shop from <b>{{ $currency }}25</b></span>
+            <span class="retail-hero-cta">{{ __('messages.ShopNow') }} <x-store.icon name="arrow-right" class="w-4 h-4" /></span>
+          </span>
+        </a>
+
+        <div class="retail-side-promos">
+          @forelse($topPromos as $index => $banner)
+            <a href="{{ $banner->link ?: route('store.shop') }}" class="retail-side-promo {{ $index % 2 ? 'is-violet' : '' }}">
+              <img src="{{ $assetUrl($banner->image_url ?? $banner->image, 'images/store/hero_image.jpg') }}" alt="{{ $banner->title ?? 'Special offer' }}">
+              <span class="retail-promo-shade"></span>
+              <span class="retail-promo-copy">
+                <small>Catch big</small>
+                <strong>{{ $banner->title ?? 'Deals on top picks' }}</strong>
+                <em>{{ __('messages.ShopNow') }} →</em>
+              </span>
+            </a>
+          @empty
+            <a href="{{ route('store.shop', ['deals' => 1]) }}" class="retail-side-promo">
+              <img src="{{ $heroUrl }}" alt="Weekly deals">
+              <span class="retail-promo-shade"></span>
+              <span class="retail-promo-copy"><small>Up to 30% off</small><strong>Weekly deals</strong><em>{{ __('messages.ShopNow') }} →</em></span>
+            </a>
+            <a href="{{ route('store.shop') }}" class="retail-side-promo is-violet">
+              <img src="{{ $heroUrl }}" alt="New arrivals">
+              <span class="retail-promo-shade"></span>
+              <span class="retail-promo-copy"><small>Just landed</small><strong>New arrivals</strong><em>{{ __('messages.ShopNow') }} →</em></span>
+            </a>
+          @endforelse
+        </div>
+      </div>
+
+      <div class="retail-benefits">
+        <div><x-store.icon name="truck" class="w-6 h-6" /><span><strong>Free delivery</strong><small>On qualifying orders</small></span></div>
+        <div><x-store.icon name="phone" class="w-6 h-6" /><span><strong>Helpful support</strong><small>Here when you need us</small></span></div>
+        <div><x-store.icon name="credit-card" class="w-6 h-6" /><span><strong>Flexible payment</strong><small>Safe and convenient</small></span></div>
+        <div><x-store.icon name="shield-check" class="w-6 h-6" /><span><strong>Reliable quality</strong><small>Products you can trust</small></span></div>
       </div>
     </div>
   </section>
-@endif
 
-@forelse($blocks ?? [] as $block)
-  @switch($block['type'])
+  @forelse($collectionBlocks as $blockIndex => $block)
+    @php
+      $collection = $block['collection'];
+      $products = $block['products'] ?? collect();
+      $sectionTitle = $block['title'] ?? ($collection->title ?? $collection->name ?? __('messages.Collection'));
+    @endphp
 
-    @case('hero')
-      @php
-        $heroImg = $block['image'] ?? $s->hero_image_path;
-        $heroUrl = 'https://picsum.photos/seed/hero-store/960/520';
-        if (!empty($heroImg) && is_string($heroImg) && !\Illuminate\Support\Str::startsWith($heroImg, ['http://', 'https://']) && file_exists(public_path($heroImg))) {
-            $heroUrl = asset($heroImg);
-        } elseif (file_exists(public_path('store_files/hero_image.jpg'))) {
-            $heroUrl = asset('store_files/hero_image.jpg');
-        }
-      @endphp
-      <section class="py-12 lg:py-16 relative overflow-hidden"
-               style="background:
-                 radial-gradient(1200px 360px at 15% 50%, rgb(var(--color-accent-500) / .10) 0%, transparent 55%),
-                 radial-gradient(900px 280px at 85% 50%, rgb(var(--color-accent-500) / .06) 0%, transparent 55%);">
+    @if($products->count())
+      <section class="retail-product-section {{ $blockIndex === 0 ? 'is-deal-section' : '' }}">
         <div class="container">
-          <div class="grid lg:grid-cols-2 gap-8 lg:gap-12 items-center">
+          <div class="retail-section-head">
             <div>
-              <span class="section-kicker">{{ __('messages.Shop') }}</span>
-              <h1 class="mt-3 mb-4 text-4xl lg:text-5xl font-bold tracking-tight text-fg-primary">
-                {{ $block['title'] ?? $s->hero_title }}
-              </h1>
-              <p class="section-subtitle mb-6 max-w-xl">
-                {{ $block['subtitle'] ?? $s->hero_subtitle }}
-              </p>
-              <a href="{{ route('store.shop') }}" class="btn btn-primary btn-lg">
-                <x-store.icon name="lightning" class="w-5 h-5" />{{ __('messages.ShopNow') }}
-              </a>
+              @if($blockIndex === 0)
+                <span class="retail-section-icon"><x-store.icon name="lightning" class="w-4 h-4" /></span>
+              @endif
+              <h2>{{ $blockIndex === 0 ? 'Deal of the day' : $sectionTitle }}</h2>
+              @if($blockIndex === 0)<span class="retail-countdown">Ends soon · Don’t miss out</span>@endif
             </div>
-            <div class="relative">
-              <div class="rounded-xl overflow-hidden shadow-lg border border-line-subtle">
-                <img class="w-full h-auto object-cover max-h-[420px]" src="{{ $heroUrl }}" alt="Hero">
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {{-- ===== CENTER ===== --}}
-      @if(!$printedCenter && ( ($byPos['center_left'] ?? collect())->count() || ($byPos['center_right'] ?? collect())->count() ))
-        <section class="py-6">
-          <div class="container">
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div>{!! $renderBanners($byPos['center_left'] ?? collect()) !!}</div>
-              <div>{!! $renderBanners($byPos['center_right'] ?? collect()) !!}</div>
-            </div>
-          </div>
-        </section>
-        @php $printedCenter = true; @endphp
-      @endif
-      @break
-
-    @case('collection')
-      @php
-        $col   = $block['collection'];
-        $prods = $block['products'] ?? collect();
-        $title = $block['title'] ?? ($col->title ?? $col->name ?? __('messages.Collection'));
-      @endphp
-
-      @if($prods->count())
-      <section class="py-10 lg:py-14">
-        <div class="container">
-          <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2 mb-6">
-            <div>
-              <span class="section-kicker">{{ __('messages.Collection') }}</span>
-              <h2 class="section-title mt-1">{{ $title }}</h2>
-            </div>
-            <a class="text-sm font-medium text-accent-500 hover:underline inline-flex items-center gap-1"
-               href="{{ route('store.shop', ['collection' => $col->slug]) }}">
-              {{ __('messages.ViewAll') }}
-              <x-store.icon name="arrow-right" class="w-4 h-4" />
+            <a href="{{ !empty($collection->slug) ? route('store.shop', ['collection' => $collection->slug]) : route('store.shop') }}">
+              {{ __('messages.ViewAll') }} <x-store.icon name="arrow-right" class="w-4 h-4" />
             </a>
           </div>
 
-          <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            @foreach($prods as $p)
-              @include('store.partials.product-card', ['p' => $p, 'currency' => $currency])
+          <div class="retail-product-grid">
+            @foreach($products as $product)
+              @include('store.partials.product-card', ['p' => $product, 'currency' => $currency])
             @endforeach
           </div>
         </div>
       </section>
-      @endif
-      @break
+    @endif
 
-    @case('newsletter')
-      @php
-        $nlTitle       = $s->newsletter_title       ?? __('messages.GetFreshDealsTitle');
-        $nlSubtitle    = $s->newsletter_subtitle    ?? __('messages.GetFreshDealsSubtitle');
-        $nlPlaceholder = $s->newsletter_placeholder ?? __('messages.NewsletterEmailPlaceholder');
-      @endphp
-      <section class="py-10 lg:py-14">
+    @if($blockIndex === 0)
+      <section class="retail-campaign-section">
         <div class="container">
-          <div class="rounded-xl border border-line-subtle p-8 lg:p-10"
-               style="background: linear-gradient(135deg, rgb(var(--color-accent-500) / .06), rgb(var(--color-bg-surface)));">
-            <div class="grid lg:grid-cols-5 gap-6 items-center">
-              <div class="lg:col-span-2">
-                <h3 class="text-2xl font-bold mb-2">{{ $nlTitle }}</h3>
-                <p class="text-fg-secondary text-sm">{{ $nlSubtitle }}</p>
-              </div>
-              <div class="lg:col-span-3">
-                <form id="newsletterForm" class="flex flex-col md:flex-row gap-2">
-                  @csrf
-                  <input name="email" type="email" id="newsletterEmail" class="input flex-1"
-                         placeholder="{{ $nlPlaceholder }}" required>
-                  <button id="newsletterBtn" class="btn btn-primary btn-lg shrink-0" type="submit">
-                    <x-store.icon name="mail" class="w-5 h-5" />{{ $nlBtn }}
-                  </button>
-                </form>
-                <div id="newsletterMsg" class="text-sm mt-2"></div>
-              </div>
-            </div>
+          @php $campaign = $campaignBanners->get(0); @endphp
+          <a href="{{ $campaign?->link ?: route('store.shop') }}" class="retail-campaign" style="--campaign-image: url('{{ $campaign ? $assetUrl($campaign->image_url ?? $campaign->image, 'images/store/hero_image.jpg') : $heroUrl }}')">
+            <span class="retail-campaign-glow"></span>
+            <span class="retail-campaign-copy">
+              <small>Limited-time spotlight</small>
+              <strong>{{ $campaign?->title ?? 'A special edition made for your everyday' }}</strong>
+              <span>Save more on this week’s featured collection</span>
+              <b>{{ __('messages.ShopNow') }} →</b>
+            </span>
+          </a>
+        </div>
+      </section>
+    @endif
+
+    @if($blockIndex === 1)
+      <section class="retail-mini-promos">
+        <div class="container">
+          <div class="retail-mini-promo-grid">
+            @foreach(['Accessories', 'Popular picks', 'New products', 'Everyday essentials'] as $promoIndex => $promoTitle)
+              <a href="{{ route('store.shop') }}" class="retail-mini-promo promo-{{ $promoIndex + 1 }}">
+                <span><small>Save up to {{ 15 + ($promoIndex * 5) }}%</small><strong>{{ $promoTitle }}</strong><em>{{ __('messages.ShopNow') }} →</em></span>
+              </a>
+            @endforeach
           </div>
         </div>
       </section>
-      @break
-
-  @endswitch
-@empty
-
-  @if(!$printedCenter && ( ($byPos['center_left'] ?? collect())->count() || ($byPos['center_right'] ?? collect())->count() ))
-    <section class="py-6">
+    @endif
+  @empty
+    <section class="retail-empty-feature">
       <div class="container">
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div>{!! $renderBanners($byPos['center_left'] ?? collect()) !!}</div>
-          <div>{!! $renderBanners($byPos['center_right'] ?? collect()) !!}</div>
+        <div class="retail-empty-card">
+          <span class="retail-eyebrow">Start exploring</span>
+          <h2>Everything you need, all in one place</h2>
+          <p>Browse the complete catalogue and discover the latest products available online.</p>
+          <a href="{{ route('store.shop') }}" class="btn btn-primary">{{ __('messages.ShopNow') }}</a>
         </div>
       </div>
     </section>
-    @php $printedCenter = true; @endphp
+  @endforelse
+
+  @if($campaignBanners->count() > 1)
+    <section class="retail-banner-pair">
+      <div class="container">
+        <div class="retail-banner-grid">
+          @foreach($campaignBanners->slice(1, 2) as $banner)
+            <a href="{{ $banner->link ?: route('store.shop') }}">
+              <img src="{{ $assetUrl($banner->image_url ?? $banner->image, 'images/store/hero_image.jpg') }}" alt="{{ $banner->title ?? 'Promotion' }}">
+            </a>
+          @endforeach
+        </div>
+      </div>
+    </section>
   @endif
-@endforelse
 
-@if(!$printedCenter && ( ($byPos['center_left'] ?? collect())->count() || ($byPos['center_right'] ?? collect())->count() ))
-  <section class="py-6">
-    <div class="container">
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div>{!! $renderBanners($byPos['center_left'] ?? collect()) !!}</div>
-        <div>{!! $renderBanners($byPos['center_right'] ?? collect()) !!}</div>
+  @php
+    $nlTitle = $s->newsletter_title ?? __('messages.GetFreshDealsTitle');
+    $nlSubtitle = $s->newsletter_subtitle ?? __('messages.GetFreshDealsSubtitle');
+    $nlPlaceholder = $s->newsletter_placeholder ?? __('messages.NewsletterEmailPlaceholder');
+  @endphp
+  <section class="retail-newsletter">
+      <div class="container">
+        <div class="retail-newsletter-inner">
+          <div>
+            <span class="retail-newsletter-icon"><x-store.icon name="mail" class="w-5 h-5" /></span>
+            <span><strong>{{ $nlTitle }}</strong><small>{{ $nlSubtitle }}</small></span>
+          </div>
+          <form id="newsletterForm">
+            @csrf
+            <input name="email" type="email" id="newsletterEmail" placeholder="{{ $nlPlaceholder }}" required>
+            <button id="newsletterBtn" type="submit">{{ $nlBtn }}</button>
+          </form>
+          <div id="newsletterMsg" class="retail-newsletter-message"></div>
+        </div>
       </div>
-    </div>
   </section>
-@endif
+</div>
 
-@if(($byPos['footer_left'] ?? collect())->count() || ($byPos['footer_right'] ?? collect())->count())
-  <section class="py-10">
-    <div class="container">
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div>{!! $renderBanners($byPos['footer_left'] ?? collect()) !!}</div>
-        <div>{!! $renderBanners($byPos['footer_right'] ?? collect()) !!}</div>
-      </div>
-    </div>
-  </section>
-@endif
-
-{{-- Quick-view + variant-picker + newsletter logic --}}
 @include('store.partials.home-modals-scripts', ['currency' => $currency, 'nlBtn' => $nlBtn])
 
 @endsection

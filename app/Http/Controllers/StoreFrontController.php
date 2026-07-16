@@ -210,6 +210,81 @@ class StoreFrontController extends Controller
             }
         }
 
+        // Keep the redesigned homepage useful before a collection lineup is configured.
+        // The shop may already contain products, so surface the latest items as a
+        // virtual "Featured products" collection instead of rendering an empty page.
+        $homeProductCount = collect($blocks)
+            ->where('type', 'collection')
+            ->sum(fn ($block) => collect($block['products'] ?? [])->count());
+
+        if ($homeProductCount === 0) {
+            $products = Product::query()
+                ->where('products.is_active', 1)
+                ->where('products.hide_from_online_store', 0)
+                ->with([
+                    'variants:id,product_id,name,price,image',
+                    'images:id,product_id,image_path,is_main,sort_order',
+                ])
+                ->leftJoinSub($minVariantSub, 'pvmin', function ($join) {
+                    $join->on('pvmin.product_id', '=', 'products.id');
+                })
+                ->addSelect(
+                    'products.*',
+                    DB::raw("$baseExpr AS base_price"),
+                    DB::raw("$afterDiscountExpr AS after_discount"),
+                    DB::raw("$finalExpr AS final_display_price")
+                )
+                ->orderByDesc('products.created_at')
+                ->take(10)
+                ->get();
+
+            foreach ($products as $p) {
+                $p->display_price = (float) ($p->final_display_price ?? 0);
+
+                $taxRate = is_numeric($p->TaxNet) ? (float) $p->TaxNet : $defaultTaxRate;
+                $discVal = is_numeric($p->discount) ? (float) $p->discount : 0.0;
+                $isPercent = (string) $p->discount_method === '1';
+                $isInclusive = (string) $p->tax_method === '2';
+
+                if ($p->relationLoaded('variants') && $p->variants) {
+                    foreach ($p->variants as $variant) {
+                        $price = (float) ($variant->price ?? 0);
+                        if ($discVal > 0) {
+                            $price = $isPercent
+                                ? ($price - ($price * $discVal / 100))
+                                : ($price - min($discVal, $price));
+                            $price = max(0, $price);
+                        }
+                        if (! $isInclusive && $taxRate > 0) {
+                            $price *= 1 + ($taxRate / 100);
+                        }
+                        $variant->display_price = round($price, 2);
+                    }
+                }
+            }
+
+            $this->attachStockToProducts($products, $s->default_warehouse_id);
+
+            if ($s->hide_out_of_stock ?? false) {
+                $products = $products->filter(fn ($p) => $this->productHasStock($p));
+            }
+
+            if ($products->isNotEmpty()) {
+                $featured = new \stdClass();
+                $featured->title = __('Featured products');
+                $featured->name = __('Featured products');
+                $featured->slug = null;
+
+                $blocks[] = [
+                    'type' => 'collection',
+                    'title' => __('Featured products'),
+                    'collection' => $featured,
+                    'products' => $products,
+                    'cfg' => ['limit' => 10, 'layout' => 'grid', 'index' => count($blocks)],
+                ];
+            }
+        }
+
         // 4) Active banners
         $banners = StoreBanner::query()
             ->where('active', 1)

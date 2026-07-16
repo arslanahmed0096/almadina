@@ -2469,8 +2469,15 @@ class SalesController extends BaseController
 
         $clients = Client::where('deleted_at', '=', null)
             ->orderBy('name')
-            ->limit(20)
-            ->get(['id', 'name', 'phone']);
+            ->limit(50)
+            ->get(['id', 'name', 'phone'])
+            ->unique(function ($client) {
+                $phone = preg_replace('/\D+/', '', (string) ($client->phone ?? ''));
+
+                return $phone !== '' ? 'phone:'.$phone : 'id:'.$client->id;
+            })
+            ->values()
+            ->take(20);
         $accounts = Account::where('deleted_at', '=', null)->get(['id', 'account_name']);
         $payment_methods = PaymentMethod::whereNull('deleted_at')->get(['id', 'name']);
         $sales_agents = SalesAgent::where('deleted_at', '=', null)->get(['id', 'name']);

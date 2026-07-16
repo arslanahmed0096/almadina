@@ -56,10 +56,7 @@
                           :filterable="false"
                           :loading="customersLoading"
                           :placeholder="$t('Choose_Customer')"
-                          :options="clients.map(client => ({
-                            label: customerOptionLabel(client),
-                            value: client.id
-                          }))"
+                          :options="customerOptions"
                         />
                         <b-input-group-append
                           v-if="currentUserPermissions && currentUserPermissions.includes('Customers_add')"
@@ -988,6 +985,14 @@ export default {
   metaInfo: {
     title: "Create Sale"
   },
+  computed: {
+    customerOptions() {
+      return this.uniqueClients(this.clients).map(client => ({
+        label: this.customerOptionLabel(client),
+        value: client.id
+      }));
+    }
+  },
   data() {
     return {
       focused: false,
@@ -1007,6 +1012,7 @@ export default {
       },
       warehouses: [],
       clients: [],
+      selectedClientId: "",
       customersLoading: false,
       customersSearchTimer: null,
       accounts: [],
@@ -1231,6 +1237,34 @@ export default {
       return client.phone ? client.name + ' - ' + client.phone : client.name;
     },
 
+    normalizedPhone(phone) {
+      return String(phone || '').replace(/\D+/g, '');
+    },
+
+    uniqueClients(clients) {
+      const seen = {};
+      return (clients || []).filter(client => {
+        if (!client || !client.id) return false;
+        const phone = this.normalizedPhone(client.phone);
+        const key = phone ? 'phone:' + phone : 'id:' + client.id;
+
+        if (seen[key]) return false;
+        seen[key] = true;
+        return true;
+      });
+    },
+
+    setClients(clients) {
+      const currentClient = this.clients.find(c => String(c.id) === String(this.selectedClientId));
+      const merged = currentClient ? [currentClient].concat(clients || []) : (clients || []);
+      this.clients = this.uniqueClients(merged);
+    },
+
+    upsertClient(client) {
+      if (!client || !client.id) return;
+      this.setClients([client].concat(this.clients || []));
+    },
+
     SearchCustomers(search, loading) {
       if (this.customersSearchTimer) {
         clearTimeout(this.customersSearchTimer);
@@ -1248,7 +1282,7 @@ export default {
             }
           })
           .then(response => {
-            this.clients = response.data.clients || [];
+            this.setClients(response.data.clients || []);
           })
           .finally(() => {
             this.customersLoading = false;
@@ -1292,10 +1326,10 @@ export default {
       this.sale.discount = 0;       // 👈 Reset applied discount
       this.sale.discount_Method = '2'; // Reset to fixed (default)
 
-      const client = this.clients.find(c => c.id === selectedClientId);
+      const client = this.clients.find(c => String(c.id) === String(selectedClientId));
       if (client) {
         this.client_name = client.name;
-        this.selectedClientId = selectedClientId;
+        this.selectedClientId = client.id;
 
         // Fetch customer points
         try {
@@ -1904,7 +1938,7 @@ export default {
 
               const newClient = data;
               if (newClient && newClient.id) {
-                this.clients.push({
+                this.upsertClient({
                   id: newClient.id,
                   name: newClient.name,
                   phone: newClient.phone || ""
@@ -2600,7 +2634,7 @@ export default {
       axios
         .get("sales/create")
         .then(response => {
-          this.clients = response.data.clients;
+          this.setClients(response.data.clients);
           this.warehouses = response.data.warehouses;
           this.sales_agents = response.data.sales_agents || [];
           this.accounts = response.data.accounts;

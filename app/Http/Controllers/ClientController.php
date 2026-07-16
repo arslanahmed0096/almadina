@@ -402,7 +402,9 @@ class ClientController extends BaseController
 
     public function Get_Clients_Without_Paginate()
     {
-        $clients = Client::where('deleted_at', '=', null)->get(['id', 'name', 'phone']);
+        $clients = $this->uniqueClientsByPhone(
+            Client::where('deleted_at', '=', null)->get(['id', 'name', 'phone'])
+        );
 
         return response()->json($clients);
     }
@@ -428,10 +430,21 @@ class ClientController extends BaseController
                 });
             })
             ->orderBy('name')
-            ->limit($limit)
+            ->limit($limit * 3)
             ->get(['id', 'name', 'phone']);
 
-        return response()->json(['clients' => $clients]);
+        return response()->json([
+            'clients' => $this->uniqueClientsByPhone($clients)->take($limit)->values(),
+        ]);
+    }
+
+    private function uniqueClientsByPhone($clients)
+    {
+        return collect($clients)->unique(function ($client) {
+            $phone = preg_replace('/\D+/', '', (string) ($client->phone ?? ''));
+
+            return $phone !== '' ? 'phone:'.$phone : 'id:'.$client->id;
+        })->values();
     }
 
     // ------------- Get Clients get_client_store_data Paginate -------------\\

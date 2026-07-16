@@ -38,7 +38,7 @@ class Authenticate extends Middleware
 
         // Default for admin panel or web
         if (! $request->expectsJson()) {
-            return route('login');
+            return route('admin.login');
         }
 
         return null; // For API calls (JSON)

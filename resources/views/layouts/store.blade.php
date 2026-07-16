@@ -58,6 +58,7 @@
   $modalRegEnabled = $s->registration_enabled ?? true;
   $modalInviteRequired = $s->require_invite_code ?? false;
   $hidePrices = !$client && ($s->hide_prices_for_guests ?? false);
+  $isStoreHome = request()->routeIs('store.index');
 @endphp
 <!doctype html>
 <html lang="{{ str_replace('_','-', app()->getLocale() ?? 'en') }}" dir="{{ $isRtl ? 'rtl' : 'ltr' }}">
@@ -84,9 +85,9 @@
     (function () {
       try {
         var stored = localStorage.getItem('store.theme');
-        var mode = stored || 'dark';
+        var mode = stored || 'light';
         if (mode === 'dark') document.documentElement.classList.add('dark');
-      } catch (e) { document.documentElement.classList.add('dark'); }
+      } catch (e) {}
     })();
   </script>
 
@@ -110,6 +111,9 @@
 
   {{-- Storefront bundle --}}
   <link rel="stylesheet" href="{{ $cssStore }}">
+  @if($isStoreHome)
+    <link rel="stylesheet" href="{{ asset('css/storefront-home.css') }}?v={{ @filemtime(public_path('css/storefront-home.css')) }}">
+  @endif
 
   <style>
     :root {
@@ -121,11 +125,21 @@
     body { font-family: {{ $s->font_family ?? 'Inter, system-ui, sans-serif' }}; }
 
     .mega-panel { box-shadow: 0 24px 48px -12px rgba(0,0,0,0.5); }
+    .store-category-scroll {
+      scrollbar-width: thin;
+      scrollbar-color: rgba({{ $accent500Rgb }}, 0.45) transparent;
+    }
+    .store-category-scroll::-webkit-scrollbar { height: 6px; }
+    .store-category-scroll::-webkit-scrollbar-track { background: transparent; }
+    .store-category-scroll::-webkit-scrollbar-thumb {
+      background: rgba({{ $accent500Rgb }}, 0.45);
+      border-radius: 999px;
+    }
 
     {!! $s->custom_css ?? '' !!}
   </style>
 </head>
-<body x-data class="bg-bg-base text-fg-primary antialiased min-h-screen flex flex-col">
+<body x-data class="bg-bg-base text-fg-primary antialiased min-h-screen flex flex-col {{ $isStoreHome ? 'store-home-page' : '' }}">
 
   {{-- Page loader --}}
   <div id="page-loader" x-data="pageLoader()"
@@ -134,7 +148,7 @@
   </div>
 
   {{-- Topbar --}}
-  <div class="bg-bg-elevated border-b border-line-subtle text-xs text-fg-secondary">
+  <div class="store-topbar bg-bg-elevated border-b border-line-subtle text-xs text-fg-secondary">
     <div class="container flex items-center justify-between h-9">
       <div class="truncate">{{ $s->topbar_text_left ?? __('messages.TopbarLeft') }}</div>
       <div class="hidden md:flex items-center gap-2">
@@ -145,9 +159,9 @@
   </div>
 
   {{-- Header --}}
-  <header class="sticky top-0 z-40 bg-bg-base/85 backdrop-blur-md border-b border-line-subtle">
+  <header class="store-main-header sticky top-0 z-40 bg-bg-base/85 backdrop-blur-md border-b border-line-subtle">
     <div class="container">
-      <div class="flex items-center gap-3 h-16">
+      <div class="store-header-row flex items-center gap-3 h-16">
 
         {{-- Mobile menu trigger --}}
         <button type="button"
@@ -168,7 +182,7 @@
         </a>
 
         {{-- Desktop nav --}}
-        <nav class="hidden lg:flex items-center ms-2">
+        <nav class="store-desktop-nav hidden lg:flex items-center ms-2">
           <a href="{{ route('store.index') }}"
              class="px-3 h-10 inline-flex items-center text-sm font-medium text-fg-secondary hover:text-fg-primary rounded-md transition-colors">
             {{ __('messages.Home') }}
@@ -186,7 +200,7 @@
         </nav>
 
         {{-- Search (desktop) --}}
-        <div class="hidden md:flex flex-1 max-w-xl mx-4 relative"
+        <div class="store-search-wrap hidden md:flex flex-1 max-w-xl mx-4 relative"
              x-data="searchBox('{{ route('store.search.suggestions') }}')"
              @click.outside="results = []">
           <form action="{{ route('store.shop') }}" method="GET" class="w-full relative">
@@ -302,9 +316,9 @@
 
     {{-- Horizontal category bar (home & shop only) --}}
     @if(!empty($showCategoryBar) && $categories->count())
-      <div class="hidden lg:block border-t border-line-subtle bg-bg-base">
+      <div class="store-category-bar hidden lg:block border-t border-line-subtle bg-bg-base">
         <div class="container">
-          <ul class="flex flex-wrap items-center gap-1 py-2">
+          <ul class="flex flex-nowrap items-center gap-1 py-2 overflow-x-auto overflow-y-visible whitespace-nowrap store-category-scroll">
             @foreach($categories as $category)
               <li class="relative group shrink-0">
                 <a href="{{ route('store.shop', ['category' => $category->id]) }}"
@@ -460,7 +474,7 @@
   </div>
 
   {{-- Page content --}}
-  <main class="flex-1 pb-20 lg:pb-0">
+  <main class="store-main flex-1 pb-20 lg:pb-0">
     @yield('content')
   </main>
 
@@ -511,7 +525,7 @@
   </nav>
 
   {{-- Footer --}}
-  <footer class="mt-16 bg-bg-surface border-t border-line-subtle">
+  <footer class="store-footer mt-16 bg-bg-surface border-t border-line-subtle">
     <div class="container py-10">
       <div class="grid grid-cols-2 md:grid-cols-4 gap-8">
         <div class="col-span-2 md:col-span-2">
