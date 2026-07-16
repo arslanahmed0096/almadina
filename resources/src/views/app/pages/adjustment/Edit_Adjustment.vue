@@ -104,8 +104,12 @@
                         </tr>
                         <template v-for="detail in details">
                         <tr
-                          :class="{'row_deleted': detail.del === 1}"
                           :key="'r-' + detail.detail_id"
+                          :ref="'adjustment_detail_' + detail.detail_id"
+                          :class="{
+                            'row_deleted': detail.del === 1,
+                            'adjustment-row-highlight': highlightedDetailId === detail.detail_id
+                          }"
                         >
                           <td>{{detail.detail_id}}</td>
                           <td>{{detail.code}}</td>
@@ -351,6 +355,8 @@ export default {
     return {
       focused: false,
       timer:null,
+      highlightTimer: null,
+      highlightedDetailId: null,
       search_input:'',
       product_filter:[],
       isLoading: true,
@@ -540,11 +546,10 @@ export default {
     //---------------- Submit Search Product-----------------\\
     SearchProduct(result) {
       this.product = {};
-      if (
-        this.details.length > 0 &&
-        this.details.some(detail => detail.code === result.code)
-      ) {
+      const existingDetail = this.details.find(detail => detail.code === result.code);
+      if (existingDetail) {
         this.makeToast("warning", this.$t("AlreadyAdd"), this.$t("Warning"));
+        this.scrollToDetail(existingDetail.detail_id);
       } else {
         this.product.code = result.code;
         this.product.current = result.qte;
@@ -622,6 +627,29 @@ export default {
       if (last && last.is_batch_tracked) {
         this.fetch_batches_for_detail(last);
       }
+    },
+
+    //----------------------------------------- Locate an existing product row -------------------------\\
+    scrollToDetail(detailId) {
+      this.highlightDetail(detailId);
+      this.$nextTick(() => {
+        let row = this.$refs["adjustment_detail_" + detailId];
+        if (Array.isArray(row)) row = row[0];
+        if (!row) return;
+
+        if (typeof row.scrollIntoView === "function") {
+          row.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      });
+    },
+
+    highlightDetail(detailId) {
+      this.highlightedDetailId = detailId;
+      if (this.highlightTimer) clearTimeout(this.highlightTimer);
+      this.highlightTimer = setTimeout(() => {
+        this.highlightedDetailId = null;
+        this.highlightTimer = null;
+      }, 1800);
     },
 
     //----------------------------------------- Batch handling -------------------------\\
@@ -1022,6 +1050,11 @@ export default {
   //----------------------------- Created function-------------------
   created() {
     this.GetElements();
+  },
+
+  beforeDestroy() {
+    if (this.timer) clearTimeout(this.timer);
+    if (this.highlightTimer) clearTimeout(this.highlightTimer);
   }
 };
 </script>
@@ -1038,5 +1071,20 @@ export default {
     height: 50px;
     margin-right: 8px; /* Adjust spacing as needed */
     cursor: pointer;
+  }
+
+  .adjustment-row-highlight > td {
+    animation: adjustment-row-pulse 1.8s ease-out;
+  }
+
+  @keyframes adjustment-row-pulse {
+    0%, 35% {
+      background-color: rgba(102, 84, 241, 0.22);
+      box-shadow: inset 0 2px 0 rgba(102, 84, 241, 0.55), inset 0 -2px 0 rgba(102, 84, 241, 0.55);
+    }
+    100% {
+      background-color: transparent;
+      box-shadow: none;
+    }
   }
 </style>
