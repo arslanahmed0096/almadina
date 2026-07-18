@@ -2633,6 +2633,33 @@ const router = new Router({
     }
 });
 
+// A deployed build can change lazy-chunk hashes while an existing browser tab
+// is still running the previous main bundle. Refresh once so that tab loads the
+// current main bundle instead of leaving the requested screen blank.
+router.onError(error => {
+    const message = String((error && error.message) || error || "");
+    const isChunkLoadError =
+        (error && error.name === "ChunkLoadError") ||
+        /Loading (CSS )?chunk [\w-]+ failed/i.test(message) ||
+        /ChunkLoadError/i.test(message);
+
+    if (!isChunkLoadError || typeof window === "undefined") return;
+
+    const reloadKey = "stocky_chunk_reload_at";
+    let lastReload = 0;
+    try {
+        lastReload = Number(window.sessionStorage.getItem(reloadKey)) || 0;
+    } catch (e) {}
+
+    // Avoid a reload loop if the requested asset is genuinely unavailable.
+    if (Date.now() - lastReload < 15000) return;
+
+    try {
+        window.sessionStorage.setItem(reloadKey, String(Date.now()));
+    } catch (e) {}
+    window.location.reload();
+});
+
 // Fix redundant navigation error
 const originalPush = Router.prototype.push;
 Router.prototype.push = function push(location, onResolve, onReject) {
@@ -2729,5 +2756,4 @@ async function Check_Token(to, from, next) {
 }
 
 export default router;
-
 

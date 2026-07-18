@@ -15,6 +15,12 @@
     # RewriteRule ^ %1 [L,R=301]
     RewriteRule ^ ^$1 [N]
 
+    # Missing Webpack chunks must be real 404 responses. Rewriting them to
+    # Laravel returns the SPA HTML, which browsers then try to parse as JS.
+    RewriteCond %{REQUEST_URI} ^/js/bundle/.*\.js$ [NC]
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteRule ^ - [R=404,L]
+
     # Send Requests To Front Controller...
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteCond %{REQUEST_FILENAME} !-f

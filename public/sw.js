@@ -18,7 +18,7 @@
  */
 
 // Bump this when deploying changes so old caches are purged.
-const VERSION = 'stocky-pwa-v5';
+const VERSION = 'stocky-pwa-v6';
 const STATIC_CACHE = `${VERSION}-static`;
 const SHELL_CACHE = `${VERSION}-shell`;
 
@@ -71,6 +71,33 @@ function isStaticAsset(url) {
     p === '/favicon.ico' ||
     p === '/robots.txt'
   );
+}
+
+// Entry bundles are overwritten in place on each build, unlike hashed lazy
+// chunks. Always try the network first so a deployment cannot leave the app
+// booting an older main bundle from the service-worker cache.
+function isMutableEntryAsset(url) {
+  return /^\/js\/[^/]+\.min\.js$/.test(url.pathname) ||
+    url.pathname === '/css/storefront.css';
+}
+
+function hasExpectedStaticContentType(request, response) {
+  if (!response || !response.ok || response.status !== 200 || response.type !== 'basic') {
+    return false;
+  }
+
+  const pathname = new URL(request.url).pathname.toLowerCase();
+  const contentType = (response.headers.get('content-type') || '').toLowerCase();
+
+  if (pathname.endsWith('.js')) {
+    return contentType.includes('javascript') || contentType.includes('ecmascript');
+  }
+  if (pathname.endsWith('.css')) return contentType.includes('text/css');
+  if (pathname.endsWith('.json') || pathname.endsWith('.webmanifest')) {
+    return contentType.includes('json') || contentType.includes('manifest');
+  }
+
+  return !contentType.includes('text/html');
 }
 
 function isNetworkOnly(url) {
@@ -166,7 +193,11 @@ self.addEventListener('fetch', (event) => {
 
   // Static assets: cache-first with background refresh.
   if (isStaticAsset(url)) {
-    event.respondWith(handleStatic(request));
+    event.respondWith(
+      isMutableEntryAsset(url)
+        ? handleMutableStatic(request)
+        : handleStatic(request)
+    );
     return;
   }
 
@@ -221,25 +252,42 @@ async function handleNavigation(request) {
 async function handleStatic(request) {
   const cache = await caches.open(STATIC_CACHE);
   const cached = await cache.match(request);
-  if (cached) {
+  if (cached && hasExpectedStaticContentType(request, cached)) {
     // Revalidate in background without blocking the response.
     fetch(request)
       .then((resp) => {
-        if (resp && resp.ok && resp.status === 200 && resp.type === 'basic') {
+        if (hasExpectedStaticContentType(request, resp)) {
           cache.put(request, resp.clone()).catch(() => {});
         }
       })
       .catch(() => {});
     return cached;
   }
+  if (cached) await cache.delete(request);
   try {
     const resp = await fetch(request);
-    if (resp && resp.ok && resp.status === 200 && resp.type === 'basic') {
+    if (hasExpectedStaticContentType(request, resp)) {
       cache.put(request, resp.clone()).catch(() => {});
     }
     return resp;
   } catch (e) {
     // No cache, no network — let the request fail naturally.
+    return Response.error();
+  }
+}
+
+async function handleMutableStatic(request) {
+  const cache = await caches.open(STATIC_CACHE);
+  try {
+    const resp = await fetch(request, { cache: 'no-cache' });
+    if (hasExpectedStaticContentType(request, resp)) {
+      cache.put(request, resp.clone()).catch(() => {});
+    }
+    return resp;
+  } catch (e) {
+    const cached = await cache.match(request);
+    if (cached && hasExpectedStaticContentType(request, cached)) return cached;
+    if (cached) await cache.delete(request);
     return Response.error();
   }
 }

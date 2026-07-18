@@ -65,8 +65,10 @@ mix.js('resources/src/main.js', 'public')
         plugins: [
             new MomentLocalesPlugin(),
             new CleanWebpackPlugin({
-                cleanOnceBeforeBuildPatterns: ['./js/*']
+                // Keep previously emitted lazy chunks available for users who
+                // still have the prior main bundle open during a deployment.
+                cleanOnceBeforeBuildPatterns: ['./js/*.min.js'],
+                cleanStaleWebpackAssets: false
               }),
         ]
     });
-

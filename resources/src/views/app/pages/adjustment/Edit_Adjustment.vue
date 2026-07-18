@@ -553,11 +553,7 @@ export default {
       } else {
         this.product.code = result.code;
         this.product.current = result.qte;
-        if (result.qte < 1) {
-          this.product.quantity = result.qte;
-        } else {
-          this.product.quantity = 1;
-        }
+        this.product.quantity = 1;
         this.product.product_variant_id = result.product_variant_id;
         this.Get_Product_Details(result.id, result.product_variant_id);
       }
@@ -615,18 +611,16 @@ export default {
 
     //----------------------------------------- Add Product To list -------------------------\\
     add_product() {
-      if (this.details.length > 0) {
-        this.detail_order_id();
-      } else if (this.details.length === 0) {
-        this.product.detail_id = 1;
-      }
-      this.details.push(this.product);
+      this.detail_order_id();
+      this.details.unshift(this.product);
 
-      // Pharmacy: hydrate available batches for the just-pushed detail.
-      const last = this.details[this.details.length - 1];
-      if (last && last.is_batch_tracked) {
-        this.fetch_batches_for_detail(last);
+      // Pharmacy: hydrate available batches for the newly inserted detail.
+      const addedDetail = this.details[0];
+      if (addedDetail && addedDetail.is_batch_tracked) {
+        this.fetch_batches_for_detail(addedDetail);
       }
+
+      this.highlightDetail(addedDetail.detail_id);
     },
 
     //----------------------------------------- Locate an existing product row -------------------------\\
@@ -975,9 +969,11 @@ export default {
 
     //-------------------------------- detail order id -------------------------\\
     detail_order_id() {
-      this.product.detail_id = 0;
-      var len = this.details.length;
-      this.product.detail_id = this.details[len - 1].detail_id + 1;
+      const highestDetailId = this.details.reduce((highest, detail) => {
+        const detailId = Number(detail.detail_id) || 0;
+        return Math.max(highest, detailId);
+      }, 0);
+      this.product.detail_id = highestDetailId + 1;
     },
 
     //---------------------- Event Select Warehouse ------------------------------\\
