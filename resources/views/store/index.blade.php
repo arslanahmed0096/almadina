@@ -1,234 +1,147 @@
 @extends('layouts.store')
 
 @section('content')
-
 @php
-  use Illuminate\Support\Str;
-
-  /** @var \App\Models\StoreSetting $s */
   $currency = $s->currency_code ?? '$';
   $nlBtn = __('messages.Subscribe');
-  $byPos = collect($banners ?? [])->groupBy('position');
-  $heroBlock = collect($blocks ?? [])->firstWhere('type', 'hero') ?? [];
-  $collectionBlocks = collect($blocks ?? [])
-      ->where('type', 'collection')
-      ->filter(fn ($block) => collect($block['products'] ?? [])->isNotEmpty())
-      ->values();
-
-  $assetUrl = function ($path, $fallback = 'images/products/no-image.png') {
-      if (empty($path)) return asset($fallback);
-      if (Str::startsWith($path, ['http://', 'https://', '//'])) return $path;
-      $clean = ltrim($path, '/');
-      return file_exists(public_path($clean)) ? asset($clean) : asset($fallback);
-  };
-
-  $heroPath = $heroBlock['image'] ?? $s->hero_image_path ?? null;
-  if (empty($heroPath) || (!Str::startsWith((string) $heroPath, ['http://', 'https://', '//']) && !file_exists(public_path(ltrim((string) $heroPath, '/'))))) {
-      $heroPath = file_exists(public_path('store_files/hero_image.jpg'))
-          ? 'store_files/hero_image.jpg'
-          : 'images/store/hero_image.jpg';
-  }
-  $heroUrl = $assetUrl($heroPath, 'images/store/hero_image.jpg');
-  $heroTitle = $heroBlock['title'] ?? $s->hero_title ?? 'The new standard for everyday shopping';
-  $heroSubtitle = $heroBlock['subtitle'] ?? $s->hero_subtitle ?? 'Quality products, fair prices, and dependable delivery in one simple place.';
-
-  $topPromos = collect()
-      ->merge($byPos['top_left'] ?? collect())
-      ->merge($byPos['top_right'] ?? collect())
-      ->take(2)
-      ->values();
-  $campaignBanners = collect()
-      ->merge($byPos['center_left'] ?? collect())
-      ->merge($byPos['center_right'] ?? collect())
-      ->merge($byPos['footer_left'] ?? collect())
-      ->merge($byPos['footer_right'] ?? collect())
-      ->values();
+  $collectionBlocks = collect($blocks ?? [])->where('type', 'collection')->values();
+  $products = $collectionBlocks->flatMap(fn ($block) => collect($block['products'] ?? []))->unique('id')->values();
+  $fallbackProductImage = asset('images/storefront/dummy-air-fryer.png');
+  $heroImage = asset('images/storefront/onsus-hero.png');
+  $promoImage = asset('images/storefront/electronics-promo.png');
+  $sections = [
+    ['title' => 'Deal Of The Day', 'class' => 'is-deal', 'offset' => 0],
+    ['title' => 'Featured Products', 'class' => 'is-featured', 'offset' => 5],
+    ['title' => 'Trending Products', 'class' => '', 'offset' => 2],
+    ['title' => 'Best Sellers', 'class' => '', 'offset' => 4],
+    ['title' => 'Recently Viewed', 'class' => '', 'offset' => 1],
+  ];
+  $categoryNames = ['Laptops & Accessories', 'Phones, Tablets & Accessories', 'Apple Products', 'Server & Workstation', 'Game Controller', 'Audio Equipments', 'Storage & Digital Devices', 'Smart Home Appliances'];
 @endphp
 
-<div class="retail-home">
-  <section class="retail-hero-section">
-    <div class="container">
-      <div class="retail-hero-grid">
-        <aside class="retail-category-panel" aria-label="{{ __('messages.Categories') }}">
-          <a href="{{ route('store.shop') }}" class="retail-category-title">
-            <x-store.icon name="grid" class="w-4 h-4" />
-            <span>{{ __('messages.AllProducts') }}</span>
-          </a>
-          <div class="retail-category-list">
-            @forelse($categories->take(9) as $category)
-              <a href="{{ route('store.shop', ['category' => $category->id]) }}">
-                <span class="retail-category-icon"><x-store.icon name="package" class="w-4 h-4" /></span>
-                <span>{{ $category->name }}</span>
-                <x-store.icon name="chevron-right" class="w-3 h-3" />
-              </a>
-            @empty
-              <a href="{{ route('store.shop') }}">
-                <span class="retail-category-icon"><x-store.icon name="bag" class="w-4 h-4" /></span>
-                <span>{{ __('messages.Shop') }}</span>
-                <x-store.icon name="chevron-right" class="w-3 h-3" />
-              </a>
-            @endforelse
-          </div>
-        </aside>
-
-        <a href="{{ route('store.shop') }}" class="retail-main-hero" style="--retail-hero-image: url('{{ $heroUrl }}')">
-          <span class="retail-hero-shade"></span>
-          <span class="retail-hero-content">
-            <span class="retail-eyebrow">New collection</span>
-            <strong>{{ $heroTitle }}</strong>
-            <small>{{ $heroSubtitle }}</small>
-            <span class="retail-price-line">Shop from <b>{{ $currency }}25</b></span>
-            <span class="retail-hero-cta">{{ __('messages.ShopNow') }} <x-store.icon name="arrow-right" class="w-4 h-4" /></span>
-          </span>
-        </a>
-
-        <div class="retail-side-promos">
-          @forelse($topPromos as $index => $banner)
-            <a href="{{ $banner->link ?: route('store.shop') }}" class="retail-side-promo {{ $index % 2 ? 'is-violet' : '' }}">
-              <img src="{{ $assetUrl($banner->image_url ?? $banner->image, 'images/store/hero_image.jpg') }}" alt="{{ $banner->title ?? 'Special offer' }}">
-              <span class="retail-promo-shade"></span>
-              <span class="retail-promo-copy">
-                <small>Catch big</small>
-                <strong>{{ $banner->title ?? 'Deals on top picks' }}</strong>
-                <em>{{ __('messages.ShopNow') }} →</em>
-              </span>
-            </a>
-          @empty
-            <a href="{{ route('store.shop', ['deals' => 1]) }}" class="retail-side-promo">
-              <img src="{{ $heroUrl }}" alt="Weekly deals">
-              <span class="retail-promo-shade"></span>
-              <span class="retail-promo-copy"><small>Up to 30% off</small><strong>Weekly deals</strong><em>{{ __('messages.ShopNow') }} →</em></span>
-            </a>
-            <a href="{{ route('store.shop') }}" class="retail-side-promo is-violet">
-              <img src="{{ $heroUrl }}" alt="New arrivals">
-              <span class="retail-promo-shade"></span>
-              <span class="retail-promo-copy"><small>Just landed</small><strong>New arrivals</strong><em>{{ __('messages.ShopNow') }} →</em></span>
-            </a>
-          @endforelse
-        </div>
+<div class="onsus-home">
+  <section class="onsus-hero" style="--onsus-hero:url('{{ $heroImage }}')">
+    <div class="container onsus-hero-inner">
+      <div class="onsus-hero-copy">
+        <span>NEW ARRIVAL</span>
+        <h1>HEADSET &amp;<br><strong>HEADPHONE</strong></h1>
+        <small>Starting</small>
+        <b>{{ $currency }}250</b>
+        <a href="{{ route('store.shop') }}">Shop now <x-store.icon name="arrow-right" class="w-4 h-4" /></a>
       </div>
-
-      <div class="retail-benefits">
-        <div><x-store.icon name="truck" class="w-6 h-6" /><span><strong>Free delivery</strong><small>On qualifying orders</small></span></div>
-        <div><x-store.icon name="phone" class="w-6 h-6" /><span><strong>Helpful support</strong><small>Here when you need us</small></span></div>
-        <div><x-store.icon name="credit-card" class="w-6 h-6" /><span><strong>Flexible payment</strong><small>Safe and convenient</small></span></div>
-        <div><x-store.icon name="shield-check" class="w-6 h-6" /><span><strong>Reliable quality</strong><small>Products you can trust</small></span></div>
+      <div class="onsus-hero-picks">
+        <article class="onsus-hero-pick">
+          <a href="{{ route('store.shop') }}" class="onsus-hero-pick-main"><img src="{{ $fallbackProductImage }}" alt=""><span><small>New product</small><strong>Premium Air Fryer with Digital Display</strong><b>{{ $currency }}51.500</b><del>{{ $currency }}64.990</del></span></a>
+          <div class="onsus-hero-pick-actions" aria-label="Product actions">
+            <button type="button" title="Add to cart"><x-store.icon name="bag" class="w-4 h-4" /></button>
+            <button type="button" title="Add to wishlist"><x-store.icon name="heart" class="w-4 h-4" /></button>
+            <a href="{{ route('store.shop') }}" title="Quick view"><x-store.icon name="eye" class="w-4 h-4" /></a>
+            <button type="button" title="Compare"><x-store.icon name="copy" class="w-4 h-4" /></button>
+          </div>
+        </article>
+        <article class="onsus-hero-pick">
+          <a href="{{ route('store.shop') }}" class="onsus-hero-pick-main"><img src="{{ $heroImage }}" alt=""><span><small>Smart TV</small><strong>Ultra HD Smart Entertainment System</strong><b>{{ $currency }}68.499</b><del>{{ $currency }}85.990</del></span></a>
+          <div class="onsus-hero-pick-actions" aria-label="Product actions">
+            <button type="button" title="Add to cart"><x-store.icon name="bag" class="w-4 h-4" /></button>
+            <button type="button" title="Add to wishlist"><x-store.icon name="heart" class="w-4 h-4" /></button>
+            <a href="{{ route('store.shop') }}" title="Quick view"><x-store.icon name="eye" class="w-4 h-4" /></a>
+            <button type="button" title="Compare"><x-store.icon name="copy" class="w-4 h-4" /></button>
+          </div>
+        </article>
       </div>
     </div>
   </section>
 
-  @forelse($collectionBlocks as $blockIndex => $block)
-    @php
-      $collection = $block['collection'];
-      $products = $block['products'] ?? collect();
-      $sectionTitle = $block['title'] ?? ($collection->title ?? $collection->name ?? __('messages.Collection'));
-    @endphp
-
-    @if($products->count())
-      <section class="retail-product-section {{ $blockIndex === 0 ? 'is-deal-section' : '' }}">
-        <div class="container">
-          <div class="retail-section-head">
-            <div>
-              @if($blockIndex === 0)
-                <span class="retail-section-icon"><x-store.icon name="lightning" class="w-4 h-4" /></span>
-              @endif
-              <h2>{{ $blockIndex === 0 ? 'Deal of the day' : $sectionTitle }}</h2>
-              @if($blockIndex === 0)<span class="retail-countdown">Ends soon · Don’t miss out</span>@endif
-            </div>
-            <a href="{{ !empty($collection->slug) ? route('store.shop', ['collection' => $collection->slug]) : route('store.shop') }}">
-              {{ __('messages.ViewAll') }} <x-store.icon name="arrow-right" class="w-4 h-4" />
-            </a>
-          </div>
-
-          <div class="retail-product-grid">
-            @foreach($products as $product)
-              @include('store.partials.product-card', ['p' => $product, 'currency' => $currency])
-            @endforeach
-          </div>
-        </div>
-      </section>
-    @endif
-
-    @if($blockIndex === 0)
-      <section class="retail-campaign-section">
-        <div class="container">
-          @php $campaign = $campaignBanners->get(0); @endphp
-          <a href="{{ $campaign?->link ?: route('store.shop') }}" class="retail-campaign" style="--campaign-image: url('{{ $campaign ? $assetUrl($campaign->image_url ?? $campaign->image, 'images/store/hero_image.jpg') : $heroUrl }}')">
-            <span class="retail-campaign-glow"></span>
-            <span class="retail-campaign-copy">
-              <small>Limited-time spotlight</small>
-              <strong>{{ $campaign?->title ?? 'A special edition made for your everyday' }}</strong>
-              <span>Save more on this week’s featured collection</span>
-              <b>{{ __('messages.ShopNow') }} →</b>
-            </span>
-          </a>
-        </div>
-      </section>
-    @endif
-
-    @if($blockIndex === 1)
-      <section class="retail-mini-promos">
-        <div class="container">
-          <div class="retail-mini-promo-grid">
-            @foreach(['Accessories', 'Popular picks', 'New products', 'Everyday essentials'] as $promoIndex => $promoTitle)
-              <a href="{{ route('store.shop') }}" class="retail-mini-promo promo-{{ $promoIndex + 1 }}">
-                <span><small>Save up to {{ 15 + ($promoIndex * 5) }}%</small><strong>{{ $promoTitle }}</strong><em>{{ __('messages.ShopNow') }} →</em></span>
-              </a>
-            @endforeach
-          </div>
-        </div>
-      </section>
-    @endif
-  @empty
-    <section class="retail-empty-feature">
-      <div class="container">
-        <div class="retail-empty-card">
-          <span class="retail-eyebrow">Start exploring</span>
-          <h2>Everything you need, all in one place</h2>
-          <p>Browse the complete catalogue and discover the latest products available online.</p>
-          <a href="{{ route('store.shop') }}" class="btn btn-primary">{{ __('messages.ShopNow') }}</a>
-        </div>
-      </div>
+  <div class="container">
+    <section class="onsus-benefits" aria-label="Store benefits">
+      <div><x-store.icon name="truck" class="w-7 h-7" /><span><strong>Free delivery</strong><small>Free Shipping for orders over $200</small></span></div>
+      <div><x-store.icon name="phone" class="w-7 h-7" /><span><strong>Support 24/7</strong><small>24 hours a day, 7 days a week</small></span></div>
+      <div><x-store.icon name="credit-card" class="w-7 h-7" /><span><strong>Payment</strong><small>Pay with multiple credit cards</small></span></div>
+      <div><x-store.icon name="shield-check" class="w-7 h-7" /><span><strong>Reliable</strong><small>Trusted by 2000+ major brands</small></span></div>
+      <div><x-store.icon name="check-circle" class="w-7 h-7" /><span><strong>Guarantee</strong><small>Within 30 days for an exchange</small></span></div>
     </section>
-  @endforelse
 
-  @if($campaignBanners->count() > 1)
-    <section class="retail-banner-pair">
-      <div class="container">
-        <div class="retail-banner-grid">
-          @foreach($campaignBanners->slice(1, 2) as $banner)
-            <a href="{{ $banner->link ?: route('store.shop') }}">
-              <img src="{{ $assetUrl($banner->image_url ?? $banner->image, 'images/store/hero_image.jpg') }}" alt="{{ $banner->title ?? 'Promotion' }}">
-            </a>
+    <section class="onsus-category-grid" aria-label="Product categories">
+      @foreach($categoryNames as $index => $name)
+        @php $category = $categories->get($index); @endphp
+        <a href="{{ $category ? route('store.shop', ['category' => $category->id]) : route('store.shop') }}">
+          <img src="{{ $index % 3 === 0 ? $heroImage : $fallbackProductImage }}" alt="">
+          <span>{{ $category->name ?? $name }}</span>
+        </a>
+      @endforeach
+    </section>
+
+    @foreach($sections as $sectionIndex => $section)
+      @if($sectionIndex === 3)
+        <section class="onsus-editorial-products">
+          <div class="onsus-editorial-banner" style="--promo:url('{{ $promoImage }}')"><span>Samsung<br><b>8K TV</b><strong>70”</strong><small>Made for vivid, cinematic viewing</small></span></div>
+          <div class="onsus-editorial-grid">
+            @foreach($products->slice(0, 3) as $product)
+              @include('store.partials.product-card', ['p' => $product, 'currency' => $currency, 'fallbackImage' => $fallbackProductImage])
+            @endforeach
+          </div>
+        </section>
+      @endif
+
+      <section class="onsus-product-section {{ $section['class'] }}">
+        <div class="onsus-section-heading">
+          <div>@if($sectionIndex === 0)<span class="onsus-flame"><x-store.icon name="lightning" class="w-4 h-4" /></span>@endif<h2>{{ $section['title'] }}</h2>@if($sectionIndex === 1)<nav><button class="active">Feature</button><button>Toprate</button><button>On sale</button></nav>@endif</div>
+          <div class="onsus-section-arrows"><button aria-label="Previous"><x-store.icon name="chevron-left" class="w-4 h-4" /></button><button aria-label="Next"><x-store.icon name="chevron-right" class="w-4 h-4" /></button></div>
+        </div>
+
+        <div class="onsus-product-grid">
+          @forelse($products->slice($section['offset'])->concat($products->take($section['offset']))->take(5) as $product)
+            @include('store.partials.product-card', ['p' => $product, 'currency' => $currency, 'fallbackImage' => $fallbackProductImage, 'dealIndex' => $loop->index])
+          @empty
+            @for($i = 0; $i < 5; $i++)
+              <article class="onsus-dummy-card">
+                <a href="{{ route('store.shop') }}"><span class="onsus-sale">SALE<br>{{ 18 + $i * 3 }}%</span><img src="{{ $fallbackProductImage }}" alt="Digital air fryer"></a>
+                <small>Home Appliances</small><h3>Premium Digital Air Fryer — Family Size</h3><div><b>{{ $currency }}{{ number_format(51.5 + $i * 6.4, 3) }}</b><del>{{ $currency }}{{ number_format(68.9 + $i * 8.1, 3) }}</del></div>
+              </article>
+            @endfor
+          @endforelse
+        </div>
+      </section>
+
+      @if($sectionIndex === 0 || $sectionIndex === 2)
+        <a href="{{ route('store.shop') }}" class="onsus-wide-promo" style="--promo:url('{{ $promoImage }}')">
+          <span>@if($sectionIndex === 0) ThinkPad X1 Carbon Gen 9<br><strong>4K HDR · Core i7 32GB</strong>@else Shop and <strong>SAVE BIG</strong><br><small>on selected cameras, appliances and accessories</small>@endif</span>
+          <b>{{ $sectionIndex === 0 ? 'LIMITED $1,399' : 'DEALS FROM $67.700' }}</b>
+        </a>
+      @endif
+
+      @if($sectionIndex === 1)
+        <section class="onsus-catch-grid">
+          @foreach(['HEADPHONES','CAMERAS','PHONES','WATCHES'] as $item)
+            <a href="{{ route('store.shop') }}"><i>SALE<br>{{ 15 + $loop->index * 3 }}%</i><span>CATCH BIG<br><b>DEALS</b><small>ON THE {{ $item }}</small><em>Shop now</em></span><img src="{{ $fallbackProductImage }}" alt=""></a>
           @endforeach
-        </div>
+        </section>
+      @endif
+    @endforeach
+
+    <section class="onsus-smart-home">
+      <div class="onsus-section-heading"><div><h2>Smart Home Appliances</h2></div><div class="onsus-section-arrows"><button><x-store.icon name="chevron-left" class="w-4 h-4" /></button><button><x-store.icon name="chevron-right" class="w-4 h-4" /></button></div></div>
+      <div class="onsus-smart-grid">
+        @for($i = 0; $i < 10; $i++)
+          <a href="{{ route('store.shop') }}"><img src="{{ $fallbackProductImage }}" alt=""><span><small>Smart appliance</small><strong>Premium connected home product</strong><b>{{ $currency }}{{ number_format(14.5 + $i * 4.6, 3) }}</b></span></a>
+        @endfor
       </div>
     </section>
-  @endif
+  </div>
 
-  @php
-    $nlTitle = $s->newsletter_title ?? __('messages.GetFreshDealsTitle');
-    $nlSubtitle = $s->newsletter_subtitle ?? __('messages.GetFreshDealsSubtitle');
-    $nlPlaceholder = $s->newsletter_placeholder ?? __('messages.NewsletterEmailPlaceholder');
-  @endphp
-  <section class="retail-newsletter">
-      <div class="container">
-        <div class="retail-newsletter-inner">
-          <div>
-            <span class="retail-newsletter-icon"><x-store.icon name="mail" class="w-5 h-5" /></span>
-            <span><strong>{{ $nlTitle }}</strong><small>{{ $nlSubtitle }}</small></span>
-          </div>
-          <form id="newsletterForm">
-            @csrf
-            <input name="email" type="email" id="newsletterEmail" placeholder="{{ $nlPlaceholder }}" required>
-            <button id="newsletterBtn" type="submit">{{ $nlBtn }}</button>
-          </form>
-          <div id="newsletterMsg" class="retail-newsletter-message"></div>
-        </div>
-      </div>
+  <section class="onsus-newsletter">
+    <div class="container"><strong><x-store.icon name="mail" class="w-5 h-5" /> 10% Off Your First Order</strong><span>Be the first to know about offers, new products and discounted products</span><form id="newsletterForm">@csrf<input name="email" id="newsletterEmail" type="email" placeholder="Enter your email address" required><button id="newsletterBtn" type="submit">{{ $nlBtn }}</button></form><div id="newsletterMsg"></div></div>
   </section>
+
+  <div class="onsus-deal-modal" x-data="{ open: false }" x-init="setTimeout(() => open = true, 850)" @account-login.window="open = false" @keydown.escape.window="open = false" x-show="open" x-cloak>
+    <div class="onsus-deal-backdrop" @click="open = false"></div>
+    <div class="onsus-deal-dialog" role="dialog" aria-modal="true" aria-labelledby="deal-modal-title" x-transition>
+      <button type="button" class="onsus-deal-close" @click="open = false" aria-label="Close"><x-store.icon name="x" class="w-5 h-5" /></button>
+      <div class="onsus-deal-visual" style="--promo:url('{{ $promoImage }}')"></div>
+      <div class="onsus-deal-copy"><span>WELCOME OFFER</span><h2 id="deal-modal-title">Get 20% off your first order</h2><p>Join our list for fresh arrivals, members-only prices and the best deals of the week.</p><form @submit.prevent="open = false"><input type="email" placeholder="Your email address"><button type="submit">Get my discount</button></form><label><input type="checkbox"> Don’t show this popup again</label></div>
+    </div>
+  </div>
 </div>
 
 @include('store.partials.home-modals-scripts', ['currency' => $currency, 'nlBtn' => $nlBtn])
-
 @endsection
