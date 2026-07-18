@@ -543,11 +543,7 @@ export default {
       } else {
         this.product.code = result.code;
         this.product.current = result.qte;
-        if (result.qte < 1) {
-          this.product.quantity = result.qte;
-        } else {
-          this.product.quantity = 1;
-        }
+        this.product.quantity = 1;
         this.product.product_variant_id = result.product_variant_id;
         this.Get_Product_Details(result.id, result.product_variant_id);
       }
