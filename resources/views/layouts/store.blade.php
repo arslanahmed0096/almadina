@@ -109,12 +109,14 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&family=Poppins:wght@100;200;300;400;500;600;700;800&display=swap">
 
   {{-- Storefront bundle --}}
   <link rel="stylesheet" href="{{ $cssStore }}">
   @if($isStoreHome)
     <link rel="stylesheet" href="{{ asset('css/storefront-home.css') }}?v={{ @filemtime(public_path('css/storefront-home.css')) }}">
+    <link rel="stylesheet" href="{{ asset('css/storefront-home2-cover.css') }}?v={{ @filemtime(public_path('css/storefront-home2-cover.css')) }}">
+    <link rel="stylesheet" href="{{ asset('css/storefront-home2-exact.css') }}?v={{ @filemtime(public_path('css/storefront-home2-exact.css')) }}">
   @endif
 
   <style>
