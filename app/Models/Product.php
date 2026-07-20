@@ -12,7 +12,8 @@ class Product extends Model
         'code', 'Type_barcode', 'name', 'cost', 'price', 'unit_id', 'unit_sale_id', 'unit_purchase_id',
         'stock_alert', 'weight', 'length', 'width', 'height', 'category_id', 'sub_category_id', 'is_variant', 'is_imei',
         'tax_method', 'image', 'brand_id', 'is_active', 'note', 'type',
-        'warranty_period', 'warranty_unit', 'warranty_terms', 'wholesale_price', 'min_price',
+        'warranty_period', 'warranty_unit', 'warranty_terms', 'company_rb_price', 'mrp_price',
+        'fix_price', 'wholesale_price', 'min_price',
         'has_guarantee', 'guarantee_period', 'guarantee_unit', 'points', 'discount', 'discount_method',
         'is_featured', 'hide_from_online_store',
         'is_preorder', 'preorder_available_date', 'preorder_limit', 'preorder_note',
@@ -21,6 +22,9 @@ class Product extends Model
     ];
 
     protected $casts = [
+        'company_rb_price' => 'double',
+        'mrp_price' => 'double',
+        'fix_price' => 'double',
         'wholesale_price' => 'double',
         'min_price' => 'double',
         'category_id' => 'integer',

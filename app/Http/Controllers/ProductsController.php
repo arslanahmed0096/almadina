@@ -156,6 +156,12 @@ class ProductsController extends BaseController
                 ? $product->categories->pluck('name')->filter()->unique()->values()->implode("\n")
                 : ($item['category'] ?? '');
             $item['brand'] = $product->brand ? $product->brand->name : 'N/D';
+            $item['product_type'] = $product->type;
+            $item['company_rb_price'] = (float) $product->company_rb_price;
+            $item['mrp_price'] = (float) $product->mrp_price;
+            $item['fix_price'] = (float) $product->fix_price;
+            $item['wholesale_price'] = (float) $product->wholesale_price;
+            $item['min_price'] = (float) $product->min_price;
 
             $isActive = (int) ($product->is_active ?? 1) === 1;
             $item['status'] = $isActive ? __('Active') : __('Inactif');
@@ -217,6 +223,20 @@ class ProductsController extends BaseController
                 $variants = ProductVariant::where('product_id', $product->id)
                     ->whereNull('deleted_at')
                     ->get();
+                $item['pricing_variants'] = $variants->map(function ($variant) {
+                    return [
+                        'id' => $variant->id,
+                        'name' => $variant->name,
+                        'code' => $variant->code,
+                        'company_rb_price' => (float) $variant->company_rb_price,
+                        'mrp_price' => (float) $variant->mrp_price,
+                        'cost' => (float) $variant->cost,
+                        'fix_price' => (float) $variant->fix_price,
+                        'price' => (float) $variant->price,
+                        'wholesale_price' => (float) $variant->wholesale,
+                        'min_price' => (float) $variant->min_price,
+                    ];
+                })->values();
 
                 // For variant products, display the parent product name
                 $item['name'] = $product->name;
@@ -319,6 +339,115 @@ class ProductsController extends BaseController
         ]);
     }
 
+    public function getPricingLevel(Request $request, $id)
+    {
+        $this->authorizeForUser($request->user('api'), 'update', Product::class);
+
+        $product = Product::whereNull('deleted_at')->findOrFail($id);
+
+        return response()->json([
+            'pricing' => $this->pricingLevelPayload($product),
+        ]);
+    }
+
+    public function updatePricingLevel(Request $request, $id)
+    {
+        $this->authorizeForUser($request->user('api'), 'update', Product::class);
+
+        $product = Product::whereNull('deleted_at')->findOrFail($id);
+        $priceRules = [
+            'company_rb_price' => ['required', 'numeric', 'min:0'],
+            'mrp_price' => ['required', 'numeric', 'min:0'],
+            'cost' => ['required', 'numeric', 'min:0'],
+            'fix_price' => ['required', 'numeric', 'min:0'],
+            'price' => ['required', 'numeric', 'min:0'],
+            'wholesale_price' => ['required', 'numeric', 'min:0'],
+            'min_price' => ['required', 'numeric', 'min:0'],
+        ];
+
+        if ($product->type === 'is_variant') {
+            $request->validate([
+                'variants' => ['required', 'array', 'min:1'],
+                'variants.*.id' => ['required', 'integer', 'distinct'],
+                'variants.*.company_rb_price' => $priceRules['company_rb_price'],
+                'variants.*.mrp_price' => $priceRules['mrp_price'],
+                'variants.*.cost' => $priceRules['cost'],
+                'variants.*.fix_price' => $priceRules['fix_price'],
+                'variants.*.price' => $priceRules['price'],
+                'variants.*.wholesale_price' => $priceRules['wholesale_price'],
+                'variants.*.min_price' => $priceRules['min_price'],
+            ]);
+
+            DB::transaction(function () use ($product, $request) {
+                foreach ($request->input('variants', []) as $variantData) {
+                    $variant = ProductVariant::where('product_id', $product->id)
+                        ->whereNull('deleted_at')
+                        ->findOrFail($variantData['id']);
+                    $variant->update([
+                        'company_rb_price' => $variantData['company_rb_price'],
+                        'mrp_price' => $variantData['mrp_price'],
+                        'cost' => $variantData['cost'],
+                        'fix_price' => $variantData['fix_price'],
+                        'price' => $variantData['price'],
+                        'wholesale' => $variantData['wholesale_price'],
+                        'min_price' => $variantData['min_price'],
+                    ]);
+                }
+            });
+        } else {
+            $validated = $request->validate($priceRules);
+            $product->update($validated);
+        }
+
+        $product->refresh();
+
+        return response()->json([
+            'success' => true,
+            'pricing' => $this->pricingLevelPayload($product),
+        ]);
+    }
+
+    private function pricingLevelPayload(Product $product): array
+    {
+        $payload = [
+            'id' => $product->id,
+            'name' => $product->name,
+            'code' => $product->code,
+            'type' => $product->type,
+            'company_rb_price' => (float) $product->company_rb_price,
+            'mrp_price' => (float) $product->mrp_price,
+            'cost' => (float) $product->cost,
+            'fix_price' => (float) $product->fix_price,
+            'price' => (float) $product->price,
+            'wholesale_price' => (float) $product->wholesale_price,
+            'min_price' => (float) $product->min_price,
+            'variants' => [],
+        ];
+
+        if ($product->type === 'is_variant') {
+            $payload['variants'] = ProductVariant::where('product_id', $product->id)
+                ->whereNull('deleted_at')
+                ->orderBy('id')
+                ->get()
+                ->map(fn ($variant) => [
+                    'id' => $variant->id,
+                    'name' => $variant->name,
+                    'code' => $variant->code,
+                    'company_rb_price' => (float) $variant->company_rb_price,
+                    'mrp_price' => (float) $variant->mrp_price,
+                    'cost' => (float) $variant->cost,
+                    'fix_price' => (float) $variant->fix_price,
+                    'price' => (float) $variant->price,
+                    'wholesale_price' => (float) $variant->wholesale,
+                    'min_price' => (float) $variant->min_price,
+                ])
+                ->values()
+                ->all();
+        }
+
+        return $payload;
+    }
+
     // -------------- Store new  Product  ---------------\\
 
     public function store(Request $request)
@@ -355,6 +484,11 @@ class ProductsController extends BaseController
                 'unit_id' => Rule::requiredIf($request->type != 'is_service'),
                 'cost' => Rule::requiredIf($request->type == 'is_single' || $request->type == 'is_combo'),
                 'price' => Rule::requiredIf($request->type != 'is_variant'),
+                'company_rb_price' => 'nullable|numeric|min:0',
+                'mrp_price' => 'nullable|numeric|min:0',
+                'fix_price' => 'nullable|numeric|min:0',
+                'wholesale_price' => 'nullable|numeric|min:0',
+                'min_price' => 'nullable|numeric|min:0',
             ];
 
             // if type is not is_variant, add validation for variants array
@@ -529,6 +663,10 @@ class ProductsController extends BaseController
                 $Product->guarantee_period = $request['guarantee_period'] ?? null;
                 $Product->guarantee_unit = $request['guarantee_unit'] ?? null;
 
+                $Product->company_rb_price = $request->filled('company_rb_price') ? $request['company_rb_price'] : 0;
+                $Product->mrp_price = $request->filled('mrp_price') ? $request['mrp_price'] : 0;
+                $Product->fix_price = $request->filled('fix_price') ? $request['fix_price'] : ($request['price'] ?? 0);
+
                 // -- check if type is_single
                 if ($request['type'] == 'is_single' || $request['type'] == 'is_combo') {
                     $Product->price = $request['price'];
@@ -663,6 +801,12 @@ class ProductsController extends BaseController
                             'name' => $variant->text,
                             'cost' => $variant->cost,
                             'price' => $variant->price,
+                            'company_rb_price' => isset($variant->company_rb_price) && $variant->company_rb_price !== ''
+                                ? $variant->company_rb_price : 0,
+                            'mrp_price' => isset($variant->mrp_price) && $variant->mrp_price !== ''
+                                ? $variant->mrp_price : 0,
+                            'fix_price' => isset($variant->fix_price) && $variant->fix_price !== ''
+                                ? $variant->fix_price : $variant->price,
                             'code' => $variant->code,
                         ];
                         if ($hasWholesaleColumn) {
@@ -847,6 +991,11 @@ class ProductsController extends BaseController
                 'unit_id' => Rule::requiredIf($request->type != 'is_service'),
                 'cost' => Rule::requiredIf($request->type == 'is_single' || $request->type == 'is_combo'),
                 'price' => Rule::requiredIf($request->type != 'is_variant'),
+                'company_rb_price' => 'nullable|numeric|min:0',
+                'mrp_price' => 'nullable|numeric|min:0',
+                'fix_price' => 'nullable|numeric|min:0',
+                'wholesale_price' => 'nullable|numeric|min:0',
+                'min_price' => 'nullable|numeric|min:0',
             ];
 
             // if type is not is_variant, add validation for variants array
@@ -1035,6 +1184,10 @@ class ProductsController extends BaseController
                 : null;
                 $Product->guarantee_unit = $request['guarantee_unit'] ?? null;
 
+                $Product->company_rb_price = $request->filled('company_rb_price') ? $request['company_rb_price'] : 0;
+                $Product->mrp_price = $request->filled('mrp_price') ? $request['mrp_price'] : 0;
+                $Product->fix_price = $request->filled('fix_price') ? $request['fix_price'] : ($request['price'] ?? 0);
+
                 // -- check if type is_single
                 if ($request['type'] == 'is_single' || $request['type'] == 'is_combo') {
                     $Product->price = $request['price'];
@@ -1180,6 +1333,9 @@ class ProductsController extends BaseController
                                 $ProductVariantDT->name = $variant['text'];
                                 $ProductVariantDT->price = $variant['price'];
                                 $ProductVariantDT->cost = $variant['cost'];
+                                $ProductVariantDT->company_rb_price = $variant['company_rb_price'] ?? 0;
+                                $ProductVariantDT->mrp_price = $variant['mrp_price'] ?? 0;
+                                $ProductVariantDT->fix_price = $variant['fix_price'] ?? $variant['price'];
                                 $ProductVariantDT->code = $variant['code'];
                                 if (Schema::hasColumn('product_variants', 'wholesale')) {
                                     $ProductVariantDT->wholesale = isset($variant['wholesale']) && $variant['wholesale'] !== ''
@@ -1197,6 +1353,9 @@ class ProductsController extends BaseController
                                 $ProductVariantUP['name'] = $variant['text'];
                                 $ProductVariantUP['price'] = $variant['price'];
                                 $ProductVariantUP['cost'] = $variant['cost'];
+                                $ProductVariantUP['company_rb_price'] = $variant['company_rb_price'] ?? 0;
+                                $ProductVariantUP['mrp_price'] = $variant['mrp_price'] ?? 0;
+                                $ProductVariantUP['fix_price'] = $variant['fix_price'] ?? $variant['price'];
                                 if (Schema::hasColumn('product_variants', 'wholesale')) {
                                     $ProductVariantUP['wholesale'] = isset($variant['wholesale']) && $variant['wholesale'] !== ''
                                         ? $variant['wholesale']
@@ -1217,6 +1376,9 @@ class ProductsController extends BaseController
                                 $ProductVariantDT->name = $variant['text'];
                                 $ProductVariantDT->price = $variant['price'];
                                 $ProductVariantDT->cost = $variant['cost'];
+                                $ProductVariantDT->company_rb_price = $variant['company_rb_price'] ?? 0;
+                                $ProductVariantDT->mrp_price = $variant['mrp_price'] ?? 0;
+                                $ProductVariantDT->fix_price = $variant['fix_price'] ?? $variant['price'];
                                 if (Schema::hasColumn('product_variants', 'wholesale')) {
                                     $ProductVariantDT->wholesale = isset($variant['wholesale']) && $variant['wholesale'] !== ''
                                         ? $variant['wholesale']
@@ -1233,6 +1395,9 @@ class ProductsController extends BaseController
                                 $ProductVariantUP['name'] = $variant['text'];
                                 $ProductVariantUP['price'] = $variant['price'];
                                 $ProductVariantUP['cost'] = $variant['cost'];
+                                $ProductVariantUP['company_rb_price'] = $variant['company_rb_price'] ?? 0;
+                                $ProductVariantUP['mrp_price'] = $variant['mrp_price'] ?? 0;
+                                $ProductVariantUP['fix_price'] = $variant['fix_price'] ?? $variant['price'];
                                 $ProductVariantUP['qty'] = 0.00;
                                 if (Schema::hasColumn('product_variants', 'wholesale')) {
                                     $ProductVariantUP['wholesale'] = isset($variant['wholesale']) && $variant['wholesale'] !== ''
@@ -1285,6 +1450,9 @@ class ProductsController extends BaseController
                             $ProductVarDT->name = $variant['text'];
                             $ProductVarDT->cost = $variant['cost'];
                             $ProductVarDT->price = $variant['price'];
+                            $ProductVarDT->company_rb_price = $variant['company_rb_price'] ?? 0;
+                            $ProductVarDT->mrp_price = $variant['mrp_price'] ?? 0;
+                            $ProductVarDT->fix_price = $variant['fix_price'] ?? $variant['price'];
                             if (Schema::hasColumn('product_variants', 'wholesale')) {
                                 $ProductVarDT->wholesale = isset($variant['wholesale']) && $variant['wholesale'] !== ''
                                     ? $variant['wholesale']
@@ -1547,6 +1715,9 @@ class ProductsController extends BaseController
         $item['subcategories'] = $Product->apiSubcategoriesList();
         $item['brand'] = $Product['brand'] ? $Product['brand']->name : 'N/D';
         $item['price'] = $Product->price;
+        $item['company_rb_price'] = $Product->company_rb_price;
+        $item['mrp_price'] = $Product->mrp_price;
+        $item['fix_price'] = $Product->fix_price;
         $item['wholesale_price'] = $Product->wholesale_price;
         $item['min_price'] = $Product->min_price;
         $item['cost'] = $Product->cost;
@@ -2428,6 +2599,9 @@ class ProductsController extends BaseController
                 $variant_item['code'] = $variant->code;
                 $variant_item['price'] = $variant->price;
                 $variant_item['cost'] = $variant->cost;
+                $variant_item['company_rb_price'] = $variant->company_rb_price ?? 0;
+                $variant_item['mrp_price'] = $variant->mrp_price ?? 0;
+                $variant_item['fix_price'] = $variant->fix_price ?? $variant->price;
                 $variant_item['wholesale'] = $variant->wholesale ?? 0;
                 $variant_item['min_price'] = $variant->min_price ?? 0;
                 $variant_item['product_id'] = $variant->product_id;

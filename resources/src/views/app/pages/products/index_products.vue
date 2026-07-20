@@ -97,6 +97,19 @@
               <lucide-icon class="text-info" name="eye" />
             </router-link>
 
+            <b-button
+              v-if="can('products_edit')"
+              v-b-tooltip.hover
+              title="Pricing Level"
+              class="btn btn-sm btn-outline-primary action-btn"
+              @click="openPricingLevel(props.row)"
+            >
+              <svg class="action-price-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M20.59 13.41 11 3.83V3H4v7h.83l9.58 9.59a2 2 0 0 0 2.82 0l3.36-3.36a2 2 0 0 0 0-2.82Z"></path>
+                <circle cx="7.5" cy="6.5" r="1.25"></circle>
+              </svg>
+            </b-button>
+
             <router-link
               v-if="can('products_edit')"
               v-b-tooltip.hover
@@ -166,6 +179,157 @@
           </span>
         </template>
       </vue-good-table>
+
+      <b-modal
+        id="PricingLevelModal"
+        size="xl"
+        hide-footer
+        hide-header
+        centered
+        modal-class="pricing-level-modal"
+        body-class="pricing-level-modal-body"
+      >
+        <div class="pricing-level-shell">
+          <header class="pricing-level-header">
+            <div class="pricing-level-header__identity">
+              <span class="pricing-level-header__icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M20.59 13.41 11 3.83V3H4v7h.83l9.58 9.59a2 2 0 0 0 2.82 0l3.36-3.36a2 2 0 0 0 0-2.82Z"></path>
+                  <circle cx="7.5" cy="6.5" r="1.25"></circle>
+                </svg>
+              </span>
+              <div>
+                <span class="pricing-level-header__eyebrow">Product pricing</span>
+                <h3>Pricing Level</h3>
+                <p>Review and update every purchase and sale price in one place.</p>
+              </div>
+            </div>
+            <button type="button" class="pricing-level-close" aria-label="Close" @click="$bvModal.hide('PricingLevelModal')">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M18 6 6 18M6 6l12 12"></path>
+              </svg>
+            </button>
+          </header>
+
+          <div class="pricing-level-content">
+            <div v-if="pricingLoading" class="pricing-level-loading">
+              <div class="spinner spinner-primary"></div>
+            </div>
+
+            <b-form v-else @submit.prevent="submitPricingLevel">
+              <div class="pricing-level-product mb-4">
+                <div class="pricing-level-product__main">
+                  <span class="pricing-level-product__avatar">
+                    <lucide-icon name="package" />
+                  </span>
+                  <div>
+                    <small>SELECTED PRODUCT</small>
+                    <strong>{{ pricingForm.name }}</strong>
+                  </div>
+                </div>
+                <span class="pricing-level-product__code">{{ pricingForm.code }}</span>
+              </div>
+
+          <template v-if="pricingForm.type !== 'is_variant'">
+            <section class="pricing-level-section pricing-level-section--purchase">
+              <h6><lucide-icon name="shopping-cart" /> Purchase Pricing</h6>
+              <b-row>
+                <b-col md="4">
+                  <b-form-group label="Company RB Price">
+                    <b-form-input v-model.number="pricingForm.company_rb_price" type="number" min="0" step="0.01" required />
+                  </b-form-group>
+                </b-col>
+                <b-col md="4">
+                  <b-form-group label="MRP Price">
+                    <b-form-input v-model.number="pricingForm.mrp_price" type="number" min="0" step="0.01" required />
+                  </b-form-group>
+                </b-col>
+                <b-col md="4">
+                  <b-form-group label="Product Cost">
+                    <b-form-input v-model.number="pricingForm.cost" type="number" min="0" step="0.01" required />
+                  </b-form-group>
+                </b-col>
+              </b-row>
+            </section>
+
+            <section class="pricing-level-section pricing-level-section--sale">
+              <h6><lucide-icon name="dollar-sign" /> Sale Pricing</h6>
+              <b-row>
+                <b-col md="6" lg="3">
+                  <b-form-group label="Fix Price">
+                    <b-form-input v-model.number="pricingForm.fix_price" type="number" min="0" step="0.01" required />
+                  </b-form-group>
+                </b-col>
+                <b-col md="6" lg="3">
+                  <b-form-group label="Retail Price (Almadina Price)">
+                    <b-form-input v-model.number="pricingForm.price" type="number" min="0" step="0.01" required />
+                  </b-form-group>
+                </b-col>
+                <b-col md="6" lg="3">
+                  <b-form-group label="Whole Sale Price">
+                    <b-form-input v-model.number="pricingForm.wholesale_price" type="number" min="0" step="0.01" required />
+                  </b-form-group>
+                </b-col>
+                <b-col md="6" lg="3">
+                  <b-form-group label="Minimum Price">
+                    <b-form-input v-model.number="pricingForm.min_price" type="number" min="0" step="0.01" required />
+                  </b-form-group>
+                </b-col>
+              </b-row>
+            </section>
+          </template>
+
+          <div v-else class="table-responsive pricing-level-variants">
+            <table class="table table-bordered table-hover mb-0">
+              <thead>
+                <tr>
+                  <th>Variant</th>
+                  <th>Company RB</th>
+                  <th>MRP</th>
+                  <th>Product Cost</th>
+                  <th>Fix Price</th>
+                  <th>Retail (Almadina)</th>
+                  <th>Whole Sale</th>
+                  <th>Minimum</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="variant in pricingForm.variants" :key="variant.id">
+                  <td class="variant-identity">
+                    <strong>{{ variant.name }}</strong>
+                    <small>{{ variant.code }}</small>
+                  </td>
+                  <td><b-form-input v-model.number="variant.company_rb_price" type="number" min="0" step="0.01" required /></td>
+                  <td><b-form-input v-model.number="variant.mrp_price" type="number" min="0" step="0.01" required /></td>
+                  <td><b-form-input v-model.number="variant.cost" type="number" min="0" step="0.01" required /></td>
+                  <td><b-form-input v-model.number="variant.fix_price" type="number" min="0" step="0.01" required /></td>
+                  <td><b-form-input v-model.number="variant.price" type="number" min="0" step="0.01" required /></td>
+                  <td><b-form-input v-model.number="variant.wholesale_price" type="number" min="0" step="0.01" required /></td>
+                  <td><b-form-input v-model.number="variant.min_price" type="number" min="0" step="0.01" required /></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+              <div class="pricing-level-actions mt-4">
+                <span class="pricing-level-actions__hint">
+                  <lucide-icon name="info" /> Changes apply immediately after saving.
+                </span>
+                <div>
+                  <b-button class="pricing-level-cancel" variant="outline-secondary" type="button" @click="$bvModal.hide('PricingLevelModal')">
+                    {{ $t('Cancel') || 'Cancel' }}
+                  </b-button>
+                  <b-button class="pricing-level-submit" variant="primary" type="submit" :disabled="pricingSubmitting">
+                    <span v-if="pricingSubmitting" class="spinner sm spinner-white mr-2"></span>
+                    <lucide-icon v-else name="check" />
+                    {{ pricingSubmitting ? 'Updating...' : 'Update Pricing' }}
+                  </b-button>
+                </div>
+              </div>
+            </b-form>
+          </div>
+        </div>
+      </b-modal>
 
       <!-- Filter sidebar -->
       <b-sidebar id="sidebar-right" :title="$t('Filter')" bg-variant="white" right shadow>
@@ -304,6 +468,22 @@ export default {
       warehouses: [],
       nameSort: "az",
       isExportingAll: false,
+      pricingLoading: false,
+      pricingSubmitting: false,
+      pricingForm: {
+        id: null,
+        name: "",
+        code: "",
+        type: "",
+        company_rb_price: 0,
+        mrp_price: 0,
+        cost: 0,
+        fix_price: 0,
+        price: 0,
+        wholesale_price: 0,
+        min_price: 0,
+        variants: []
+      },
       // Optional price format key for frontend display (loaded from system settings/localStorage)
       price_format_key: null
     };
@@ -346,6 +526,93 @@ export default {
   },
   methods: {
     can(p) { return this.currentUserPermissions && this.currentUserPermissions.includes(p); },
+
+    normalizePricing(pricing) {
+      const numericFields = [
+        "company_rb_price", "mrp_price", "cost", "fix_price",
+        "price", "wholesale_price", "min_price"
+      ];
+      const normalized = Object.assign({ variants: [] }, pricing || {});
+      numericFields.forEach(field => {
+        const value = Number(normalized[field]);
+        normalized[field] = Number.isFinite(value) ? value : 0;
+      });
+      normalized.variants = (normalized.variants || []).map(variant => {
+        const row = Object.assign({}, variant);
+        numericFields.forEach(field => {
+          const value = Number(row[field]);
+          row[field] = Number.isFinite(value) ? value : 0;
+        });
+        return row;
+      });
+      return normalized;
+    },
+
+    openPricingLevel(row) {
+      this.pricingLoading = true;
+      this.pricingSubmitting = false;
+      this.pricingForm = this.normalizePricing({
+        id: row.id,
+        name: row.name,
+        code: row.code,
+        type: row.product_type,
+        variants: []
+      });
+      this.$bvModal.show("PricingLevelModal");
+
+      axios.get(`products/${row.id}/pricing-level`)
+        .then(response => {
+          this.pricingForm = this.normalizePricing(response.data.pricing);
+        })
+        .catch(error => {
+          this.$bvModal.hide("PricingLevelModal");
+          const message = error.response?.data?.message || "Unable to load product pricing.";
+          this.makeToast("danger", message, this.$t("Failed"));
+        })
+        .finally(() => {
+          this.pricingLoading = false;
+        });
+    },
+
+    submitPricingLevel() {
+      if (!this.pricingForm.id || this.pricingSubmitting) return;
+
+      this.pricingSubmitting = true;
+      const fields = [
+        "company_rb_price", "mrp_price", "cost", "fix_price",
+        "price", "wholesale_price", "min_price"
+      ];
+      let payload;
+      if (this.pricingForm.type === "is_variant") {
+        payload = {
+          variants: this.pricingForm.variants.map(variant => {
+            const row = { id: variant.id };
+            fields.forEach(field => { row[field] = variant[field]; });
+            return row;
+          })
+        };
+      } else {
+        payload = {};
+        fields.forEach(field => { payload[field] = this.pricingForm[field]; });
+      }
+
+      axios.put(`products/${this.pricingForm.id}/pricing-level`, payload)
+        .then(response => {
+          this.pricingForm = this.normalizePricing(response.data.pricing);
+          this.$bvModal.hide("PricingLevelModal");
+          this.makeToast("success", "Pricing levels updated successfully.", this.$t("Success"));
+          this.Get_Products(this.serverParams.page);
+        })
+        .catch(error => {
+          const errors = error.response?.data?.errors || {};
+          const first = Object.values(errors)[0];
+          const message = Array.isArray(first) ? first[0] : (error.response?.data?.message || "Unable to update pricing levels.");
+          this.makeToast("danger", message, this.$t("Failed"));
+        })
+        .finally(() => {
+          this.pricingSubmitting = false;
+        });
+    },
 
     // Return first line of a possibly multi-line string
     firstLine(val) {
@@ -776,5 +1043,361 @@ export default {
 .table-actions-wrapper .btn-group,
 .table-actions-wrapper .b-form-select {
   white-space: nowrap;
+}
+
+.action-cell {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.action-price-icon {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.pricing-level-shell {
+  color: #0f172a;
+  background: #f8fafc;
+}
+.pricing-level-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 112px;
+  padding: 1.5rem 1.75rem;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 85% 10%, rgba(167, 139, 250, 0.34), transparent 38%),
+    linear-gradient(135deg, #6d28d9 0%, #7c3aed 48%, #4f46e5 100%);
+  color: #fff;
+}
+.pricing-level-header::after {
+  content: "";
+  position: absolute;
+  right: 12%;
+  bottom: -70px;
+  width: 210px;
+  height: 210px;
+  border: 28px solid rgba(255, 255, 255, 0.06);
+  border-radius: 50%;
+}
+.pricing-level-header__identity {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+.pricing-level-header__icon {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  flex: 0 0 54px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+.pricing-level-header__icon svg {
+  width: 26px;
+  height: 26px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.pricing-level-header__eyebrow {
+  display: block;
+  margin-bottom: 0.2rem;
+  color: #ddd6fe;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.pricing-level-header h3 {
+  margin: 0;
+  color: #fff;
+  font-size: 1.45rem;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+.pricing-level-header p {
+  margin: 0.25rem 0 0;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.86rem;
+}
+.pricing-level-close {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  cursor: pointer;
+  transition: 0.18s ease;
+}
+.pricing-level-close:hover {
+  background: rgba(255, 255, 255, 0.22);
+  transform: translateY(-1px);
+}
+.pricing-level-close svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.pricing-level-content {
+  padding: 1.5rem 1.75rem 1.25rem;
+}
+.pricing-level-loading {
+  min-height: 360px;
+  display: grid;
+  place-items: center;
+}
+.pricing-level-product {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid #e0e7ff;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+.pricing-level-product__main {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.pricing-level-product__main > div {
+  display: flex;
+  flex-direction: column;
+}
+.pricing-level-product__avatar {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0 !important;
+  border-radius: 10px !important;
+  background: #eef2ff !important;
+  color: #5b21b6 !important;
+  font-family: inherit !important;
+}
+.pricing-level-product__avatar svg {
+  width: 19px;
+  height: 19px;
+}
+.pricing-level-product small,
+.variant-identity small {
+  color: #64748b;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+}
+.pricing-level-product__code {
+  border-radius: 6px;
+  padding: 0.3rem 0.55rem;
+  background: #eef2ff;
+  color: #4338ca;
+  font-family: monospace;
+}
+.pricing-level-section {
+  position: relative;
+  margin-bottom: 1.1rem;
+  padding: 1.15rem 1.15rem 0.35rem;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.035);
+}
+.pricing-level-section::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: #f59e0b;
+}
+.pricing-level-section--sale {
+  border-color: #d1fae5;
+  background: linear-gradient(135deg, #fff 60%, #f0fdf4 100%);
+}
+.pricing-level-section--sale::before {
+  background: #10b981;
+}
+.pricing-level-section h6 {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 1rem;
+  color: #92400e;
+  font-weight: 700;
+}
+.pricing-level-section--sale h6 {
+  color: #065f46;
+}
+.pricing-level-section h6 svg {
+  width: 17px;
+  height: 17px;
+}
+.pricing-level-variants th {
+  min-width: 135px;
+  white-space: nowrap;
+  background: #f8fafc;
+  font-size: 0.77rem;
+}
+.pricing-level-variants th:first-child {
+  min-width: 170px;
+}
+.pricing-level-variants td {
+  vertical-align: middle;
+}
+.variant-identity strong,
+.variant-identity small {
+  display: block;
+}
+.pricing-level-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin: 0 -1.75rem -1.25rem;
+  padding: 1rem 1.75rem;
+  border-top: 1px solid #e5e7eb;
+  background: #fff;
+}
+.pricing-level-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.pricing-level-actions > div {
+  display: flex;
+  gap: 0.6rem;
+}
+.pricing-level-actions__hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #64748b;
+  font-size: 0.78rem;
+}
+.pricing-level-actions__hint svg {
+  width: 15px;
+  height: 15px;
+  color: #6366f1;
+}
+.pricing-level-cancel,
+.pricing-level-submit {
+  min-height: 40px;
+  padding: 0.55rem 1rem;
+  border-radius: 9px;
+  font-weight: 650;
+}
+.pricing-level-submit {
+  border-color: transparent !important;
+  background: linear-gradient(135deg, #7c3aed, #4f46e5) !important;
+  box-shadow: 0 7px 18px rgba(99, 102, 241, 0.24);
+}
+@media (max-width: 767px) {
+  .pricing-level-header,
+  .pricing-level-content {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+  .pricing-level-header p,
+  .pricing-level-actions__hint {
+    display: none;
+  }
+  .pricing-level-product,
+  .pricing-level-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .pricing-level-actions {
+    margin-left: -1rem;
+    margin-right: -1rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+  .pricing-level-actions > div,
+  .pricing-level-actions .btn {
+    width: 100%;
+  }
+  .pricing-level-actions .btn {
+    justify-content: center;
+  }
+}
+</style>
+
+<style>
+/* BootstrapVue teleports modal wrappers to body, so wrapper sizing must be unscoped. */
+.pricing-level-modal .modal-dialog {
+  width: calc(100vw - 48px) !important;
+  max-width: 1400px !important;
+  margin: 24px auto !important;
+}
+.pricing-level-modal .modal-content {
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+  border: 0 !important;
+  border-radius: 18px !important;
+  background: #f8fafc;
+  box-shadow: 0 28px 70px -22px rgba(30, 27, 75, 0.48), 0 12px 28px -16px rgba(15, 23, 42, 0.35) !important;
+}
+.pricing-level-modal .pricing-level-modal-body {
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  padding: 0 !important;
+}
+.pricing-level-modal .form-group label {
+  margin-bottom: 0.45rem;
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+.pricing-level-modal .form-control {
+  height: 42px;
+  border: 1px solid #dbe2ea;
+  border-radius: 9px;
+  background: #fff;
+  color: #0f172a;
+  font-size: 0.86rem;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.pricing-level-modal .form-control:focus {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.12);
+}
+.pricing-level-modal .modal-backdrop {
+  background: #1e1b4b;
+}
+@media (max-width: 767px) {
+  .pricing-level-modal .modal-dialog {
+    width: calc(100vw - 20px) !important;
+    margin: 10px auto !important;
+  }
+  .pricing-level-modal .modal-content,
+  .pricing-level-modal .pricing-level-modal-body {
+    max-height: calc(100vh - 20px);
+  }
 }
 </style>

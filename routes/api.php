@@ -576,6 +576,8 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
     // ------------------------------------------------------------------\\
 
     Route::resource('products', 'ProductsController');
+    Route::get('products/{id}/pricing-level', 'ProductsController@getPricingLevel');
+    Route::put('products/{id}/pricing-level', 'ProductsController@updatePricingLevel');
     Route::get('products-next-code', 'ProductsController@nextProductCode');
     Route::post('products/{id}/duplicate', 'ProductsController@duplicate');
     Route::post('products/warehouse_locations', 'ProductsController@storeWarehouseLocation');
