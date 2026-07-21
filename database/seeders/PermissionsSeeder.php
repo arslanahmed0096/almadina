@@ -904,27 +904,13 @@ class PermissionsSeeder extends Seeder
                 ],
                 [
                     'id' => 210,
-                    'name' => 'batch_view',
+                    'name' => 'products_cost_view',
+                    'label' => 'View Product Cost',
                 ],
                 [
                     'id' => 211,
-                    'name' => 'batch_manage',
-                ],
-                [
-                    'id' => 212,
-                    'name' => 'batch_writeoff',
-                ],
-                [
-                    'id' => 213,
-                    'name' => 'batch_force_override',
-                ],
-                [
-                    'id' => 214,
-                    'name' => 'expiry_report',
-                ],
-                [
-                    'id' => 215,
-                    'name' => 'Batch_Register_Report',
+                    'name' => 'pricing_level',
+                    'label' => 'Pricing Level Access',
                 ],
 
             ]

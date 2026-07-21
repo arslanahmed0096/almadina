@@ -321,6 +321,33 @@
             </ul>
           </li>
 
+          <!-- Pricing Levels -->
+          <li
+            v-show="currentUserPermissions && currentUserPermissions.includes('pricing_level')"
+            :class="{ active: isActiveRoute('pricing-levels'), 'has-submenu': true, open: openMenus.includes('pricing-levels') }"
+            class="nav-item"
+          >
+            <a href="#" @click.prevent="toggleSubmenu('pricing-levels')" class="nav-link">
+              <lucide-icon class="nav-icon" name="dollar-sign" />
+              <span class="nav-text" v-if="!isCollapsed">Pricing Level</span>
+              <lucide-icon class="submenu-arrow" name="chevron-down" v-if="!isCollapsed" />
+            </a>
+            <ul class="submenu" v-if="openMenus.includes('pricing-levels') && !isCollapsed">
+              <li class="submenu-item" v-if="currentUserPermissions && currentUserPermissions.includes('pricing_level')">
+                <router-link to="/app/pricing-levels/list" class="submenu-link">
+                  <lucide-icon class="submenu-icon" name="files" />
+                  <span>All Pricing Levels</span>
+                </router-link>
+              </li>
+              <li class="submenu-item" v-if="currentUserPermissions && currentUserPermissions.includes('pricing_level')">
+                <router-link to="/app/pricing-levels/create" class="submenu-link">
+                  <lucide-icon class="submenu-icon" name="file-plus" />
+                  <span>Create Pricing Level</span>
+                </router-link>
+              </li>
+            </ul>
+          </li>
+
           <!-- Adjustments -->
           <li
             v-show="currentUserPermissions && (
@@ -2185,5 +2212,3 @@ html[dir="rtl"] .submenu-arrow {
   }
 }
 </style>
-
-

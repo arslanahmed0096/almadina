@@ -45,7 +45,19 @@ class ProductsController extends BaseController
 
     public function index(Request $request)
     {
-        $this->authorizeForUser($request->user('api'), 'view', Product::class);
+        $user = $request->user('api');
+        $effectivePermissions = $user->effectivePermissionNames();
+        $isPricingRequest = $request->boolean('pricing_level');
+
+        if ($isPricingRequest) {
+            abort_unless($effectivePermissions->contains('pricing_level'), 403, 'Permission denied: pricing_level');
+        } else {
+            $this->authorizeForUser($user, 'view', Product::class);
+        }
+
+        $canViewProductCost = $effectivePermissions->contains('products_cost_view');
+        $canViewPricing = $effectivePermissions->contains('pricing_level');
+        $exposeCost = $canViewProductCost || ($isPricingRequest && $canViewPricing);
 
         $perPage = $request->integer('limit', 10);
         $pageStart = (int) ($request->get('page', 1));
@@ -157,11 +169,15 @@ class ProductsController extends BaseController
                 : ($item['category'] ?? '');
             $item['brand'] = $product->brand ? $product->brand->name : 'N/D';
             $item['product_type'] = $product->type;
-            $item['company_rb_price'] = (float) $product->company_rb_price;
-            $item['mrp_price'] = (float) $product->mrp_price;
-            $item['fix_price'] = (float) $product->fix_price;
-            $item['wholesale_price'] = (float) $product->wholesale_price;
-            $item['min_price'] = (float) $product->min_price;
+            if ($isPricingRequest && $canViewPricing) {
+                $item['company_rb_price'] = (float) $product->company_rb_price;
+                $item['mrp_price'] = (float) $product->mrp_price;
+                $item['fix_price'] = (float) $product->fix_price;
+                $item['wholesale_price'] = (float) $product->wholesale_price;
+                $item['min_price'] = (float) $product->min_price;
+            }
+            $item['created_at'] = $product->created_at ? $product->created_at->toIso8601String() : null;
+            $item['pricing_updated_at'] = $product->updated_at ? $product->updated_at->toIso8601String() : null;
 
             $isActive = (int) ($product->is_active ?? 1) === 1;
             $item['status'] = $isActive ? __('Active') : __('Inactif');
@@ -178,7 +194,9 @@ class ProductsController extends BaseController
                 // - 2 decimals
                 // - NO thousands separator (third param '.', fourth param '')
                 // So the frontend priceFormat helper can safely re‑format.
-                $item['cost'] = number_format((float) $product->cost, 2, '.', '');
+                if ($exposeCost) {
+                    $item['cost'] = number_format((float) $product->cost, 2, '.', '');
+                }
                 $item['price'] = number_format((float) $product->price, 2, '.', '');
                 $item['unit'] = optional($product->unit)->ShortName;
 
@@ -199,7 +217,9 @@ class ProductsController extends BaseController
 
                 $item['type'] = 'Combo';
                 $item['name'] = $product->name; // PLAIN TEXT
-                $item['cost'] = number_format((float) $product->cost, 2, '.', '');
+                if ($exposeCost) {
+                    $item['cost'] = number_format((float) $product->cost, 2, '.', '');
+                }
                 $item['price'] = number_format((float) $product->price, 2, '.', '');
                 $item['unit'] = optional($product->unit)->ShortName;
 
@@ -223,26 +243,38 @@ class ProductsController extends BaseController
                 $variants = ProductVariant::where('product_id', $product->id)
                     ->whereNull('deleted_at')
                     ->get();
-                $item['pricing_variants'] = $variants->map(function ($variant) {
-                    return [
-                        'id' => $variant->id,
-                        'name' => $variant->name,
-                        'code' => $variant->code,
-                        'company_rb_price' => (float) $variant->company_rb_price,
-                        'mrp_price' => (float) $variant->mrp_price,
-                        'cost' => (float) $variant->cost,
-                        'fix_price' => (float) $variant->fix_price,
-                        'price' => (float) $variant->price,
-                        'wholesale_price' => (float) $variant->wholesale,
-                        'min_price' => (float) $variant->min_price,
-                    ];
-                })->values();
+                if ($isPricingRequest && $canViewPricing) {
+                    $item['pricing_variants'] = $variants->map(function ($variant) {
+                        return [
+                            'id' => $variant->id,
+                            'name' => $variant->name,
+                            'code' => $variant->code,
+                            'company_rb_price' => (float) $variant->company_rb_price,
+                            'mrp_price' => (float) $variant->mrp_price,
+                            'cost' => (float) $variant->cost,
+                            'fix_price' => (float) $variant->fix_price,
+                            'price' => (float) $variant->price,
+                            'wholesale_price' => (float) $variant->wholesale,
+                            'min_price' => (float) $variant->min_price,
+                        ];
+                    })->values();
+                }
+
+                $latestVariantUpdate = $variants->pluck('updated_at')
+                    ->filter()
+                    ->sortByDesc(fn ($date) => $date->getTimestamp())
+                    ->first();
+                if ($latestVariantUpdate && (! $product->updated_at || $latestVariantUpdate->gt($product->updated_at))) {
+                    $item['pricing_updated_at'] = $latestVariantUpdate->toIso8601String();
+                }
 
                 // For variant products, display the parent product name
                 $item['name'] = $product->name;
-                $item['cost'] = $variants
-                    ->map(fn ($v) => number_format((float) $v->cost, 2, '.', ''))
-                    ->implode("\n");
+                if ($exposeCost) {
+                    $item['cost'] = $variants
+                        ->map(fn ($v) => number_format((float) $v->cost, 2, '.', ''))
+                        ->implode("\n");
+                }
                 $item['price'] = $variants
                     ->map(fn ($v) => number_format((float) $v->price, 2, '.', ''))
                     ->implode("\n");
@@ -265,7 +297,9 @@ class ProductsController extends BaseController
 
                 $item['type'] = 'Service';
                 $item['name'] = $product->name; // PLAIN TEXT
-                $item['cost'] = '----';
+                if ($exposeCost) {
+                    $item['cost'] = '----';
+                }
                 $item['quantity'] = '----';
                 $item['unit'] = '----';
                 $item['price'] = number_format((float) $product->price, 2, '.', '');
@@ -341,7 +375,7 @@ class ProductsController extends BaseController
 
     public function getPricingLevel(Request $request, $id)
     {
-        $this->authorizeForUser($request->user('api'), 'update', Product::class);
+        $this->authorizePricingLevel($request);
 
         $product = Product::whereNull('deleted_at')->findOrFail($id);
 
@@ -352,7 +386,7 @@ class ProductsController extends BaseController
 
     public function updatePricingLevel(Request $request, $id)
     {
-        $this->authorizeForUser($request->user('api'), 'update', Product::class);
+        $this->authorizePricingLevel($request);
 
         $product = Product::whereNull('deleted_at')->findOrFail($id);
         $priceRules = [
@@ -446,6 +480,16 @@ class ProductsController extends BaseController
         }
 
         return $payload;
+    }
+
+    private function authorizePricingLevel(Request $request): void
+    {
+        $user = $request->user('api');
+        abort_unless(
+            $user && $user->effectivePermissionNames()->contains('pricing_level'),
+            403,
+            'Permission denied: pricing_level'
+        );
     }
 
     // -------------- Store new  Product  ---------------\\

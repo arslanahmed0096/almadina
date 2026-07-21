@@ -114,7 +114,7 @@
                 :src="'/images/avatar/' + currentUser.avatar"
                 alt="user"
               />
-              <img v-else src="/images/avatar/avatar-default.jpg" alt="user" />
+              <img v-else src="/images/avatar/default_avatar.png" alt="user" />
             </div>
           </template>
           <div class="user-dropdown-menu">
@@ -820,4 +820,3 @@ body.dark-theme .dropdown-item:hover {
   }
 }
 </style>
-

@@ -98,7 +98,7 @@
             </router-link>
 
             <b-button
-              v-if="can('products_edit')"
+              v-if="can('pricing_level')"
               v-b-tooltip.hover
               title="Pricing Level"
               class="btn btn-sm btn-outline-primary action-btn"
@@ -497,31 +497,41 @@ export default {
       ];
     },
     columns() {
-      return [
+      const columns = [
         { label: this.$t("image"), field: "image", tdClass: "text-left", thClass: "text-left" },
         { label: this.$t("type"), field: "type", tdClass: "text-left", thClass: "text-left" },
         { label: this.$t("Name_product"), field: "name", tdClass: "text-left pre", thClass: "text-left" },
         { label: this.$t("Code"), field: "code", tdClass: "text-left", thClass: "text-left" },
         { label: this.$t("Brand"), field: "brand", tdClass: "text-left", thClass: "text-left" },
-        { label: this.$t("Categorie"), field: "category", tdClass: "text-left pre", thClass: "text-left" },
-        { label: this.$t("Cost"), field: "cost", tdClass: "text-left pre", thClass: "text-left" },
+        { label: this.$t("Categorie"), field: "category", tdClass: "text-left pre", thClass: "text-left" }
+      ];
+      if (this.can("products_cost_view")) {
+        columns.push({ label: this.$t("Cost"), field: "cost", tdClass: "text-left pre", thClass: "text-left" });
+      }
+      columns.push(
         { label: this.$t("Price"), field: "price", tdClass: "text-left pre", thClass: "text-left" },
         { label: this.$t("Unit"), field: "unit", tdClass: "text-left", thClass: "text-left" },
         { label: this.$t("Quantity"), field: "quantity", tdClass: "text-left", thClass: "text-left" },
         { label: this.$t("Action"), field: "actions", tdClass: "text-left", thClass: "text-left", sortable: false }
-      ];
+      );
+      return columns;
     },
     excelColumns() {
-      return [
+      const columns = [
         { label: this.$t("type"), field: "type" },
         { label: this.$t("Name_product"), field: "name" },
         { label: this.$t("Code"), field: "code" },
-        { label: this.$t("Categorie"), field: "categories_display" },
-        { label: this.$t("Cost"), field: "cost" },
+        { label: this.$t("Categorie"), field: "categories_display" }
+      ];
+      if (this.can("products_cost_view")) {
+        columns.push({ label: this.$t("Cost"), field: "cost" });
+      }
+      columns.push(
         { label: this.$t("Price"), field: "price" },
         { label: this.$t("Unit"), field: "unit" },
         { label: this.$t("Quantity"), field: "quantity" }
-      ];
+      );
+      return columns;
     }
   },
   methods: {
@@ -670,12 +680,10 @@ export default {
         this.$t("type"),
         this.$t("Name_product"),
         this.$t("Code"),
-        this.$t("Categorie"),
-        this.$t("Cost"),
-        this.$t("Price"),
-        this.$t("Unit"),
-        this.$t("Quantity")
+        this.$t("Categorie")
       ];
+      if (this.can("products_cost_view")) headers.push(this.$t("Cost"));
+      headers.push(this.$t("Price"), this.$t("Unit"), this.$t("Quantity"));
 
       const products_pdf = JSON.parse(JSON.stringify(this.products));
       products_pdf.forEach(item => {
@@ -685,16 +693,12 @@ export default {
         item.categories_display = String(item.categories_display || '').replace(/\r?\n/g, '\n');
       });
 
-      const body = products_pdf.map(p => ([
-        p.type,
-        p.name,
-        p.code,
-        p.categories_display || p.category,
-        p.cost,
-        p.price,
-        p.unit,
-        p.quantity
-      ]));
+      const body = products_pdf.map(p => {
+        const row = [p.type, p.name, p.code, p.categories_display || p.category];
+        if (this.can("products_cost_view")) row.push(p.cost);
+        row.push(p.price, p.unit, p.quantity);
+        return row;
+      });
 
       const marginX = 40;
       const rtl =
@@ -710,7 +714,9 @@ export default {
         styles: { font: 'Vazirmatn', fontSize: 9, cellPadding: 4, halign: rtl ? 'right' : 'left', textColor: 33 },
         headStyles: { font: 'Vazirmatn', fontStyle: 'bold', fillColor: [63,81,181], textColor: 255 },
         alternateRowStyles: { fillColor: [245,247,250] },
-        columnStyles: { 4: { halign: 'right' }, 5: { halign: 'right' }, 7: { halign: 'right' } },
+        columnStyles: this.can("products_cost_view")
+          ? { 4: { halign: 'right' }, 5: { halign: 'right' }, 7: { halign: 'right' } }
+          : { 4: { halign: 'right' }, 6: { halign: 'right' } },
         didDrawPage: (d) => {
           const pageW = pdf.internal.pageSize.getWidth();
           const pageH = pdf.internal.pageSize.getHeight();

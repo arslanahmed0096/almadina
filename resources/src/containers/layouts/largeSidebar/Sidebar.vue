@@ -109,6 +109,20 @@
             <div class="triangle"></div>
           </li>
           <li
+            v-show="currentUserPermissions && currentUserPermissions.includes('pricing_level')"
+            @mouseenter="toggleSubMenu"
+            class="nav-item"
+            :class="{ active: selectedParentMenu == 'pricing-levels' }"
+            data-item="pricing-levels"
+            :data-submenu="true"
+          >
+            <a class="nav-item-hold" href="#">
+              <lucide-icon class="nav-icon" name="dollar-sign" />
+              <span class="nav-text">Pricing Level</span>
+            </a>
+            <div class="triangle"></div>
+          </li>
+          <li
             v-show="currentUserPermissions 
               && (currentUserPermissions.includes('adjustment_view')
               || currentUserPermissions.includes('adjustment_add'))"
@@ -778,6 +792,31 @@
             <router-link tag="a" class to="/app/products/Batches">
               <lucide-icon class="nav-icon" name="heart-pulse" />
               <span class="item-name">{{$t('Batches')}}</span>
+            </router-link>
+          </li>
+        </ul>
+
+        <ul
+          class="childNav d-none"
+          data-parent="pricing-levels"
+          :class="{ 'd-block': selectedParentMenu == 'pricing-levels' }"
+        >
+          <li
+            class="nav-item"
+            v-if="currentUserPermissions && currentUserPermissions.includes('pricing_level')"
+          >
+            <router-link tag="a" class to="/app/pricing-levels/list">
+              <lucide-icon class="nav-icon" name="files" />
+              <span class="item-name">All Pricing Levels</span>
+            </router-link>
+          </li>
+          <li
+            class="nav-item"
+            v-if="currentUserPermissions && currentUserPermissions.includes('pricing_level')"
+          >
+            <router-link tag="a" class to="/app/pricing-levels/create">
+              <lucide-icon class="nav-icon" name="file-plus" />
+              <span class="item-name">Create Pricing Level</span>
             </router-link>
           </li>
         </ul>
@@ -2381,4 +2420,3 @@ export default {
 }
 
 </style>
-
