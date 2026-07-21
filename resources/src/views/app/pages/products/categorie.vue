@@ -33,6 +33,16 @@
           <b-button class="btn-rounded" variant="btn btn-outline-info m-1" @click="showImportCategories">
             <lucide-icon name="upload" /> {{ $t('Import') || 'Import' }}
           </b-button>
+          <b-button
+            class="btn-rounded"
+            variant="btn btn-outline-danger m-1"
+            :disabled="isExportingCategories"
+            @click="exportAllCategories"
+          >
+            <span v-if="isExportingCategories" class="spinner sm spinner-primary mr-1"></span>
+            <lucide-icon v-else name="file-spreadsheet" />
+            {{ isExportingCategories ? 'Exporting...' : 'Export Excel' }}
+          </b-button>
           <b-form-select
             v-model="nameSort"
             :options="nameSortOptions"
@@ -223,6 +233,7 @@
 <script>
 import NProgress from 'nprogress'
 import 'bootstrap-icons/font/bootstrap-icons.css'
+import * as XLSX from 'xlsx'
 
 const API = 'categories' // base endpoint
 
@@ -256,6 +267,7 @@ export default {
       isLoading: true,
       submitProcessing: false,
       importProcessing: false,
+      isExportingCategories: false,
 
       serverParams: {
         sort: { field: 'name', type: 'asc' },
@@ -426,6 +438,58 @@ export default {
       }
 
       return [...new Set(out.map(entry => entry.trim()).filter(Boolean))]
+    },
+
+    async exportAllCategories() {
+      if (this.isExportingCategories) return
+
+      this.isExportingCategories = true
+      NProgress.start()
+      NProgress.set(0.1)
+
+      try {
+        const { data } = await axios.get(API, {
+          params: {
+            page: 1,
+            limit: -1,
+            SortField: 'name',
+            SortType: 'asc'
+          }
+        })
+        const categories = Array.isArray(data.categories) ? data.categories : []
+
+        if (!categories.length) {
+          this.toast('warning', 'There are no categories to export.', this.$t('Warning') || 'Warning')
+          return
+        }
+
+        const exportData = categories.map(category => ({
+          'Category Code': category.code || '',
+          'Category Name': category.name || '',
+          Status: category.status ? (this.$t('Active') || 'Active') : (this.$t('Inactive') || 'Inactive'),
+          Icon: category.icon || ''
+        }))
+
+        const worksheet = XLSX.utils.json_to_sheet(exportData)
+        worksheet['!cols'] = [
+          { wch: 20 },
+          { wch: 35 },
+          { wch: 15 },
+          { wch: 28 }
+        ]
+
+        const workbook = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Categories')
+
+        const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
+        XLSX.writeFile(workbook, `categories_all_${timestamp}.xlsx`)
+      } catch (error) {
+        console.error('Export all categories failed:', error)
+        this.toast('danger', 'Export failed. Please try again.', this.$t('Failed') || 'Failed')
+      } finally {
+        this.isExportingCategories = false
+        NProgress.done()
+      }
     },
 
     // CRUD
