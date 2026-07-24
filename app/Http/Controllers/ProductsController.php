@@ -162,6 +162,8 @@ class ProductsController extends BaseController
 
             $item['id'] = $product->id;
             $item['code'] = $product->code;
+            $item['category_id'] = $product->category_id;
+            $item['brand_id'] = $product->brand_id;
             $item['category'] = optional($product->category)->name;
             $item['sub_category'] = optional($product->subCategory)->name;
             $item['categories_display'] = $product->categories->isNotEmpty()
@@ -384,6 +386,43 @@ class ProductsController extends BaseController
         ]);
     }
 
+    public function pricingLevelOptions(Request $request)
+    {
+        $this->authorizePricingLevel($request);
+
+        $brandId = $request->integer('brand_id');
+        $brands = Brand::query()
+            ->whereNull('brands.deleted_at')
+            ->whereExists(function ($query) {
+                $query->select(DB::raw(1))
+                    ->from('products')
+                    ->whereColumn('products.brand_id', 'brands.id')
+                    ->whereNull('products.deleted_at');
+            })
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        $categories = collect();
+        if ($brandId) {
+            $categories = Category::query()
+                ->whereNull('categories.deleted_at')
+                ->whereExists(function ($query) use ($brandId) {
+                    $query->select(DB::raw(1))
+                        ->from('products')
+                        ->whereColumn('products.category_id', 'categories.id')
+                        ->where('products.brand_id', $brandId)
+                        ->whereNull('products.deleted_at');
+                })
+                ->orderBy('name')
+                ->get(['id', 'name']);
+        }
+
+        return response()->json([
+            'brands' => $brands,
+            'categories' => $categories,
+        ]);
+    }
+
     public function updatePricingLevel(Request $request, $id)
     {
         $this->authorizePricingLevel($request);
@@ -443,11 +482,21 @@ class ProductsController extends BaseController
 
     private function pricingLevelPayload(Product $product): array
     {
+        $product->loadMissing(['brand', 'category', 'categories']);
+
         $payload = [
             'id' => $product->id,
             'name' => $product->name,
             'code' => $product->code,
             'type' => $product->type,
+            'created_at' => $product->created_at ? $product->created_at->toIso8601String() : null,
+            'brand_id' => $product->brand_id,
+            'brand' => optional($product->brand)->name ?: 'N/D',
+            'category_id' => $product->category_id,
+            'category' => optional($product->category)->name,
+            'categories_display' => $product->categories->isNotEmpty()
+                ? $product->categories->pluck('name')->filter()->unique()->values()->implode("\n")
+                : optional($product->category)->name,
             'company_rb_price' => (float) $product->company_rb_price,
             'mrp_price' => (float) $product->mrp_price,
             'cost' => (float) $product->cost,
@@ -2119,6 +2168,8 @@ class ProductsController extends BaseController
         if ($Product_data['type'] == 'is_single') {
             $product_price = $Product_data['price'];
             $product_cost = $Product_data['cost'];
+            $company_rb_price = $Product_data['company_rb_price'];
+            $mrp_price = $Product_data['mrp_price'];
 
             $item['code'] = $Product_data['code'];
             $item['name'] = $Product_data['name'];
@@ -2131,6 +2182,8 @@ class ProductsController extends BaseController
 
             $product_price = $product_variant_data['price'];
             $product_cost = $product_variant_data['cost'];
+            $company_rb_price = $product_variant_data['company_rb_price'];
+            $mrp_price = $product_variant_data['mrp_price'];
             $item['code'] = $product_variant_data['code'];
             $item['name'] = '['.$product_variant_data['name'].']'.$Product_data['name'];
 
@@ -2139,6 +2192,8 @@ class ProductsController extends BaseController
 
             $product_price = $Product_data['price'];
             $product_cost = 0;
+            $company_rb_price = $Product_data['company_rb_price'];
+            $mrp_price = $Product_data['mrp_price'];
 
             $item['code'] = $Product_data['code'];
             $item['name'] = $Product_data['name'];
@@ -2171,6 +2226,23 @@ class ProductsController extends BaseController
         } else {
             $cost = 0;
         }
+
+        // Purchase pricing display values. Apply the purchase-unit conversion so
+        // the values use the same unit as the quantity entered on the purchase.
+        // Legacy prices are fallbacks for products that predate these fields.
+        $company_rb_price = $company_rb_price ?: $product_cost;
+        $mrp_price = $mrp_price ?: $product_price;
+        if ($Product_data['unitPurchase']) {
+            if ($Product_data['unitPurchase']->operator == '/') {
+                $company_rb_price /= $Product_data['unitPurchase']->operator_value;
+                $mrp_price /= $Product_data['unitPurchase']->operator_value;
+            } else {
+                $company_rb_price *= $Product_data['unitPurchase']->operator_value;
+                $mrp_price *= $Product_data['unitPurchase']->operator_value;
+            }
+        }
+        $item['company_rb_price'] = (float) $company_rb_price;
+        $item['mrp_price'] = (float) $mrp_price;
 
         $item['Unit_cost'] = $cost;
         $item['fix_cost'] = $product_cost;

@@ -592,31 +592,41 @@ export default {
         "company_rb_price", "mrp_price", "cost", "fix_price",
         "price", "wholesale_price", "min_price"
       ];
-      let payload;
+      let details;
       if (this.pricingForm.type === "is_variant") {
-        payload = {
-          variants: this.pricingForm.variants.map(variant => {
-            const row = { id: variant.id };
+        details = this.pricingForm.variants.map(variant => {
+            const row = {
+              product_id: this.pricingForm.id,
+              product_variant_id: variant.id
+            };
             fields.forEach(field => { row[field] = variant[field]; });
             return row;
-          })
-        };
+          });
       } else {
-        payload = {};
-        fields.forEach(field => { payload[field] = this.pricingForm[field]; });
+        const row = {
+          product_id: this.pricingForm.id,
+          product_variant_id: null
+        };
+        fields.forEach(field => { row[field] = this.pricingForm[field]; });
+        details = [row];
       }
 
-      axios.put(`products/${this.pricingForm.id}/pricing-level`, payload)
-        .then(response => {
-          this.pricingForm = this.normalizePricing(response.data.pricing);
+      const payload = {
+        brand_id: this.pricingForm.brand_id,
+        category_id: this.pricingForm.category_id,
+        details
+      };
+
+      axios.post("pricing-levels", payload)
+        .then(() => {
           this.$bvModal.hide("PricingLevelModal");
-          this.makeToast("success", "Pricing levels updated successfully.", this.$t("Success"));
+          this.makeToast("success", "Pricing level entry created successfully.", this.$t("Success"));
           this.Get_Products(this.serverParams.page);
         })
         .catch(error => {
           const errors = error.response?.data?.errors || {};
           const first = Object.values(errors)[0];
-          const message = Array.isArray(first) ? first[0] : (error.response?.data?.message || "Unable to update pricing levels.");
+          const message = Array.isArray(first) ? first[0] : (error.response?.data?.message || "Unable to create pricing level entry.");
           this.makeToast("danger", message, this.$t("Failed"));
         })
         .finally(() => {

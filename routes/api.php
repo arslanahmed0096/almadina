@@ -575,6 +575,8 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
     // ------------------------------- PRODUCTS --------------------------\\
     // ------------------------------------------------------------------\\
 
+    Route::get('pricing-level/options', 'ProductsController@pricingLevelOptions');
+    Route::apiResource('pricing-levels', 'PricingLevelController');
     Route::resource('products', 'ProductsController');
     Route::get('products/{id}/pricing-level', 'ProductsController@getPricingLevel');
     Route::put('products/{id}/pricing-level', 'ProductsController@updatePricingLevel');

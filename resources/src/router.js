@@ -200,6 +200,14 @@ const baseRoutes = [
                             import(
                                 /* webpackChunkName: "pricing_levels_create" */ "./views/app/pages/pricing_levels/create_pricing_level"
                             )
+                    },
+                    {
+                        path: "edit/:id",
+                        name: "pricing_levels_edit",
+                        component: () =>
+                            import(
+                                /* webpackChunkName: "pricing_levels_create" */ "./views/app/pages/pricing_levels/create_pricing_level"
+                            )
                     }
                 ]
             },

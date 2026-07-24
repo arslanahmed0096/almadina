@@ -8,13 +8,17 @@ class PurchaseDetail extends Model
 {
     protected $fillable = [
         'id', 'purchase_id', 'purchase_unit_id', 'quantity', 'product_id', 'total', 'product_variant_id',
-        'cost', 'TaxNet', 'discount', 'discount_method', 'tax_method',
+        'cost', 'company_rb_price', 'mrp_price', 'TaxNet', 'sales_tax', 'withholding_tax', 'discount', 'discount_method', 'tax_method',
     ];
 
     protected $casts = [
         'total' => 'double',
         'cost' => 'double',
+        'company_rb_price' => 'double',
+        'mrp_price' => 'double',
         'TaxNet' => 'double',
+        'sales_tax' => 'double',
+        'withholding_tax' => 'double',
         'discount' => 'double',
         'quantity' => 'double',
         'purchase_id' => 'integer',
