@@ -86,6 +86,68 @@ class StoreFrontController extends Controller
             END, 2
         )";
 
+        // Products selected in Store Settings for the two cards beside the hero.
+        $heroProductIds = collect($s->hero_product_ids ?? [])
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->unique()
+            ->take(2)
+            ->values();
+
+        $heroProducts = collect();
+        if ($heroProductIds->isNotEmpty()) {
+            $heroProducts = Product::query()
+                ->where('products.is_active', 1)
+                ->where('products.hide_from_online_store', 0)
+                ->whereIn('products.id', $heroProductIds)
+                ->with([
+                    'category:id,name',
+                    'variants:id,product_id,name,price,image',
+                    'images:id,product_id,image_path,is_main,sort_order',
+                ])
+                ->leftJoinSub($minVariantSub, 'pvmin', function ($join) {
+                    $join->on('pvmin.product_id', '=', 'products.id');
+                })
+                ->addSelect(
+                    'products.*',
+                    DB::raw("$baseExpr AS base_price"),
+                    DB::raw("$finalExpr AS final_display_price")
+                )
+                ->get()
+                ->sortBy(fn ($product) => $heroProductIds->search((int) $product->id))
+                ->values();
+
+            $this->attachStockToProducts($heroProducts, $s->default_warehouse_id);
+
+            foreach ($heroProducts as $product) {
+                $filename = $product->primaryProductImageFilename();
+                $product->display_price = (float) ($product->final_display_price ?? 0);
+                $product->original_price = (float) ($product->base_price ?? 0);
+                $product->hero_image_url = $filename
+                    ? asset('images/products/'.$filename)
+                    : asset('images/products/no-image.png');
+
+                $taxRate = is_numeric($product->TaxNet) ? (float) $product->TaxNet : (float) ($s->default_tax_rate ?? 0);
+                $discount = is_numeric($product->discount) ? (float) $product->discount : 0.0;
+                $isPercentDiscount = (string) $product->discount_method === '1';
+                $isTaxInclusive = (string) $product->tax_method === '2';
+
+                foreach ($product->variants as $variant) {
+                    $price = (float) ($variant->price ?? 0);
+                    if ($discount > 0) {
+                        $price = $isPercentDiscount
+                            ? $price - ($price * $discount / 100)
+                            : $price - min($discount, $price);
+                        $price = max(0, $price);
+                    }
+                    if (! $isTaxInclusive && $taxRate > 0) {
+                        $price *= 1 + ($taxRate / 100);
+                    }
+                    $variant->display_price = round($price, 2);
+                }
+            }
+        }
+
         // 3) Build blocks
         $blocks = [];
         $defaultTaxRate = (float) ($s->default_tax_rate ?? 0);
@@ -302,6 +364,7 @@ class StoreFrontController extends Controller
         $viewData = [
             's' => $s,
             'blocks' => $blocks,
+            'heroProducts' => $heroProducts,
             'categories' => $categories,
             'banners' => $banners,
             'showCategoryBar' => true,
@@ -472,6 +535,13 @@ class StoreFrontController extends Controller
         ]);
     }
  
+
+    public function about()
+    {
+        $s = StoreSetting::first();
+
+        return view('store.about', compact('s'));
+    }
 
     public function contact()
     {

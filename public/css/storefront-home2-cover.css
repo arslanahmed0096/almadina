@@ -5,6 +5,16 @@
   font-family: "Poppins", "Inter", sans-serif;
 }
 
+.onsus-cover.has-managed-hero {
+  background-color: #7d858d;
+  background-image:
+    linear-gradient(90deg, rgba(22, 29, 35, .66) 0%, rgba(22, 29, 35, .32) 42%, rgba(22, 29, 35, .06) 72%),
+    var(--hero-bg);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
 .onsus-cover > .container {
   width: 100%;
   max-width: 1490px !important;
@@ -25,6 +35,69 @@
   align-items: center;
   min-width: 0;
   gap: 28px;
+}
+
+.onsus-cover-feature-managed {
+  align-self: stretch;
+  justify-content: flex-start;
+  padding: 48px 2%;
+}
+
+.onsus-cover-managed-copy {
+  display: flex;
+  flex: 0 1 570px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  min-width: 0;
+  color: #fff;
+  text-shadow: 0 2px 20px rgba(0, 0, 0, .24);
+}
+
+.onsus-cover-managed-copy .onsus-cover-kicker {
+  max-width: 570px;
+  margin-bottom: 15px;
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1.55;
+  letter-spacing: .03em;
+  text-transform: none;
+  white-space: normal;
+}
+
+.onsus-cover-managed-copy h1 {
+  max-width: 600px;
+  margin: 0;
+  color: #fff;
+  font-family: "Poppins", "Inter", sans-serif;
+  font-size: clamp(38px, 4.4vw, 66px);
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -.035em;
+  text-transform: uppercase;
+}
+
+.onsus-cover-shop {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 132px;
+  min-height: 44px;
+  margin-top: 28px;
+  padding: 10px 22px;
+  color: #fff !important;
+  background: #ff3f40;
+  border-radius: 5px;
+  box-shadow: 0 7px 18px rgba(255, 63, 64, .24);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none !important;
+  transition: transform .2s ease, background-color .2s ease;
+}
+
+.onsus-cover-shop:hover {
+  background: #e93031;
+  transform: translateY(-2px);
 }
 
 .onsus-cover-product-image {
@@ -118,7 +191,7 @@
   display: grid;
   grid-template-columns: 130px minmax(0, 1fr);
   align-items: center;
-  height: 148px;
+  min-height: 180px;
   padding: 10px;
   overflow: hidden;
   color: #333e48;
@@ -133,7 +206,7 @@
   align-items: center;
   justify-content: center;
   width: 130px;
-  height: 128px;
+  height: 158px;
   overflow: hidden;
 }
 
@@ -168,7 +241,7 @@
   white-space: nowrap;
 }
 
-.onsus-cover-card-info strong {
+.onsus-cover-card-title {
   display: -webkit-box;
   margin-bottom: 5px;
   overflow: hidden;
@@ -176,8 +249,13 @@
   font-size: 13px;
   font-weight: 600;
   line-height: 1.45;
+  text-decoration: none !important;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.onsus-cover-card-title:hover {
+  color: #ff3f40;
 }
 
 .onsus-cover-card-price {
@@ -193,6 +271,47 @@
   font-size: 12px;
   font-weight: 400;
   line-height: 1.2;
+}
+
+.onsus-cover-card-actions {
+  display: flex;
+  align-items: center;
+  margin-top: 8px;
+  gap: 8px;
+}
+
+.onsus-cover-card-action {
+  display: grid;
+  flex: 0 0 36px;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  color: #333e48;
+  background: #fff;
+  border: 1px solid #edf0f2;
+  border-radius: 50%;
+  box-shadow: 0 4px 14px rgba(32, 40, 47, .09);
+  transition: color .2s ease, background-color .2s ease, border-color .2s ease, transform .2s ease;
+}
+
+.onsus-cover-card-action:hover,
+.onsus-cover-card-action.is-active,
+.onsus-cover-card-action[aria-pressed="true"] {
+  color: #fff;
+  background: #ff3f40;
+  border-color: #ff3f40;
+  transform: translateY(-2px);
+}
+
+.onsus-cover-card-action:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+  transform: none;
+}
+
+.onsus-cover-card-action > span {
+  display: none;
 }
 
 @media (max-width: 1199px) {
@@ -215,6 +334,10 @@
   }
 
   .onsus-cover-feature { width: 100%; }
+  .onsus-cover-feature-managed {
+    min-height: 320px;
+    padding: 30px 2%;
+  }
 
   .onsus-cover-cards {
     display: grid;
@@ -230,6 +353,17 @@
     text-align: center;
   }
 
+  .onsus-cover-feature-managed {
+    align-items: flex-start;
+    justify-content: center;
+    text-align: left;
+  }
+
+  .onsus-cover-managed-copy {
+    flex: 0 1 auto;
+    align-items: flex-start;
+  }
+
   .onsus-cover-product-image { flex: 0 1 auto; }
   .onsus-cover-product-image img { max-width: 430px; }
 
@@ -240,6 +374,13 @@
 }
 
 @media (max-width: 575px) {
+  .onsus-cover.has-managed-hero {
+    background-image:
+      linear-gradient(90deg, rgba(22, 29, 35, .72), rgba(22, 29, 35, .4)),
+      var(--hero-bg);
+  }
+  .onsus-cover-feature-managed { min-height: 300px; }
+  .onsus-cover-managed-copy h1 { font-size: clamp(34px, 11vw, 48px); }
   .onsus-cover-copy h1 span,
   .onsus-cover-copy h1 strong { font-size: clamp(34px, 10vw, 42px); }
   .onsus-cover-kicker { letter-spacing: 7px; }

@@ -91,6 +91,106 @@
   const money = (v, c) => formatPrice(v, c);
   const html = (s) => String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 
+  // ---------- Wishlist and compare ----------
+  const WISHLIST_KEY = 'shop.wishlist.v1';
+  const COMPARE_KEY = 'shop.compare.v1';
+
+  function readSavedProducts(key) {
+    try {
+      const value = JSON.parse(localStorage.getItem(key) || '[]');
+      return Array.isArray(value) ? value : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function writeSavedProducts(key, products) {
+    try {
+      localStorage.setItem(key, JSON.stringify(products));
+    } catch (e) {}
+  }
+
+  function savedProductFrom(button) {
+    return {
+      id: Number(button.dataset.id),
+      name: button.dataset.name || '',
+      price: Number(button.dataset.price || 0),
+      image: button.dataset.image || NOIMG,
+      url: button.dataset.url || ''
+    };
+  }
+
+  function showActionMessage(message) {
+    if (window.showStockAlert) {
+      window.showStockAlert(message);
+    }
+  }
+
+  function syncSavedProductButtons() {
+    const wishlistIds = readSavedProducts(WISHLIST_KEY).map(item => Number(item.id));
+    const compareIds = readSavedProducts(COMPARE_KEY).map(item => Number(item.id));
+
+    document.querySelectorAll('.js-wishlist').forEach(button => {
+      const active = wishlistIds.indexOf(Number(button.dataset.id)) !== -1;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      button.title = active ? 'Remove from wishlist' : 'Add to wishlist';
+      button.setAttribute('aria-label', button.title);
+    });
+
+    document.querySelectorAll('.js-compare').forEach(button => {
+      const active = compareIds.indexOf(Number(button.dataset.id)) !== -1;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      button.title = active ? 'Remove from compare' : 'Compare';
+      button.setAttribute('aria-label', button.title);
+    });
+
+    document.querySelectorAll('.wishlist-count').forEach(element => {
+      element.textContent = wishlistIds.length;
+    });
+    document.querySelectorAll('.wishlist-label').forEach(element => {
+      element.textContent = wishlistIds.length + (wishlistIds.length === 1 ? ' item' : ' items');
+    });
+  }
+
+  document.addEventListener('click', function (event) {
+    const wishlistButton = event.target.closest('.js-wishlist');
+    const compareButton = event.target.closest('.js-compare');
+    const button = wishlistButton || compareButton;
+    if (!button) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const key = wishlistButton ? WISHLIST_KEY : COMPARE_KEY;
+    const products = readSavedProducts(key);
+    const id = Number(button.dataset.id);
+    const existingIndex = products.findIndex(item => Number(item.id) === id);
+    let added = false;
+
+    if (existingIndex !== -1) {
+      products.splice(existingIndex, 1);
+    } else {
+      if (compareButton && products.length >= 4) {
+        showActionMessage('You can compare up to four products.');
+        return;
+      }
+      products.push(savedProductFrom(button));
+      added = true;
+    }
+
+    writeSavedProducts(key, products);
+    syncSavedProductButtons();
+    showActionMessage(
+      added
+        ? (wishlistButton ? 'Added to wishlist.' : 'Added to compare.')
+        : (wishlistButton ? 'Removed from wishlist.' : 'Removed from compare.')
+    );
+  });
+
+  document.addEventListener('DOMContentLoaded', syncSavedProductButtons);
+
   // ---------- Quick View ----------
   const qvEl = document.getElementById('quickViewModal');
   const imgEl = document.getElementById('qvImg');
@@ -152,8 +252,8 @@
     const variants = safeParse(trigger.dataset.variants);
     const simpleStock = (trigger.dataset.stock !== undefined && trigger.dataset.stock !== '')
       ? parseInt(trigger.dataset.stock, 10) : null;
-    const cardBtn = trigger.closest('.product-card')
-      ? trigger.closest('.product-card').querySelector('.js-add-to-cart') : null;
+    const productCard = trigger.closest('.product-card, .onsus-cover-card');
+    const cardBtn = productCard ? productCard.querySelector('.js-add-to-cart') : null;
     const isPreorder = cardBtn ? (cardBtn.dataset.isPreorder === '1') : false;
     const primaryImg = trigger.dataset.image || NOIMG;
 

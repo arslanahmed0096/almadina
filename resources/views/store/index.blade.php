@@ -5,11 +5,9 @@
   $currency = $s->currency_code ?? '$';
   $nlBtn = __('messages.Subscribe');
   $ref = fn (string $path) => asset('images/store/home-2/reference/images/' . ltrim($path, '/'));
-
-  $coverCards = [
-    ['category' => 'Headphone', 'title' => 'Apple AirPods Max - Premium Over-Ear Wireless Headphones', 'price' => '51.500', 'old' => '64.990', 'image' => $ref('product/product-83.jpg')],
-    ['category' => 'Smart TVs', 'title' => 'Amazon Fire TV Omni (65-inch) - 4K UHD Smart TV with Hands-Free Alexa', 'price' => '68.499', 'old' => '85.999', 'image' => $ref('product/product-12.jpg')],
-  ];
+  $heroImage = !empty($s->hero_image_path) ? asset($s->hero_image_path) : null;
+  $heroTitle = trim((string) ($s->hero_title ?? '')) ?: 'Discover your next favorite';
+  $heroSubtitle = trim((string) ($s->hero_subtitle ?? '')) ?: 'Shop our latest products and best sellers';
 
   $categoryTiles = [
     ['title' => 'Laptops & Accessories', 'image' => 'collection/cls-grid-1.jpg'],
@@ -83,26 +81,124 @@
 @endphp
 
 <div class="onsus-home home2-page">
-  <section class="onsus-cover">
+  <section
+    class="onsus-cover {{ $heroImage ? 'has-managed-hero' : '' }}"
+    @if($heroImage) style="--hero-bg:url('{{ $heroImage }}')" @endif
+  >
     <div class="container">
       <div class="onsus-cover-inner">
-        <div class="onsus-cover-feature">
-          <a href="{{ route('store.shop') }}" class="onsus-cover-product-image"><img src="{{ $ref('item/dou-headphone.png') }}" alt="Silver over-ear headphones"></a>
-          <div class="onsus-cover-copy">
-            <span class="onsus-cover-kicker">New arrival</span>
-            <h1><span>Headset &amp;</span><strong>Headphone</strong></h1>
-            <span class="onsus-cover-starting">Starting</span>
-            <b class="onsus-cover-price">{{ $currency }}250</b>
+        <div class="onsus-cover-feature onsus-cover-feature-managed">
+          <div class="onsus-cover-managed-copy">
+            <span class="onsus-cover-kicker">{{ $heroSubtitle }}</span>
+            <h1>{{ $heroTitle }}</h1>
+            <a href="{{ route('store.shop') }}" class="onsus-cover-shop">Shop now</a>
           </div>
         </div>
-        <div class="onsus-cover-cards">
-          @foreach($coverCards as $card)
-            <a href="{{ route('store.shop', ['q' => $card['title']]) }}" class="onsus-cover-card">
-              <span class="onsus-cover-card-image"><img src="{{ $card['image'] }}" alt="{{ $card['title'] }}"></span>
-              <span class="onsus-cover-card-info"><small>{{ $card['category'] }}</small><strong>{{ $card['title'] }}</strong><span class="onsus-cover-card-price">{{ $currency }}{{ $card['price'] }}</span><del>{{ $currency }}{{ $card['old'] }}</del></span>
-            </a>
-          @endforeach
-        </div>
+        @if(($heroProducts ?? collect())->isNotEmpty())
+          <div class="onsus-cover-cards">
+            @foreach($heroProducts->take(2) as $product)
+              @php
+                $heroProductHref = route('store.shop', ['q' => $product->name]);
+                $heroProductSlug = $product->slug ?? (string) $product->id;
+                $heroDescription = \Illuminate\Support\Str::limit(strip_tags($product->note ?? ''), 600);
+                $heroGalleryUrls = collect($product->productGalleryFilenames())
+                  ->map(fn ($filename) => $filename ? asset('images/products/' . $filename) : null)
+                  ->filter()
+                  ->values()
+                  ->all();
+                $heroVariants = collect($product->variants ?? []);
+                $heroVariantPayload = $heroVariants->map(fn ($variant) => [
+                  'id' => (int) $variant->id,
+                  'name' => (string) $variant->name,
+                  'price' => (float) $variant->price,
+                  'display_price' => (float) ($variant->display_price ?? $variant->price),
+                  'image' => !empty($variant->image) ? asset('images/products/' . $variant->image) : null,
+                  'stock' => (int) max(0, $variant->stock ?? 0),
+                ])->values();
+                $heroSimpleStock = $heroVariants->isEmpty() ? (int) max(0, $product->stock ?? 0) : null;
+                $heroAvailable = (bool) ($s->allow_overselling ?? true)
+                  || ($heroVariants->isNotEmpty()
+                    ? $heroVariantPayload->contains(fn ($variant) => ($variant['stock'] ?? 0) > 0)
+                    : $heroSimpleStock > 0);
+              @endphp
+              <article class="onsus-cover-card">
+                <a href="{{ $heroProductHref }}" class="onsus-cover-card-image">
+                  <img src="{{ $product->hero_image_url }}" alt="{{ $product->name }}">
+                </a>
+                <span class="onsus-cover-card-info">
+                  <small>{{ $product->category->name ?? __('Product') }}</small>
+                  <a href="{{ $heroProductHref }}" class="onsus-cover-card-title">{{ $product->name }}</a>
+                  <span class="onsus-cover-card-price">{{ $currency }}{{ number_format($product->display_price, 3) }}</span>
+                  @if($product->original_price > $product->display_price)
+                    <del>{{ $currency }}{{ number_format($product->original_price, 3) }}</del>
+                  @endif
+                  <span class="onsus-cover-card-actions" aria-label="Product actions">
+                    <button
+                      type="button"
+                      class="onsus-cover-card-action js-add-to-cart"
+                      title="{{ __('messages.AddToCart') }}"
+                      aria-label="{{ __('messages.AddToCart') }}"
+                      @if(!$heroAvailable) disabled @endif
+                      data-out-of-stock="{{ $heroAvailable ? '0' : '1' }}"
+                      data-id="{{ $product->id }}"
+                      data-product-id="{{ $product->id }}"
+                      data-slug="{{ $heroProductSlug }}"
+                      data-name="{{ e($product->name) }}"
+                      data-price="{{ number_format($product->display_price, 2, '.', '') }}"
+                      data-image="{{ $product->hero_image_url }}"
+                      data-product-image="{{ $product->hero_image_url }}"
+                      data-currency="{{ $currency }}"
+                      data-qty="1"
+                      data-stock="{{ $heroSimpleStock !== null ? $heroSimpleStock : '' }}"
+                      data-variants='@json($heroVariantPayload)'
+                      data-added-label="{{ __('messages.Added') }}"
+                    ><x-store.icon name="bag" class="w-4 h-4" /></button>
+                    <button
+                      type="button"
+                      class="onsus-cover-card-action js-wishlist"
+                      title="Add to wishlist"
+                      aria-label="Add to wishlist"
+                      aria-pressed="false"
+                      data-id="{{ $product->id }}"
+                      data-name="{{ e($product->name) }}"
+                      data-price="{{ number_format($product->display_price, 2, '.', '') }}"
+                      data-image="{{ $product->hero_image_url }}"
+                      data-url="{{ $heroProductHref }}"
+                    ><x-store.icon name="heart" class="w-4 h-4" /></button>
+                    <button
+                      type="button"
+                      class="onsus-cover-card-action js-quick-view"
+                      title="{{ __('messages.QuickView') }}"
+                      aria-label="{{ __('messages.QuickView') }}"
+                      data-id="{{ $product->id }}"
+                      data-slug="{{ $heroProductSlug }}"
+                      data-name="{{ e($product->name) }}"
+                      data-price="{{ number_format($product->display_price, 2, '.', '') }}"
+                      data-image="{{ $product->hero_image_url }}"
+                      data-gallery='@json($heroGalleryUrls)'
+                      data-currency="{{ $currency }}"
+                      data-description="{{ e($heroDescription) }}"
+                      data-stock="{{ $heroSimpleStock !== null ? $heroSimpleStock : '' }}"
+                      data-variants='@json($heroVariantPayload)'
+                    ><x-store.icon name="eye" class="w-4 h-4" /></button>
+                    <button
+                      type="button"
+                      class="onsus-cover-card-action js-compare"
+                      title="Compare"
+                      aria-label="Compare"
+                      aria-pressed="false"
+                      data-id="{{ $product->id }}"
+                      data-name="{{ e($product->name) }}"
+                      data-price="{{ number_format($product->display_price, 2, '.', '') }}"
+                      data-image="{{ $product->hero_image_url }}"
+                      data-url="{{ $heroProductHref }}"
+                    ><x-store.icon name="shuffle" class="w-4 h-4" /></button>
+                  </span>
+                </span>
+              </article>
+            @endforeach
+          </div>
+        @endif
       </div>
     </div>
   </section>
