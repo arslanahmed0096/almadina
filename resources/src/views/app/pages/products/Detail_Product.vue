@@ -176,6 +176,14 @@
             </div>
           </div>
 
+          <div :style="statCardStyle('#7c3aed', '#f5f3ff')">
+            <div :style="statIconStyle('#7c3aed')"><lucide-icon name="badge-dollar-sign" /></div>
+            <div>
+              <div :style="statLabelStyle">{{ $t('FixPrice') }}</div>
+              <div :style="statValueStyle">{{ formatPriceWithSymbol(currentUser && currentUser.currency, product.fix_price, 2) }}</div>
+            </div>
+          </div>
+
           <div :style="statCardStyle('#f59e0b', '#fffbeb')">
             <div :style="statIconStyle('#f59e0b')"><lucide-icon name="store" /></div>
             <div>
@@ -260,6 +268,10 @@
                   <div :style="infoRow" v-if="product.type != 'is_variant'">
                     <span :style="infoKey">{{ $t('Price') }}</span>
                     <span :style="infoValAccent('#10b981')">{{ formatPriceWithSymbol(currentUser && currentUser.currency, product.price, 2) }}</span>
+                  </div>
+                  <div :style="infoRow" v-if="product.type != 'is_variant'">
+                    <span :style="infoKey">{{ $t('FixPrice') }}</span>
+                    <span :style="infoValAccent('#7c3aed')">{{ formatPriceWithSymbol(currentUser && currentUser.currency, product.fix_price, 2) }}</span>
                   </div>
                   <div :style="infoRow" v-if="product.type != 'is_variant'">
                     <span :style="infoKey">{{ $t('Wholesale_Price') }}</span>
@@ -486,6 +498,7 @@
                   <th :style="thStyle">{{ $t('Variant_Name') }}</th>
                   <th :style="{ ...thStyle, textAlign: 'right' }">{{ $t('Variant_cost') }}</th>
                   <th :style="{ ...thStyle, textAlign: 'right' }">{{ $t('Variant_price') }}</th>
+                  <th :style="{ ...thStyle, textAlign: 'right' }">{{ $t('FixPrice') }}</th>
                   <th :style="{ ...thStyle, textAlign: 'right' }">{{ $t('Wholesale_Price') }}</th>
                   <th :style="{ ...thStyle, textAlign: 'right' }">{{ $t('Min_Selling_Price') }}</th>
                 </tr>
@@ -496,6 +509,7 @@
                   <td :style="tdStyle">{{ v.name }}</td>
                   <td :style="{ ...tdStyle, textAlign: 'right', color: '#4f46e5' }">{{ formatPriceWithSymbol(currentUser && currentUser.currency, v.cost, 2) }}</td>
                   <td :style="{ ...tdStyle, textAlign: 'right', color: '#10b981', fontWeight: '600' }">{{ formatPriceWithSymbol(currentUser && currentUser.currency, v.price, 2) }}</td>
+                  <td :style="{ ...tdStyle, textAlign: 'right', color: '#7c3aed' }">{{ formatPriceWithSymbol(currentUser && currentUser.currency, v.fix_price, 2) }}</td>
                   <td :style="{ ...tdStyle, textAlign: 'right', color: '#f59e0b' }">{{ formatPriceWithSymbol(currentUser && currentUser.currency, v.wholesale, 2) }}</td>
                   <td :style="{ ...tdStyle, textAlign: 'right', color: '#ef4444' }">{{ formatPriceWithSymbol(currentUser && currentUser.currency, v.min_price, 2) }}</td>
                 </tr>

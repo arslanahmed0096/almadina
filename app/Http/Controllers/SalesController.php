@@ -1251,7 +1251,7 @@ class SalesController extends BaseController
         // New way: Check user's record_view field (user-level boolean)
         // Backward compatibility: If record_view is null, fall back to role permission check
         $view_records = $user->hasRecordView();
-        $sale_data = Sale::with('details.product.unitSale')
+        $sale_data = Sale::with(['details.product.unitSale', 'salesAgent:id,name,phone'])
             ->where('deleted_at', '=', null)
             ->findOrFail($id);
 
@@ -1283,6 +1283,12 @@ class SalesController extends BaseController
         $sale_details['paid_amount'] = number_format($sale_data->paid_amount, 2, '.', '');
         $sale_details['due'] = number_format($sale_details['GrandTotal'] - $sale_details['paid_amount'], 2, '.', '');
         $sale_details['payment_status'] = $sale_data->payment_statut;
+        $sale_details['sales_agent_name'] = $sale_data->salesAgent
+            ? Str::title(Str::lower(trim((string) $sale_data->salesAgent->name)))
+            : null;
+        $sale_details['sales_agent_phone'] = $sale_data->salesAgent
+            ? trim((string) $sale_data->salesAgent->phone)
+            : null;
         $sale_details['discount_from_points'] = $sale_data->discount_from_points ?? 0;
 
         if (SaleReturn::where('sale_id', $id)->where('deleted_at', '=', null)->exists()) {
@@ -2216,7 +2222,7 @@ class SalesController extends BaseController
 
         $details = [];
         $helpers = new helpers;
-        $sale_data = Sale::with('details.product.unitSale')
+        $sale_data = Sale::with(['details.product.unitSale', 'warehouse', 'salesAgent:id,name,phone'])
             ->where('deleted_at', '=', null)
             ->findOrFail($id);
 
@@ -2237,6 +2243,12 @@ class SalesController extends BaseController
         $sale['paid_amount'] = number_format($sale_data->paid_amount, 2, '.', '');
         $sale['due'] = number_format($sale['GrandTotal'] - $sale['paid_amount'], 2, '.', '');
         $sale['payment_status'] = $sale_data->payment_statut;
+        $sale['sales_agent_name'] = $sale_data->salesAgent
+            ? Str::title(Str::lower(trim((string) $sale_data->salesAgent->name)))
+            : null;
+        $sale['sales_agent_phone'] = $sale_data->salesAgent
+            ? trim((string) $sale_data->salesAgent->phone)
+            : null;
 
         $detail_id = 0;
         foreach ($sale_data['details'] as $detail) {
@@ -2298,11 +2310,13 @@ class SalesController extends BaseController
             $details[] = $data;
         }
         $settings = Setting::where('deleted_at', '=', null)->first();
+        $store = $this->saleInvoiceStoreData($sale_data, $settings);
         $symbol = $helpers->Get_Currency_Code();
 
         $Html = view('pdf.sale_pdf', [
             'symbol' => $symbol,
             'setting' => $settings,
+            'store' => $store,
             'sale' => $sale,
             'details' => $details,
         ])->render();
@@ -2332,7 +2346,7 @@ class SalesController extends BaseController
     {
         $details = [];
         $helpers = new helpers;
-        $sale_data = Sale::with('details.product.unitSale')
+        $sale_data = Sale::with(['details.product.unitSale', 'warehouse', 'salesAgent:id,name,phone'])
             ->where('deleted_at', '=', null)
             ->findOrFail($id);
 
@@ -2353,6 +2367,12 @@ class SalesController extends BaseController
         $sale['paid_amount'] = number_format($sale_data->paid_amount, 2, '.', '');
         $sale['due'] = number_format($sale['GrandTotal'] - $sale['paid_amount'], 2, '.', '');
         $sale['payment_status'] = $sale_data->payment_statut;
+        $sale['sales_agent_name'] = $sale_data->salesAgent
+            ? Str::title(Str::lower(trim((string) $sale_data->salesAgent->name)))
+            : null;
+        $sale['sales_agent_phone'] = $sale_data->salesAgent
+            ? trim((string) $sale_data->salesAgent->phone)
+            : null;
 
         $detail_id = 0;
         foreach ($sale_data['details'] as $detail) {
@@ -2413,11 +2433,13 @@ class SalesController extends BaseController
         }
 
         $settings = Setting::where('deleted_at', '=', null)->first();
+        $store = $this->saleInvoiceStoreData($sale_data, $settings);
         $symbol = $helpers->Get_Currency_Code();
 
         $Html = view('pdf.sale_pdf', [
             'symbol' => $symbol,
             'setting' => $settings,
+            'store' => $store,
             'sale' => $sale,
             'details' => $details,
         ])->render();
@@ -2449,6 +2471,31 @@ class SalesController extends BaseController
 
         // Return raw HTML so the POS popup can inject it and call window.print().
         return response($Html);
+    }
+
+    /**
+     * Store/warehouse identity shown on sale invoices.
+     */
+    private function saleInvoiceStoreData(Sale $sale, ?Setting $settings): array
+    {
+        $warehouse = $sale->warehouse;
+        $warehouseAddress = collect([
+            $warehouse?->city,
+            $warehouse?->country,
+            $warehouse?->zip,
+        ])
+            ->map(fn ($part) => trim((string) $part))
+            ->filter()
+            ->implode(', ');
+
+        return [
+            'name' => trim((string) ($warehouse?->name ?: $settings?->CompanyName)),
+            'address' => $warehouseAddress !== ''
+                ? $warehouseAddress
+                : trim((string) ($settings?->CompanyAdress ?? '')),
+            'phone' => trim((string) ($warehouse?->mobile ?: $settings?->CompanyPhone)),
+            'email' => trim((string) ($warehouse?->email ?: $settings?->email)),
+        ];
     }
 
     // ----------------Show Form Create Sale ---------------\\

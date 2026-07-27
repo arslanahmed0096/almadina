@@ -122,7 +122,7 @@
                 </b-dropdown-item>
 
                 <b-dropdown-item
-                  v-if="currentUserPermissions.includes('payment_sales_add') && props.row.statut =='completed'"
+                  v-if="currentUserPermissions.includes('payment_sales_add')"
                   @click="New_Payment(props.row)"
                 >
                   <lucide-icon class="nav-icon font-weight-bold mr-2" name="plus" />
