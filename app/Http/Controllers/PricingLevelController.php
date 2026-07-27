@@ -27,7 +27,9 @@ class PricingLevelController extends Controller
         $this->authorizePricingLevel($request);
 
         $user = $request->user('api');
-        $limit = max(1, min((int) $request->input('limit', 10), 100));
+        $requestedLimit = (int) $request->input('limit', 10);
+        $showAll = $requestedLimit === -1;
+        $limit = $showAll ? null : max(1, min($requestedLimit, 100));
         $sortField = (string) $request->input('SortField', 'id');
         $sortType = strtolower((string) $request->input('SortType', 'desc'));
         $allowedSorts = ['id', 'date', 'brand_id', 'category_id', 'total_products', 'created_at'];
@@ -65,6 +67,10 @@ class PricingLevelController extends Controller
         }
 
         $totalRows = (clone $query)->count();
+        if ($showAll) {
+            $limit = max($totalRows, 1);
+        }
+
         $entries = $query->orderBy($sortField, $sortType)
             ->paginate($limit);
 
