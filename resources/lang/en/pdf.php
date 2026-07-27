@@ -7,6 +7,7 @@ return [
     'invoice_no' => 'Invoice #',
     'status' => 'Status',
     'payment' => 'Payment',
+    'sales_agent' => 'Sales Agent',
     'bill_to' => 'BILL TO',
     'from' => 'FROM',
     'phone' => 'Phone',

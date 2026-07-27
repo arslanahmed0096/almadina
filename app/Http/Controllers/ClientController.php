@@ -120,6 +120,8 @@ class ClientController extends BaseController
             $item['firstname'] = $client->firstname;
             $item['lastname'] = $client->lastname;
             $item['name'] = $client->name;
+            $item['username'] = $client->username;
+            $item['company_name'] = $client->company_name;
             $item['phone'] = $client->phone;
             $item['tax_number'] = $client->tax_number;
             $item['code'] = $client->code;
@@ -165,9 +167,11 @@ class ClientController extends BaseController
         $this->authorizeForUser($request->user('api'), 'create', Client::class);
 
         $this->validate($request, [
-            'name' => 'required',
+            'name' => ['required', 'string', 'max:255'],
             'firstname' => ['nullable', 'string', 'max:255'],
             'lastname' => ['nullable', 'string', 'max:255'],
+            'username' => ['nullable', 'string', 'max:255'],
+            'company_name' => ['nullable', 'string', 'max:255'],
             'email' => [
                 'nullable', 'email', 'max:255',
                 // Ensure email is unique in clients table (exclude soft-deleted)
@@ -187,6 +191,8 @@ class ClientController extends BaseController
             'firstname' => $request['firstname'],
             'lastname' => $request['lastname'],
             'name' => $request['name'],
+            'username' => $request->input('username'),
+            'company_name' => $request->input('company_name'),
             'code' => $this->getNumberOrder(),
             'adresse' => $request['adresse'],
             'phone' => $request['phone'],
@@ -237,6 +243,8 @@ class ClientController extends BaseController
             'name' => ['required', 'string', 'max:255'],
             'firstname' => ['nullable', 'string', 'max:255'],
             'lastname' => ['nullable', 'string', 'max:255'],
+            'username' => ['nullable', 'string', 'max:255'],
+            'company_name' => ['nullable', 'string', 'max:255'],
             'adresse' => ['nullable', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:50'],
             'email' => [
@@ -258,10 +266,6 @@ class ClientController extends BaseController
             'credit_limit' => ['nullable', 'numeric', 'min:0'],
 
             // EcommerceClient-specific (optional)
-            'username' => [
-                'nullable', 'string', 'max:100',
-                Rule::unique('ecommerce_clients', 'username')->ignore($id, 'client_id'),
-            ],
             'status' => ['nullable', Rule::in(['active', 'inactive'])],
             'password' => ['nullable', 'string', 'min:6'],
 
@@ -272,13 +276,15 @@ class ClientController extends BaseController
         // Normalize boolean flag from various inputs: '1', 'true', true, etc.
         $isRoyaltyEligible = filter_var($request->input('is_royalty_eligible'), FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
 
-        DB::transaction(function () use ($request, $id, $isRoyaltyEligible) {
+        DB::transaction(function () use ($request, $id, $isRoyaltyEligible, $existingEcommerceClient) {
             // 1) Update Client
             // opening_balance is adjusted via the dedicated adjust-opening-balance endpoint
             Client::whereKey($id)->update([
                 'firstname' => $request->input('firstname'),
                 'lastname' => $request->input('lastname'),
                 'name' => $request->input('name'),
+                'username' => $request->input('username'),
+                'company_name' => $request->input('company_name'),
                 'adresse' => $request->input('adresse'),
                 'phone' => $request->input('phone'),
                 'email' => $request->input('email'),
@@ -291,20 +297,28 @@ class ClientController extends BaseController
                 'credit_limit' => $request->input('credit_limit', 0),
             ]);
 
-            // 2) Upsert EcommerceClient linked by client_id
-            $payload = [
-                'username' => $request->input('username', $request->input('name')), // default to name if username absent
-                'email' => $request->input('email'),
-            ];
+            // Portal credentials are managed separately. If this customer
+            // already has a portal account, only sync non-empty values so
+            // optional customer fields cannot invalidate portal login data.
+            if ($existingEcommerceClient) {
+                $portalPayload = [];
 
-            if ($request->filled('password')) {
-                $payload['password'] = Hash::make($request->input('password'));
+                if ($request->filled('username')) {
+                    $portalPayload['username'] = $request->input('username');
+                }
+
+                if ($request->filled('email')) {
+                    $portalPayload['email'] = $request->input('email');
+                }
+
+                if ($request->filled('password')) {
+                    $portalPayload['password'] = Hash::make($request->input('password'));
+                }
+
+                if ($portalPayload) {
+                    $existingEcommerceClient->update($portalPayload);
+                }
             }
-
-            EcommerceClient::updateOrCreate(
-                ['client_id' => $id], // lookup by client_id
-                $payload
-            );
         });
 
         return response()->json(['success' => true]);

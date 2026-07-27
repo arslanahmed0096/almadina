@@ -6,78 +6,76 @@
       <b-card>
         <b-form @submit.prevent="Submit_Customer">
           <b-row>
-            <!-- First name -->
+            <!-- Full name -->
             <b-col md="6" sm="12">
               <validation-provider
-                name="Firstname"
-                :rules="{ required: true }"
+                name="Full Name"
+                rules="required"
                 v-slot="validationContext"
               >
-                <b-form-group :label="$t('Firstname') + ' ' + '*'">
-                  <b-form-input
-                    :state="getValidationState(validationContext)"
-                    aria-describedby="firstname-feedback"
-                    label="Firstname"
-                    :placeholder="$t('Firstname')"
-                    v-model="client.firstname"
-                  ></b-form-input>
-                  <b-form-invalid-feedback id="firstname-feedback">{{ validationContext.errors[0] }}</b-form-invalid-feedback>
-                </b-form-group>
-              </validation-provider>
-            </b-col>
-
-            <!-- Last name -->
-            <b-col md="6" sm="12">
-              <validation-provider
-                name="lastname"
-                :rules="{ required: true }"
-                v-slot="validationContext"
-              >
-                <b-form-group :label="$t('lastname') + ' ' + '*'">
-                  <b-form-input
-                    :state="getValidationState(validationContext)"
-                    aria-describedby="lastname-feedback"
-                    label="lastname"
-                    :placeholder="$t('lastname')"
-                    v-model="client.lastname"
-                  ></b-form-input>
-                  <b-form-invalid-feedback id="lastname-feedback">{{ validationContext.errors[0] }}</b-form-invalid-feedback>
-                </b-form-group>
-              </validation-provider>
-            </b-col>
-
-            <!-- Username -->
-            <b-col md="6" sm="12">
-              <validation-provider
-                name="Username"
-                :rules="{ required: true}"
-                v-slot="validationContext"
-              >
-                <b-form-group :label="'Username' + ' ' + '*'">
+                <b-form-group :label="$t('FullName') + ' *'">
                   <b-form-input
                     :state="getValidationState(validationContext)"
                     aria-describedby="name-feedback"
-                    label="name"
-                    :placeholder="'Username'"
+                    :placeholder="$t('FullName')"
                     v-model="client.name"
                   ></b-form-input>
                   <b-form-invalid-feedback id="name-feedback">{{ validationContext.errors[0] }}</b-form-invalid-feedback>
                 </b-form-group>
               </validation-provider>
             </b-col>
-            
-             <!-- Customer Email -->
+
+            <!-- Company name -->
+            <b-col md="6" sm="12">
+              <b-form-group :label="$t('CompanyName')">
+                <b-form-input
+                  :placeholder="$t('CompanyName')"
+                  v-model="client.company_name"
+                ></b-form-input>
+              </b-form-group>
+            </b-col>
+
+            <!-- First name -->
+            <b-col md="6" sm="12">
+              <b-form-group :label="$t('Firstname')">
+                <b-form-input
+                  :placeholder="$t('Firstname')"
+                  v-model="client.firstname"
+                ></b-form-input>
+              </b-form-group>
+            </b-col>
+
+            <!-- Last name -->
+            <b-col md="6" sm="12">
+              <b-form-group :label="$t('lastname')">
+                <b-form-input
+                  :placeholder="$t('lastname')"
+                  v-model="client.lastname"
+                ></b-form-input>
+              </b-form-group>
+            </b-col>
+
+            <!-- Username -->
+            <b-col md="6" sm="12">
+              <b-form-group :label="$t('Username')">
+                <b-form-input
+                  :placeholder="$t('Username')"
+                  v-model="client.username"
+                ></b-form-input>
+              </b-form-group>
+            </b-col>
+
+            <!-- Customer Email -->
             <b-col md="6" sm="12">
               <validation-provider
                 name="Email"
-                :rules="{ required: true }"
+                rules="email"
                 v-slot="validationContext"
               >
-                <b-form-group :label="$t('Email') + ' ' + '*'">
+                <b-form-group :label="$t('Email')">
                   <b-form-input
                     :state="getValidationState(validationContext)"
                     aria-describedby="email-feedback"
-                    label="email"
                     v-model="client.email"
                     :placeholder="$t('Email')"
                   ></b-form-input>
@@ -242,6 +240,8 @@ export default {
         firstname: "",
         lastname: "",
         name: "",
+        username: "",
+        company_name: "",
         email: "",
         phone: "",
         country: "",
@@ -260,16 +260,6 @@ export default {
   methods: {
     //------------- Submit Validation Create Customer
     Submit_Customer() {
-      // Prefer using firstname/lastname to build name when empty
-      const fullName = [this.client.firstname, this.client.lastname]
-        .map(v => (v || "").trim())
-        .filter(Boolean)
-        .join(" ")
-        .trim();
-      if (!this.client.name && fullName) {
-        this.client.name = fullName;
-      }
-
       this.$refs.Create_Customer.validate().then(success => {
         if (!success) {
           this.makeToast(
@@ -291,6 +281,8 @@ export default {
           firstname: this.client.firstname,
           lastname: this.client.lastname,
           name: this.client.name,
+          username: this.client.username,
+          company_name: this.client.company_name,
           email: this.client.email,
           phone: this.client.phone,
           tax_number: this.client.tax_number,

@@ -68,7 +68,7 @@ class ProductsController extends BaseController
             $dir = 'asc';
         }
 
-        $allowedSort = ['id', 'name', 'category_id', 'brand_id', 'code', 'sub_category_id'];
+        $allowedSort = ['id', 'name', 'category_id', 'brand_id', 'code', 'sub_category_id', 'fix_price'];
         if (! in_array($order, $allowedSort, true)) {
             $order = 'name';
         }
@@ -177,6 +177,8 @@ class ProductsController extends BaseController
                 $item['fix_price'] = (float) $product->fix_price;
                 $item['wholesale_price'] = (float) $product->wholesale_price;
                 $item['min_price'] = (float) $product->min_price;
+            } else {
+                $item['fix_price'] = number_format((float) $product->fix_price, 2, '.', '');
             }
             $item['created_at'] = $product->created_at ? $product->created_at->toIso8601String() : null;
             $item['pricing_updated_at'] = $product->updated_at ? $product->updated_at->toIso8601String() : null;
@@ -280,6 +282,11 @@ class ProductsController extends BaseController
                 $item['price'] = $variants
                     ->map(fn ($v) => number_format((float) $v->price, 2, '.', ''))
                     ->implode("\n");
+                if (! $isPricingRequest) {
+                    $item['fix_price'] = $variants
+                        ->map(fn ($v) => number_format((float) $v->fix_price, 2, '.', ''))
+                        ->implode("\n");
+                }
                 $item['unit'] = optional($product->unit)->ShortName;
 
                 $qtyQuery = product_warehouse::where('product_id', $product->id)
@@ -1872,6 +1879,7 @@ class ProductsController extends BaseController
                 $ProductVariant['name'] = $variant->name;
                 $ProductVariant['cost'] = number_format($variant->cost, 2, '.', ',');
                 $ProductVariant['price'] = number_format($variant->price, 2, '.', ',');
+                $ProductVariant['fix_price'] = number_format((float) $variant->fix_price, 2, '.', ',');
                 $ProductVariant['wholesale'] = isset($variant->wholesale)
                     ? number_format((float) $variant->wholesale, 2, '.', ',')
                     : number_format(0, 2, '.', ',');

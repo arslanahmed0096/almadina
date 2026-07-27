@@ -5,6 +5,7 @@ namespace App\utils;
 use App\Models\Currency;
 use App\Models\Role;
 use App\Models\Setting;
+use App\Models\StoreSetting;
 use Illuminate\Support\Facades\Auth;
 
 class helpers
@@ -88,41 +89,45 @@ class helpers
     // Get Currency
     public function Get_Currency()
     {
-        $settings = Setting::with('Currency')->where('deleted_at', '=', null)->first();
-
-        if ($settings && $settings->currency_id) {
-            if (Currency::where('id', $settings->currency_id)
-                ->where('deleted_at', '=', null)
-                ->first()) {
-                $symbol = $settings['Currency']->symbol;
-            } else {
-                $symbol = '';
-            }
-        } else {
-            $symbol = '';
-        }
-
-        return $symbol;
+        return (string) ($this->resolveCurrency()?->symbol ?? '');
     }
 
     // Get Currency COde
     public function Get_Currency_Code()
     {
-        $settings = Setting::with('Currency')->where('deleted_at', '=', null)->first();
+        return (string) ($this->resolveCurrency()?->code ?? 'usd');
+    }
 
-        if ($settings && $settings->currency_id) {
-            if (Currency::where('id', $settings->currency_id)
-                ->where('deleted_at', '=', null)
-                ->first()) {
-                $code = $settings['Currency']->code;
-            } else {
-                $code = 'usd';
-            }
-        } else {
-            $code = 'usd';
+    /**
+     * Resolve the configured currency without silently falling back to USD when
+     * the settings relation is temporarily missing. The storefront currency is
+     * a reliable secondary source, followed by the sole active currency.
+     */
+    private function resolveCurrency(): ?Currency
+    {
+        $settings = Setting::with('Currency')->whereNull('deleted_at')->first();
+        if ($settings?->Currency && $settings->Currency->deleted_at === null) {
+            return $settings->Currency;
         }
 
-        return $code;
+        $storeCurrency = trim((string) (StoreSetting::query()->value('currency_code') ?? ''));
+        if ($storeCurrency !== '') {
+            $currency = Currency::query()
+                ->whereNull('deleted_at')
+                ->where(function ($query) use ($storeCurrency) {
+                    $query->where('code', $storeCurrency)
+                        ->orWhere('symbol', $storeCurrency);
+                })
+                ->first();
+
+            if ($currency) {
+                return $currency;
+            }
+        }
+
+        $activeCurrencies = Currency::whereNull('deleted_at')->limit(2)->get();
+
+        return $activeCurrencies->count() === 1 ? $activeCurrencies->first() : null;
     }
 
     /**
