@@ -12,6 +12,7 @@ use App\utils\helpers;
 use ArPHP\I18N\Arabic;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use PDF;
 
 class PortalInvoicePdfController extends Controller
@@ -27,7 +28,7 @@ class PortalInvoicePdfController extends Controller
         $sale = Sale::whereNull('deleted_at')
             ->where('client_id', $portalClient->client_id)
             ->where('id', $id)
-            ->with(['details.product.unitSale', 'client'])
+            ->with(['details.product.unitSale', 'client', 'salesAgent:id,name,phone'])
             ->firstOrFail();
 
         $helpers = new helpers;
@@ -53,6 +54,12 @@ class PortalInvoicePdfController extends Controller
         $sale['paid_amount'] = number_format($sale_data->paid_amount ?? 0, 2, '.', '');
         $sale['due'] = number_format((float) $sale_data->GrandTotal - (float) ($sale_data->paid_amount ?? 0), 2, '.', '');
         $sale['payment_status'] = $sale_data->payment_statut;
+        $sale['sales_agent_name'] = $sale_data->salesAgent
+            ? Str::title(Str::lower(trim((string) $sale_data->salesAgent->name)))
+            : null;
+        $sale['sales_agent_phone'] = $sale_data->salesAgent
+            ? trim((string) $sale_data->salesAgent->phone)
+            : null;
 
         $details = [];
         $detail_id = 0;

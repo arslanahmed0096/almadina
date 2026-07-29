@@ -985,14 +985,6 @@ export default {
   metaInfo: {
     title: "Create Sale"
   },
-  computed: {
-    customerOptions() {
-      return this.uniqueClients(this.clients).map(client => ({
-        label: this.customerOptionLabel(client),
-        value: client.id
-      }));
-    }
-  },
   data() {
     return {
       focused: false,
@@ -1124,6 +1116,14 @@ export default {
 
   computed: {
     ...mapGetters(["currentUserPermissions","currentUser"]),
+
+    customerOptions() {
+      return this.uniqueClients(this.clients).map(client => ({
+        label: this.customerOptionLabel(client),
+        value: client.id
+      }));
+    },
+
     pointsInputValid() {
       const max = Number(this.selectedClientPoints) || 0;
       const val = Number(this.points_to_convert);

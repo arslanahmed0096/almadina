@@ -7,6 +7,7 @@ return [
     'invoice_no' => 'رقم الفاتورة',
     'status' => 'الحالة',
     'payment' => 'الدفع',
+    'sales_agent' => 'مندوب المبيعات',
     'bill_to' => 'إلى',
     'from' => 'من',
     'phone' => 'الهاتف',

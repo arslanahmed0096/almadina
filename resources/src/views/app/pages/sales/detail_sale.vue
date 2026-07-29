@@ -109,6 +109,13 @@
                       <span :class="getPaymentBadgeClass(sale.payment_status)">{{sale.payment_status}}</span>
                     </td>
                   </tr>
+                  <tr v-if="sale.sales_agent_name">
+                    <td class="invoice-meta-label">{{ $t('SalesAgent') }}:</td>
+                    <td class="invoice-meta-value">
+                      <strong>{{ sale.sales_agent_name }}</strong>
+                      <span v-if="sale.sales_agent_phone"> ({{ sale.sales_agent_phone }})</span>
+                    </td>
+                  </tr>
                 </table>
               </td>
             </tr>

@@ -242,12 +242,8 @@ class UpdateController extends Controller
                     118 => 'webhooks_edit',
                     119 => 'webhooks_delete',
                     120 => 'sales_3d_dashboard',
-                    121 => 'batch_view',
-                    122 => 'batch_manage',
-                    123 => 'batch_writeoff',
-                    124 => 'batch_force_override',
-                    125 => 'expiry_report',
-                    126 => 'Batch_Register_Report',
+                    121 => 'products_cost_view',
+                    122 => 'pricing_level',
 
                 ];
 

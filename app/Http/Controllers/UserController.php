@@ -96,7 +96,9 @@ class UserController extends BaseController
 
         $userData = [
             'id' => $user->id,
-            'avatar' => $user->avatar,
+            'avatar' => empty($user->avatar) || $user->avatar === 'no_avatar.png'
+                ? 'default_avatar.png'
+                : $user->avatar,
             'username' => $user->username,
             'currency' => $helpers->Get_Currency(),
             'logo' => $settings->logo ?? null,
@@ -160,7 +162,7 @@ class UserController extends BaseController
                 $image_resize->resize(128, 128);
                 $image_resize->save(public_path('/images/avatar/' . $filename));
             } else {
-                $filename = 'no_avatar.png';
+                $filename = 'default_avatar.png';
             }
 
             if ($request['is_all_warehouses'] == '1' || $request['is_all_warehouses'] == 'true') {
@@ -282,7 +284,7 @@ class UserController extends BaseController
 
                     $userPhoto = $path . '/' . $currentAvatar;
                     if (file_exists($userPhoto)) {
-                        if ($user->avatar != 'no_avatar.png') {
+                        if (! in_array($user->avatar, ['no_avatar.png', 'default_avatar.png'], true)) {
                             @unlink($userPhoto);
                         }
                     }
@@ -425,7 +427,7 @@ class UserController extends BaseController
                 $userPhoto = $path . '/' . $currentAvatar;
 
                 if (file_exists($userPhoto)) {
-                    if ($user->avatar != 'no_avatar.png') {
+                    if (! in_array($user->avatar, ['no_avatar.png', 'default_avatar.png'], true)) {
                         @unlink($userPhoto);
                     }
                 }

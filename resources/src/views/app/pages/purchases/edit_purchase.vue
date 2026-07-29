@@ -124,8 +124,12 @@
                         </tr>
                         <template v-for="detail in details">
                         <tr
-                          :class="{'row_deleted': detail.del === 1 || detail.no_unit === 0}"
                           :key="'detail-'+detail.detail_id"
+                          :ref="'purchase_detail_' + detail.detail_id"
+                          :class="{
+                            'row_deleted': detail.del === 1 || detail.no_unit === 0,
+                            'purchase-row-highlight': highlightedDetailId === detail.detail_id
+                          }"
                         >
                           <td>{{detail.detail_id}}</td>
                           <td>
@@ -695,6 +699,8 @@ export default {
     return {
       focused: false,
       timer:null,
+      highlightTimer: null,
+      highlightedDetailId: null,
       search_input:'',
       product_filter:[],
       isLoading: true,
@@ -1023,11 +1029,10 @@ export default {
     //------  Submit Search Products
     SearchProduct(result) {
       this.product = {};
-      if (
-        this.details.length > 0 &&
-        this.details.some(detail => detail.code === result.code)
-      ) {
+      const existingDetail = this.details.find(detail => detail.code === result.code);
+      if (existingDetail) {
         this.makeToast("warning", this.$t("AlreadyAdd"), this.$t("Warning"));
+        this.scrollToDetail(existingDetail.detail_id);
       } else {
         this.product.code = result.code;
         this.product.quantity = 1;
@@ -1073,11 +1078,37 @@ export default {
       } else if (this.details.length === 0) {
         this.product.detail_id = 1;
       }
-      this.details.push(this.product);
+      this.details.unshift(this.product);
+
+      const addedDetail = this.details[0];
+      this.highlightDetail(addedDetail.detail_id);
 
       if(this.product.is_imei){
         this.Modal_Updat_Detail(this.product);
       }
+    },
+
+    //----------------------------------------- Locate a product row -------------------------\\
+    scrollToDetail(detailId) {
+      this.highlightDetail(detailId);
+      this.$nextTick(() => {
+        let row = this.$refs["purchase_detail_" + detailId];
+        if (Array.isArray(row)) row = row[0];
+        if (!row) return;
+
+        if (typeof row.scrollIntoView === "function") {
+          row.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      });
+    },
+
+    highlightDetail(detailId) {
+      this.highlightedDetailId = detailId;
+      if (this.highlightTimer) clearTimeout(this.highlightTimer);
+      this.highlightTimer = setTimeout(() => {
+        this.highlightedDetailId = null;
+        this.highlightTimer = null;
+      }, 1800);
     },
 
     //----------------------------------------- Batch helpers (pharmacy) ------------\\
@@ -1318,9 +1349,10 @@ export default {
 
     //-------------------------------- Get Last Detail Id -------------------------\\
     Last_Detail_id() {
-      this.product.detail_id = 0;
-      var len = this.details.length;
-      this.product.detail_id = this.details[len - 1].detail_id + 1;
+      const highestDetailId = this.details.reduce((highest, detail) => {
+        return Math.max(highest, Number(detail.detail_id) || 0);
+      }, 0);
+      this.product.detail_id = highestDetailId + 1;
     },
 
     //---------------------------------get Product Details ------------------------\\
@@ -1385,6 +1417,11 @@ export default {
   //----------------------------- Created function-------------------
   created() {
     this.GetElements();
+  },
+
+  beforeDestroy() {
+    if (this.timer) clearTimeout(this.timer);
+    if (this.highlightTimer) clearTimeout(this.highlightTimer);
   }
 };
 </script>
@@ -1401,5 +1438,20 @@ export default {
     height: 50px;
     margin-right: 8px; /* Adjust spacing as needed */
     cursor: pointer;
+  }
+
+  .purchase-row-highlight > td {
+    animation: purchase-row-pulse 1.8s ease-out;
+  }
+
+  @keyframes purchase-row-pulse {
+    0%, 35% {
+      background-color: rgba(102, 84, 241, 0.22);
+      box-shadow: inset 0 2px 0 rgba(102, 84, 241, 0.55), inset 0 -2px 0 rgba(102, 84, 241, 0.55);
+    }
+    100% {
+      background-color: transparent;
+      box-shadow: none;
+    }
   }
 </style>

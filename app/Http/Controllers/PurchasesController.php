@@ -200,6 +200,8 @@ class PurchasesController extends BaseController
         request()->validate([
             'supplier_id' => 'required',
             'warehouse_id' => 'required',
+            'sales_tax_invoice_no' => 'nullable|string|max:100',
+            'delivery_note_no' => 'nullable|string|max:100',
         ]);
 
         \DB::transaction(function () use ($request) {
@@ -208,11 +210,14 @@ class PurchasesController extends BaseController
             $order->date = $request->date;
             $order->time = now()->toTimeString();
             $order->Ref = $this->getNumberOrder();
+            $order->sales_tax_invoice_no = $request->sales_tax_invoice_no;
+            $order->delivery_note_no = $request->delivery_note_no;
             $order->provider_id = $request->supplier_id;
             $order->GrandTotal = $request->GrandTotal;
             $order->warehouse_id = $request->warehouse_id;
             $order->tax_rate = $request->tax_rate;
             $order->TaxNet = $request->TaxNet;
+            $order->withholding_tax = $request->withholding_tax ?? 0;
             $order->discount = $request->discount;
             $order->shipping = $request->shipping;
             $order->statut = $request->statut;
@@ -229,8 +234,12 @@ class PurchasesController extends BaseController
                     'purchase_id' => $order->id,
                     'quantity' => $value['quantity'],
                     'cost' => $value['Unit_cost'],
+                    'company_rb_price' => $value['company_rb_price'] ?? $value['Unit_cost'],
+                    'mrp_price' => $value['mrp_price'] ?? 0,
                     'purchase_unit_id' => $value['purchase_unit_id'],
                     'TaxNet' => $value['tax_percent'],
+                    'sales_tax' => $value['taxe'] ?? 0,
+                    'withholding_tax' => $value['withholding_tax'] ?? 0,
                     'tax_method' => $value['tax_method'],
                     'discount' => $value['discount'],
                     'discount_method' => $value['discount_Method'],
@@ -299,6 +308,8 @@ class PurchasesController extends BaseController
         request()->validate([
             'warehouse_id' => 'required',
             'supplier_id' => 'required',
+            'sales_tax_invoice_no' => 'nullable|string|max:100',
+            'delivery_note_no' => 'nullable|string|max:100',
         ]);
 
         \DB::transaction(function () use ($request, $id) {
@@ -465,8 +476,12 @@ class PurchasesController extends BaseController
 
                         $orderDetails['purchase_id'] = $id;
                         $orderDetails['cost'] = $prod_detail['Unit_cost'];
+                        $orderDetails['company_rb_price'] = $prod_detail['company_rb_price'] ?? $prod_detail['Unit_cost'];
+                        $orderDetails['mrp_price'] = $prod_detail['mrp_price'] ?? 0;
                         $orderDetails['purchase_unit_id'] = $prod_detail['purchase_unit_id'];
                         $orderDetails['TaxNet'] = $prod_detail['tax_percent'];
+                        $orderDetails['sales_tax'] = $prod_detail['taxe'] ?? 0;
+                        $orderDetails['withholding_tax'] = $prod_detail['withholding_tax'] ?? 0;
                         $orderDetails['tax_method'] = $prod_detail['tax_method'];
                         $orderDetails['discount'] = $prod_detail['discount'];
                         $orderDetails['discount_method'] = $prod_detail['discount_Method'];
@@ -495,11 +510,14 @@ class PurchasesController extends BaseController
 
                 $current_Purchase->update([
                     'date' => $request['date'],
+                    'sales_tax_invoice_no' => $request->input('sales_tax_invoice_no', $current_Purchase->sales_tax_invoice_no),
+                    'delivery_note_no' => $request->input('delivery_note_no', $current_Purchase->delivery_note_no),
                     'provider_id' => $request['supplier_id'],
                     'warehouse_id' => $request['warehouse_id'],
                     'notes' => $request['notes'],
                     'tax_rate' => $request['tax_rate'],
                     'TaxNet' => $request['TaxNet'],
+                    'withholding_tax' => $request['withholding_tax'] ?? 0,
                     'discount' => $request['discount'],
                     'shipping' => $request['shipping'],
                     'statut' => $request['statut'],
@@ -1254,10 +1272,12 @@ class PurchasesController extends BaseController
         }
 
         $suppliers = Provider::where('deleted_at', '=', null)->get(['id', 'name']);
+        $settings = Setting::where('deleted_at', '=', null)->first();
 
         return response()->json([
             'warehouses' => $warehouses,
             'suppliers' => $suppliers,
+            'default_tax' => (float) ($settings->default_tax ?? 0),
         ]);
     }
 
@@ -1327,6 +1347,8 @@ class PurchasesController extends BaseController
             }
 
             $purchase['date'] = $Purchase_data->date;
+            $purchase['sales_tax_invoice_no'] = $Purchase_data->sales_tax_invoice_no;
+            $purchase['delivery_note_no'] = $Purchase_data->delivery_note_no;
             $purchase['tax_rate'] = $Purchase_data->tax_rate;
             $purchase['TaxNet'] = $Purchase_data->TaxNet;
             $purchase['discount'] = $Purchase_data->discount;

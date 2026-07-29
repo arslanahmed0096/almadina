@@ -680,10 +680,13 @@
                       <tr>
                         <th>{{ $t('Code') }}</th>
                         <th>{{ $t('Name') }}</th>
-                        <th>{{ $t('Cost') }}</th>
-                        <th>{{ $t('Retail Price') }}</th>
-                        <th>{{ $t('Wholesale_Price') }}</th>
-                        <th>{{ $t('Min_Selling_Price') }}</th>
+                        <th>Company RB Price</th>
+                        <th>MRP Price</th>
+                        <th>Product Cost</th>
+                        <th>Fix Price</th>
+                        <th>Retail Price (Almadina Price)</th>
+                        <th>Whole Sale Price</th>
+                        <th>Minimum Price</th>
                         <th class="text-center" style="width: 50px;"></th>
                       </tr>
                     </thead>
@@ -691,7 +694,10 @@
                       <tr v-for="variant in variants" :key="variant.var_id">
                         <td><b-form-input v-model="variant.code" type="text" size="sm"></b-form-input></td>
                         <td><b-form-input v-model="variant.text" type="text" size="sm"></b-form-input></td>
+                        <td><b-form-input v-model="variant.company_rb_price" type="text" size="sm"></b-form-input></td>
+                        <td><b-form-input v-model="variant.mrp_price" type="text" size="sm"></b-form-input></td>
                         <td><b-form-input v-model="variant.cost" type="text" size="sm"></b-form-input></td>
+                        <td><b-form-input v-model="variant.fix_price" type="text" size="sm"></b-form-input></td>
                         <td><b-form-input v-model="variant.price" type="text" size="sm"></b-form-input></td>
                         <td><b-form-input v-model="variant.wholesale" type="text" size="sm"></b-form-input></td>
                         <td><b-form-input v-model="variant.min_price" type="text" size="sm"></b-form-input></td>
@@ -724,6 +730,43 @@
               </div>
               <b-card class="section-card">
                 <b-row>
+                  <b-col cols="12" v-if="product.type != 'is_variant'">
+                    <div class="pricing-subsection-title">
+                      <lucide-icon name="shopping-cart" />
+                      <span>Purchase Pricing</span>
+                    </div>
+                  </b-col>
+
+                  <b-col md="6" class="mb-3" v-if="product.type != 'is_variant'">
+                    <validation-provider name="Company RB Price" :rules="{ regex: /^\d*\.?\d*$/ }" v-slot="validationContext">
+                      <b-form-group label="Company RB Price">
+                        <b-form-input
+                          v-model="product.company_rb_price"
+                          :state="getValidationState(validationContext)"
+                          aria-describedby="CompanyRbPrice-feedback"
+                          type="text"
+                          placeholder="0.00"
+                        />
+                        <b-form-invalid-feedback id="CompanyRbPrice-feedback">{{ validationContext.errors[0] }}</b-form-invalid-feedback>
+                      </b-form-group>
+                    </validation-provider>
+                  </b-col>
+
+                  <b-col md="6" class="mb-3" v-if="product.type != 'is_variant'">
+                    <validation-provider name="MRP Price" :rules="{ regex: /^\d*\.?\d*$/ }" v-slot="validationContext">
+                      <b-form-group label="MRP Price">
+                        <b-form-input
+                          v-model="product.mrp_price"
+                          :state="getValidationState(validationContext)"
+                          aria-describedby="MrpPrice-feedback"
+                          type="text"
+                          placeholder="0.00"
+                        />
+                        <b-form-invalid-feedback id="MrpPrice-feedback">{{ validationContext.errors[0] }}</b-form-invalid-feedback>
+                      </b-form-group>
+                    </validation-provider>
+                  </b-col>
+
                   <!-- Product Cost -->
                   <b-col md="6" class="mb-3" v-if="product.type == 'is_single' || product.type == 'is_combo'">
                     <validation-provider
@@ -744,6 +787,28 @@
                     </validation-provider>
                   </b-col>
 
+                  <b-col cols="12" v-if="product.type != 'is_variant'">
+                    <div class="pricing-subsection-title pricing-subsection-title--sale">
+                      <lucide-icon name="dollar-sign" />
+                      <span>Sale Pricing</span>
+                    </div>
+                  </b-col>
+
+                  <b-col md="6" class="mb-2" v-if="product.type != 'is_variant'">
+                    <validation-provider name="Fix Price" :rules="{ regex: /^\d*\.?\d*$/ }" v-slot="validationContext">
+                      <b-form-group label="Fix Price">
+                        <b-form-input
+                          v-model="product.fix_price"
+                          :state="getValidationState(validationContext)"
+                          aria-describedby="FixPrice-feedback"
+                          type="text"
+                          placeholder="0.00"
+                        />
+                        <b-form-invalid-feedback id="FixPrice-feedback">{{ validationContext.errors[0] }}</b-form-invalid-feedback>
+                      </b-form-group>
+                    </validation-provider>
+                  </b-col>
+
                   <!-- Product Price -->
                   <b-col
                     md="6"
@@ -755,7 +820,7 @@
                       :rules="{ required: true , regex: /^\d*\.?\d*$/}"
                       v-slot="validationContext"
                     >
-                      <b-form-group :label="$t('Retail Price') + ' *'">
+                      <b-form-group label="Retail Price (Almadina Price) *">
                         <b-form-input
                           :state="getValidationState(validationContext)"
                           aria-describedby="ProductPrice-feedback"
@@ -780,7 +845,7 @@
                       :rules="{ regex: /^\d*\.?\d*$/ }"
                       v-slot="validationContext"
                     >
-                      <b-form-group :label="$t('Wholesale_Price')">
+                      <b-form-group label="Whole Sale Price">
                         <b-form-input
                           :state="getValidationState(validationContext)"
                           aria-describedby="WholesalePrice-feedback"
@@ -806,7 +871,7 @@
                       :rules="{ regex: /^\d*\.?\d*$/ }"
                       v-slot="validationContext"
                     >
-                      <b-form-group :label="$t('Minimum_Selling_Price')">
+                      <b-form-group label="Minimum Price">
                         <b-form-input
                           :state="getValidationState(validationContext)"
                           aria-describedby="MinPrice-feedback"
@@ -819,6 +884,13 @@
                         </b-form-invalid-feedback>
                       </b-form-group>
                     </validation-provider>
+                  </b-col>
+
+                  <b-col cols="12">
+                    <div class="pricing-subsection-title pricing-subsection-title--tax">
+                      <lucide-icon name="percent" />
+                      <span>Tax &amp; Discounts</span>
+                    </div>
                   </b-col>
 
                   <!-- Tax Rate -->
@@ -1501,7 +1573,12 @@ export default {
         code: "",
         Type_barcode: "",
         cost: "",
+        company_rb_price: "",
+        mrp_price: "",
         price: "",
+        fix_price: "",
+        wholesale_price: "",
+        min_price: "",
         brand_id: "",
         category_id: "",
         sub_category_id: "",
@@ -1925,7 +2002,14 @@ export default {
           if(this.tag != ''){
             var variant_tag = {
               var_id: this.variants.length + 1, // generate unique ID
-              text: tag
+              text: tag,
+              company_rb_price: "",
+              mrp_price: "",
+              cost: "",
+              fix_price: "",
+              price: "",
+              wholesale: "",
+              min_price: ""
             };
             this.variants.push(variant_tag);
             this.tag = "";
@@ -3586,5 +3670,39 @@ export default {
   .dark-theme .autocomplete-result:hover {
     background: rgba(129, 140, 248, 0.15);
     color: #a78bfa;
+  }
+  .product-create-page .pricing-subsection-title {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    margin: 0.25rem 0 1rem;
+    padding: 0.7rem 0.85rem;
+    border-left: 4px solid #f59e0b;
+    border-radius: 8px;
+    background: #fffbeb;
+    color: #92400e;
+    font-size: 0.86rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .product-create-page .pricing-subsection-title--sale {
+    margin-top: 0.75rem;
+    border-left-color: #10b981;
+    background: #ecfdf5;
+    color: #065f46;
+  }
+
+  .product-create-page .pricing-subsection-title--tax {
+    margin-top: 0.75rem;
+    border-left-color: #6366f1;
+    background: #eef2ff;
+    color: #4338ca;
+  }
+
+  .product-create-page .pricing-subsection-title svg {
+    width: 17px;
+    height: 17px;
   }
 </style>

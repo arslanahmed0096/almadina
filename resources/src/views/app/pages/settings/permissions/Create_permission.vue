@@ -417,6 +417,32 @@
                               </label>
                             </b-col>
 
+                            <!-- Product cost visibility -->
+                            <b-col md="6">
+                              <label class="checkbox checkbox-outline-primary">
+                                <input
+                                  type="checkbox"
+                                  v-model="permissions"
+                                  value="products_cost_view"
+                                >
+                                <span>View Product Cost</span>
+                                <span class="checkmark"></span>
+                              </label>
+                            </b-col>
+
+                            <!-- Pricing level access -->
+                            <b-col md="6">
+                              <label class="checkbox checkbox-outline-primary">
+                                <input
+                                  type="checkbox"
+                                  v-model="permissions"
+                                  value="pricing_level"
+                                >
+                                <span>Pricing Level Access</span>
+                                <span class="checkmark"></span>
+                              </label>
+                            </b-col>
+
                           </b-row>
                         </b-card-text>
                       </b-card-body>
@@ -424,8 +450,8 @@
                   </b-card>
                 </b-col>
 
-                <!--  Pharmacy / Batch Tracking -->
-                <b-col md="4">
+                <!-- Pharmacy permissions were removed from the system. -->
+                <b-col md="4" v-if="false">
                   <b-card no-body class="ul-card__border-radius">
                     <b-card-header header-tag="header" class="p-1" role="tab">
                       <b-button

@@ -176,6 +176,42 @@ const baseRoutes = [
                 ]
             },
 
+            // Pricing Levels
+            {
+                path: "/app/pricing-levels",
+                redirect: "/app/pricing-levels/list",
+                component: () =>
+                    import(
+                        /* webpackChunkName: "pricing_levels" */ "./views/app/pages/pricing_levels"
+                    ),
+                children: [
+                    {
+                        path: "list",
+                        name: "pricing_levels_index",
+                        component: () =>
+                            import(
+                                /* webpackChunkName: "pricing_levels_index" */ "./views/app/pages/pricing_levels/index_pricing_levels"
+                            )
+                    },
+                    {
+                        path: "create",
+                        name: "pricing_levels_create",
+                        component: () =>
+                            import(
+                                /* webpackChunkName: "pricing_levels_create" */ "./views/app/pages/pricing_levels/create_pricing_level"
+                            )
+                    },
+                    {
+                        path: "edit/:id",
+                        name: "pricing_levels_edit",
+                        component: () =>
+                            import(
+                                /* webpackChunkName: "pricing_levels_create" */ "./views/app/pages/pricing_levels/create_pricing_level"
+                            )
+                    }
+                ]
+            },
+
             //Adjustement
             {
                 path: "/app/adjustments",
