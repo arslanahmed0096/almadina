@@ -1304,6 +1304,15 @@ const baseRoutes = [
                         )
                     },
 
+                    {
+                    name: "StoreTopCategories",
+                    path: "TopCategories",
+                    component: () =>
+                        import(
+                        /* webpackChunkName: "StoreTopCategories" */ "./views/app/pages/store/TopCategories.vue"
+                        )
+                    },
+
                     // Orders
                     {
                     name: "StoreOrders",

@@ -122,7 +122,7 @@
                 </b-dropdown-item>
 
                 <b-dropdown-item
-                  v-if="currentUserPermissions.includes('payment_sales_add') && props.row.statut =='completed'"
+                  v-if="currentUserPermissions.includes('payment_sales_add') && canAddPayment(props.row)"
                   @click="New_Payment(props.row)"
                 >
                   <lucide-icon class="nav-icon font-weight-bold mr-2" name="plus" />
@@ -506,18 +506,18 @@
               </validation-provider>
             </b-col>
 
-            <!-- Received  Amount  -->
+            <!-- Payable Amount -->
             <b-col lg="4" md="12" sm="12">
                 <validation-provider
-                  name="Received Amount"
+                  name="Payable Amount"
                   :rules="{ required: true , regex: /^\d*\.?\d*$/}"
                   v-slot="validationContext"
                 >
-                <b-form-group :label="$t('Received_Amount')">
+                <b-form-group label="Payable Amount">
                   <b-form-input
                     @keyup="Verified_Received_Amount(payment.received_amount)"
-                    label="Received_Amount"
-                    :placeholder="$t('Received_Amount')"
+                    label="Payable Amount"
+                    placeholder="Payable Amount"
                     v-model.number="payment.received_amount"
                     :state="getValidationState(validationContext)"
                     aria-describedby="Received_Amount-feedback"
@@ -552,9 +552,9 @@
               </validation-provider>
             </b-col>
 
-            <!-- change Amount  -->
+            <!-- Balance Amount -->
             <b-col lg="4" md="12" sm="12">
-              <label>{{$t('Change')}} :</label>
+              <label>Balance Amount :</label>
               <p
                 class="change_amount"
               >{{parseFloat(payment.received_amount - payment.montant).toFixed(2)}}</p>
@@ -1904,6 +1904,15 @@ export default {
     }
   },
   methods: {
+
+    canAddPayment(sale) {
+      if (!sale) return false;
+
+      const due = Number(String(sale.due == null ? 0 : sale.due).replace(/,/g, ""));
+      const paymentStatus = String(sale.payment_status || "").toLowerCase();
+
+      return Number.isFinite(due) && due > 0 && paymentStatus !== "paid";
+    },
 
   
     //------------------------------ Print -------------------------\\

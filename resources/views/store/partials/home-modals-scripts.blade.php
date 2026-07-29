@@ -252,7 +252,7 @@
     const variants = safeParse(trigger.dataset.variants);
     const simpleStock = (trigger.dataset.stock !== undefined && trigger.dataset.stock !== '')
       ? parseInt(trigger.dataset.stock, 10) : null;
-    const productCard = trigger.closest('.product-card, .onsus-cover-card');
+    const productCard = trigger.closest('.product-card, .onsus-cover-card, .home2-product-card');
     const cardBtn = productCard ? productCard.querySelector('.js-add-to-cart') : null;
     const isPreorder = cardBtn ? (cardBtn.dataset.isPreorder === '1') : false;
     const primaryImg = trigger.dataset.image || NOIMG;
@@ -498,6 +498,54 @@
 
   // ---------- Newsletter ----------
   document.addEventListener("DOMContentLoaded", function(){
+    document.querySelectorAll('[data-home-products-tabs]').forEach(function(tabSection) {
+      const buttons = Array.from(tabSection.querySelectorAll('[data-home-products-tab]'));
+      const panels = Array.from(tabSection.querySelectorAll('[data-home-products-panel]'));
+
+      buttons.forEach(function(button) {
+        button.addEventListener('click', function() {
+          const selected = button.dataset.homeProductsTab;
+
+          buttons.forEach(function(item) {
+            const active = item === button;
+            item.classList.toggle('active', active);
+            item.setAttribute('aria-selected', active ? 'true' : 'false');
+          });
+
+          panels.forEach(function(panel) {
+            panel.hidden = panel.dataset.homeProductsPanel !== selected;
+          });
+        });
+      });
+    });
+
+    document.querySelectorAll('[data-home-carousel-scroll]').forEach(function(button) {
+      button.addEventListener('click', function() {
+        const name = button.dataset.homeCarouselScroll;
+        const track = document.querySelector('[data-home-carousel="' + name + '"]');
+        if (!track) return;
+
+        const direction = Number(button.dataset.direction || 1);
+        const card = track.querySelector('.home2-product-card');
+        const style = window.getComputedStyle(track);
+        const gap = parseFloat(style.columnGap || style.gap || 0);
+        const distance = card ? card.getBoundingClientRect().width + gap : track.clientWidth;
+        track.scrollBy({ left: direction * distance, behavior: 'smooth' });
+      });
+    });
+
+    const dealTrack = document.querySelector('[data-deal-track]');
+    document.querySelectorAll('[data-deal-scroll]').forEach(function(button) {
+      button.addEventListener('click', function() {
+        if (!dealTrack) return;
+        const direction = Number(button.dataset.dealScroll || 1);
+        const card = dealTrack.querySelector('.home2-product-card');
+        const gap = parseFloat(window.getComputedStyle(dealTrack).columnGap || window.getComputedStyle(dealTrack).gap || 0);
+        const distance = card ? card.getBoundingClientRect().width + gap : dealTrack.clientWidth;
+        dealTrack.scrollBy({ left: direction * distance, behavior: 'smooth' });
+      });
+    });
+
     const form = document.getElementById("newsletterForm");
     const emailInput = document.getElementById("newsletterEmail");
     const btn = document.getElementById("newsletterBtn");

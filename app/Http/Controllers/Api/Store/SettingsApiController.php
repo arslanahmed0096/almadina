@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Store;
 
 use App\Http\Controllers\Controller;
+use App\Models\Category;
 use App\Models\Collection;
 use App\Models\Currency;
 use App\Models\Product;
@@ -18,6 +19,95 @@ use Intervention\Image\ImageManagerStatic as Image;
 
 class SettingsApiController extends Controller
 {
+    public function showTopCategories(Request $request)
+    {
+        $this->authorizeForUser($request->user('api'), 'view', StoreSetting::class);
+
+        $settings = StoreSetting::firstOrFail();
+        $categories = Category::query()
+            ->whereNull('deleted_at')
+            ->where('status', 1)
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        $selectedIds = collect($settings->top_category_ids ?? [])
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $categories->contains('id', $id))
+            ->unique()
+            ->take(8)
+            ->values();
+
+        if ($selectedIds->isEmpty()) {
+            $onlineProductCategoryIds = Product::query()
+                ->whereNull('products.deleted_at')
+                ->where('products.is_active', 1)
+                ->where('products.hide_from_online_store', 0)
+                ->whereNotNull('products.category_id')
+                ->distinct()
+                ->pluck('products.category_id')
+                ->merge(
+                    DB::table('category_product')
+                        ->join('products', 'products.id', '=', 'category_product.product_id')
+                        ->whereNull('products.deleted_at')
+                        ->where('products.is_active', 1)
+                        ->where('products.hide_from_online_store', 0)
+                        ->distinct()
+                        ->pluck('category_product.category_id')
+                )
+                ->map(fn ($id) => (int) $id)
+                ->unique();
+
+            $selectedIds = $categories
+                ->whereIn('id', $onlineProductCategoryIds)
+                ->take(8)
+                ->pluck('id')
+                ->values();
+        }
+
+        return response()->json([
+            'categories' => $categories,
+            'selected_ids' => $selectedIds,
+            'maximum' => 8,
+        ]);
+    }
+
+    public function updateTopCategories(Request $request)
+    {
+        $this->authorizeForUser($request->user('api'), 'view', StoreSetting::class);
+
+        $validated = $request->validate([
+            'top_category_ids' => ['required', 'array', 'min:1', 'max:8'],
+            'top_category_ids.*' => ['required', 'integer', 'distinct', 'exists:categories,id'],
+        ]);
+
+        $selectedIds = collect($validated['top_category_ids'])
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        $validCount = Category::query()
+            ->whereNull('deleted_at')
+            ->where('status', 1)
+            ->whereIn('id', $selectedIds)
+            ->count();
+
+        if ($validCount !== $selectedIds->count()) {
+            throw ValidationException::withMessages([
+                'top_category_ids' => ['One or more selected categories are unavailable.'],
+            ]);
+        }
+
+        $settings = StoreSetting::firstOrFail();
+        $settings->top_category_ids = $selectedIds->all();
+        $settings->save();
+
+        return response()->json([
+            'success' => true,
+            'selected_ids' => $settings->fresh()->top_category_ids,
+            'message' => 'Top categories saved successfully.',
+        ]);
+    }
+
     /**
      * Return settings (create sane defaults if missing).
      * Also migrates old home_collections -> homepage_lineup (once), if present.

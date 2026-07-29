@@ -84,6 +84,16 @@
     'send'          => '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
     'message'       => '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
 
+    // Store category appliances
+    'washing-machine' => '<rect width="18" height="20" x="3" y="2" rx="2"/><path d="M3 7h18"/><circle cx="12" cy="14" r="5"/><path d="M7 4.5h.01"/><path d="M10 4.5h.01"/>',
+    'refrigerator'    => '<rect width="14" height="20" x="5" y="2" rx="2"/><path d="M5 9h14"/><path d="M9 5v1"/><path d="M9 12v2"/><path d="M8 22v1"/><path d="M16 22v1"/>',
+    'air-conditioner' => '<rect width="20" height="10" x="2" y="3" rx="2"/><path d="M6 8h12"/><path d="M7 13c0 2-1 3-2 4"/><path d="M12 13v5"/><path d="M17 13c0 2 1 3 2 4"/><path d="m10 20 2-2 2 2"/>',
+    'air-cooler'      => '<rect width="14" height="20" x="5" y="2" rx="2"/><circle cx="12" cy="13" r="5"/><circle cx="12" cy="13" r="1"/><path d="M12 8c2 0 3 2 1 4"/><path d="M17 13c0 2-2 3-4 1"/><path d="M12 18c-2 0-3-2-1-4"/><path d="M7 13c0-2 2-3 4-1"/><path d="M9 5h6"/>',
+    'monitor'         => '<rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/>',
+    'cooking-pot'     => '<path d="M5 10h14v8a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3z"/><path d="M3 10h18"/><path d="M8 6h8"/><path d="M10 3h4"/><path d="M2 14h3"/><path d="M19 14h3"/>',
+    'fan'             => '<circle cx="12" cy="12" r="2"/><path d="M12 10c-1-3 0-7 3-7 2 0 3 2 2 4-1 2-3 3-5 3"/><path d="M14 12c3-1 7 0 7 3 0 2-2 3-4 2-2-1-3-3-3-5"/><path d="M12 14c1 3 0 7-3 7-2 0-3-2-2-4 1-2 3-3 5-3"/><path d="M10 12c-3 1-7 0-7-3 0-2 2-3 4-2 2 1 3 3 3 5"/>',
+    'pizza'           => '<path d="M4 20 20 4"/><path d="M5.5 18.5A18 18 0 0 0 18.5 5.5"/><path d="M4 20a18 18 0 0 1 16-16"/><circle cx="11" cy="12" r="1"/><circle cx="15" cy="8" r="1"/><circle cx="15" cy="14" r="1"/>',
+
     // Social
     'facebook'      => '<path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/>',
     'instagram'     => '<rect width="20" height="20" x="2" y="2" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/>',

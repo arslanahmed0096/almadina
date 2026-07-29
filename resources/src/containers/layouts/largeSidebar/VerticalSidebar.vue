@@ -72,6 +72,12 @@
                   <span>{{ $t('Settings') }}</span>
                 </router-link>
               </li>
+              <li class="submenu-item" v-if="currentUserPermissions && currentUserPermissions.includes('Store_settings_view')">
+                <router-link to="/app/Store/TopCategories" class="submenu-link">
+                  <lucide-icon class="submenu-icon" name="list" />
+                  <span>Top Categories</span>
+                </router-link>
+              </li>
               <li class="submenu-item" v-if="currentUserPermissions && currentUserPermissions.includes('Orders_view')">
                 <router-link to="/app/Store/Orders" class="submenu-link">
                   <lucide-icon class="submenu-icon" name="receipt" />
