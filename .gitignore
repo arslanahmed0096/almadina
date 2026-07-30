@@ -1,6 +1,11 @@
 /public/hot
 
 /public/js/bundle
+# Laravel Mix build output. Source files live under resources/ and the
+# deployment workflows generate these assets with `npm run production`.
+/public/js/*.min.js
+/public/css/storefront.css
+/public/mix-manifest.json
 /public/images/vendor
 /public/js/main.js
 /node_modules
