@@ -574,18 +574,18 @@
                 </b-col>
 
 
-                  <!-- Received  Amount  -->
+                  <!-- Payable Amount -->
                   <b-col md="4" v-if="payment.status != 'pending' && sale.statut == 'completed'">
                       <validation-provider
-                        name="Received Amount"
+                        name="Payable Amount"
                         :rules="{ required: true , regex: /^\d*\.?\d*$/}"
                         v-slot="validationContext"
                       >
-                        <b-form-group :label="$t('Received_Amount') + ' ' + '*'">
+                        <b-form-group label="Payable Amount *">
                           <b-form-input
                             @keyup="Verified_Received_Amount(payment.received_amount)"
-                            label="Received_Amount"
-                            :placeholder="$t('Received_Amount')"
+                            label="Payable Amount"
+                            placeholder="Payable Amount"
                             v-model.number="payment.received_amount"
                             :state="getValidationState(validationContext)"
                             aria-describedby="Received_Amount-feedback"
@@ -622,9 +622,9 @@
                   </validation-provider>
                 </b-col>
 
-                <!-- change  Amount  -->
+                <!-- Balance -->
                 <b-col md="4" v-if="payment.status != 'pending' && sale.statut == 'completed'">
-                  <label>{{$t('Change')}} :</label>
+                  <label>{{$t('Balance')}} :</label>
                   <p
                     class="change_amount"
                   >{{parseFloat(payment.received_amount - payment.amount).toFixed(2)}}</p>
