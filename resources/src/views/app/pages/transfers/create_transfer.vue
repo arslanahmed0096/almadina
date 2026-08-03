@@ -124,9 +124,8 @@
                         <tr :key="'r-' + detail.detail_id">
                           <td>{{detail.detail_id}}</td>
                           <td>
-                            <span>{{detail.code}}</span>
-                            <br>
-                            <span class="badge badge-success">{{detail.name}}</span>
+                            <div class="transfer-product-name">{{detail.name}}</div>
+                            <div class="transfer-product-code">{{detail.code}}</div>
                             <div v-if="detail.warehouse_location" class="text-muted mt-1" style="font-size: 12px;">
                               {{ $t('Warehouse_Locations') }}: <strong>{{ detail.warehouse_location }}</strong>
                             </div>
@@ -1497,5 +1496,19 @@ export default {
     height: 50px;
     margin-right: 8px; /* Adjust spacing as needed */
     cursor: pointer;
+  }
+
+  .transfer-product-name {
+    color: #0f172a;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.35;
+  }
+
+  .transfer-product-code {
+    color: #64748b;
+    font-size: 12px;
+    line-height: 1.35;
+    margin-top: 2px;
   }
 </style>

@@ -1187,13 +1187,6 @@ export default {
     columns() {
       return [
         {
-          label: this.$t("Action"),
-          field: "actions",
-          tdClass: "text-left",
-          thClass: "text-left",
-          sortable: false
-        },
-        {
           label: this.$t("Code"),
           field: "code",
           tdClass: "text-left",
@@ -1265,6 +1258,13 @@ export default {
           label: this.$t("Total_Sell_Return_Due"),
           field: "return_Due",
           type: "decimal",
+          tdClass: "text-left",
+          thClass: "text-left",
+          sortable: false
+        },
+        {
+          label: this.$t("Action"),
+          field: "actions",
           tdClass: "text-left",
           thClass: "text-left",
           sortable: false
@@ -2466,5 +2466,4 @@ export default {
   font-weight: 600;
 }
 </style>
-
 
