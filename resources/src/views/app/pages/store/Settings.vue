@@ -252,10 +252,49 @@
                   <b-form-textarea rows="2" v-model="form.hero_subtitle"/>
                 </b-form-group>
               </div>
-              <div class="col-md-6">
+              <div class="col-md-12">
                 <b-form-group :label="$t('Hero_Image')">
                   <b-form-file accept="image/*" @change="pick('hero_image',$event)"/>
                   <img v-if="settings.hero_image_path" :src="asset(settings.hero_image_path)" height="64" class="mt-2 rounded shadow-sm"/>
+                  <small class="text-muted d-block mt-1">
+                    Recommended size: 1600 × 500 pixels (JPG, PNG, or WebP).
+                  </small>
+                </b-form-group>
+              </div>
+              <div class="col-md-12">
+                <b-form-group label="Top-selling hero products">
+                  <v-select
+                    v-model="form.hero_product_ids"
+                    :options="heroProductOptions"
+                    :reduce="product => Number(product.id)"
+                    :selectable="canSelectHeroProduct"
+                    :close-on-select="false"
+                    label="name"
+                    multiple
+                    placeholder="Select up to two products"
+                    @input="enforceHeroProductLimit"
+                  >
+                    <template #option="product">
+                      <div class="hero-product-option">
+                        <img :src="product.image_url" :alt="product.name">
+                        <span>
+                          <strong>{{ product.name }}</strong>
+                          <small>
+                            {{ product.code || 'No code' }}
+                            <template v-if="Number(product.sold_quantity) > 0">
+                              · {{ Number(product.sold_quantity) }} sold
+                            </template>
+                          </small>
+                        </span>
+                      </div>
+                    </template>
+                    <template #selected-option="product">
+                      <span class="hero-product-selection">{{ product.name }}</span>
+                    </template>
+                  </v-select>
+                  <small class="text-muted d-block mt-1">
+                    {{ form.hero_product_ids.length }}/2 selected. Products are listed by units sold; a maximum of two can appear beside the hero.
+                  </small>
                 </b-form-group>
               </div>
             </div>
@@ -401,6 +440,7 @@ export default {
 
       // Authoritative collections from backend
       collections: [],
+      heroProductOptions: [],
       // Unified UI list: hero + all collections + newsletter
       homeRows: [],
       warehouses: [],
@@ -425,6 +465,7 @@ export default {
         contact_address: '',
         hero_title: '',
         hero_subtitle: '',
+        hero_product_ids: [],
         seo_meta_title: '',
         seo_meta_description: '',
         topbar_text_left: '',
@@ -479,6 +520,25 @@ export default {
       return `/storage/${p}`
     },
     pick(key,e){ this.files[key] = e.target.files[0] },
+    canSelectHeroProduct(product) {
+      var ids = Array.isArray(this.form.hero_product_ids) ? this.form.hero_product_ids : []
+      return ids.map(Number).indexOf(Number(product.id)) !== -1 || ids.length < 2
+    },
+    enforceHeroProductLimit(value) {
+      var ids = (Array.isArray(value) ? value : [])
+        .map(Number)
+        .filter(function (id, index, list) {
+          return id > 0 && list.indexOf(id) === index
+        })
+
+      if (ids.length > 2) {
+        this.form.hero_product_ids = ids.slice(0, 2)
+        this.makeToast('warning', 'You can select a maximum of two hero products.', 'Hero products')
+        return
+      }
+
+      this.form.hero_product_ids = ids
+    },
 
     // --------- UI helpers ----------
     badgeVariant(kind){
@@ -612,10 +672,14 @@ export default {
         const settings = (payload && payload.settings) ? payload.settings : payload
         const warehouses = Array.isArray(payload && payload.warehouses) ? payload.warehouses : []
         const currencies = Array.isArray(payload && payload.currencies) ? payload.currencies : []
+        const heroProductOptions = Array.isArray(payload && payload.hero_product_options)
+          ? payload.hero_product_options
+          : []
 
         this.settings = settings || {}
         this.warehouses = warehouses
         this.currencies = currencies
+        this.heroProductOptions = heroProductOptions
         this.pendingCustomersCount = (payload && payload.pending_customers_count) || 0
 
         // build form (no spread / optional chaining)
@@ -628,6 +692,16 @@ export default {
         merged.menus          = this.normalizeMenus(settings && settings.menus)
         merged.social_links   = this.normalizeSocialLinks(settings && settings.social_links)
         merged.store_slug     = (settings && settings.store_slug) ? settings.store_slug : this.form.store_slug
+        var heroProductIdsRaw = settings && settings.hero_product_ids
+        if (!Array.isArray(heroProductIdsRaw)) {
+          heroProductIdsRaw = this.tryParseJson(heroProductIdsRaw) || []
+        }
+        merged.hero_product_ids = heroProductIdsRaw
+          .map(Number)
+          .filter(function (id, index, list) {
+            return id > 0 && list.indexOf(id) === index
+          })
+          .slice(0, 2)
 
         var lineupRaw = settings && settings.homepage_lineup
         merged.homepage_lineup = Array.isArray(lineupRaw)
@@ -720,7 +794,7 @@ export default {
 
         // 3) Build FormData (Vue 2 compatible)
         var fd = new FormData()
-        var jsonFields = ['menus', 'social_links', 'homepage_lineup']
+        var jsonFields = ['menus', 'social_links', 'homepage_lineup', 'hero_product_ids']
 
         for (var k in this.form) {
           if (!Object.prototype.hasOwnProperty.call(this.form, k)) continue
@@ -786,6 +860,38 @@ export default {
 }
 .settings-card .card-body{
   background: #fff;
+}
+
+.hero-product-option {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: .65rem;
+  padding: .15rem 0;
+}
+.hero-product-option img {
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  padding: 2px;
+  object-fit: contain;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: .4rem;
+}
+.hero-product-option span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.hero-product-option strong,
+.hero-product-selection {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hero-product-option small {
+  color: #6b7280;
 }
 
 /* Social links row */

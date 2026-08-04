@@ -3,18 +3,111 @@
 namespace App\Http\Controllers\Api\Store;
 
 use App\Http\Controllers\Controller;
+use App\Models\Category;
 use App\Models\Collection;
 use App\Models\Currency;
+use App\Models\Product;
 use App\Models\Setting;
 use App\Models\StoreSetting;
 use App\Models\Warehouse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Intervention\Image\ImageManagerStatic as Image;
 
 class SettingsApiController extends Controller
 {
+    public function showTopCategories(Request $request)
+    {
+        $this->authorizeForUser($request->user('api'), 'view', StoreSetting::class);
+
+        $settings = StoreSetting::firstOrFail();
+        $categories = Category::query()
+            ->whereNull('deleted_at')
+            ->where('status', 1)
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        $selectedIds = collect($settings->top_category_ids ?? [])
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $categories->contains('id', $id))
+            ->unique()
+            ->take(8)
+            ->values();
+
+        if ($selectedIds->isEmpty()) {
+            $onlineProductCategoryIds = Product::query()
+                ->whereNull('products.deleted_at')
+                ->where('products.is_active', 1)
+                ->where('products.hide_from_online_store', 0)
+                ->whereNotNull('products.category_id')
+                ->distinct()
+                ->pluck('products.category_id')
+                ->merge(
+                    DB::table('category_product')
+                        ->join('products', 'products.id', '=', 'category_product.product_id')
+                        ->whereNull('products.deleted_at')
+                        ->where('products.is_active', 1)
+                        ->where('products.hide_from_online_store', 0)
+                        ->distinct()
+                        ->pluck('category_product.category_id')
+                )
+                ->map(fn ($id) => (int) $id)
+                ->unique();
+
+            $selectedIds = $categories
+                ->whereIn('id', $onlineProductCategoryIds)
+                ->take(8)
+                ->pluck('id')
+                ->values();
+        }
+
+        return response()->json([
+            'categories' => $categories,
+            'selected_ids' => $selectedIds,
+            'maximum' => 8,
+        ]);
+    }
+
+    public function updateTopCategories(Request $request)
+    {
+        $this->authorizeForUser($request->user('api'), 'view', StoreSetting::class);
+
+        $validated = $request->validate([
+            'top_category_ids' => ['required', 'array', 'min:1', 'max:8'],
+            'top_category_ids.*' => ['required', 'integer', 'distinct', 'exists:categories,id'],
+        ]);
+
+        $selectedIds = collect($validated['top_category_ids'])
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        $validCount = Category::query()
+            ->whereNull('deleted_at')
+            ->where('status', 1)
+            ->whereIn('id', $selectedIds)
+            ->count();
+
+        if ($validCount !== $selectedIds->count()) {
+            throw ValidationException::withMessages([
+                'top_category_ids' => ['One or more selected categories are unavailable.'],
+            ]);
+        }
+
+        $settings = StoreSetting::firstOrFail();
+        $settings->top_category_ids = $selectedIds->all();
+        $settings->save();
+
+        return response()->json([
+            'success' => true,
+            'selected_ids' => $settings->fresh()->top_category_ids,
+            'message' => 'Top categories saved successfully.',
+        ]);
+    }
+
     /**
      * Return settings (create sane defaults if missing).
      * Also migrates old home_collections -> homepage_lineup (once), if present.
@@ -88,6 +181,7 @@ class SettingsApiController extends Controller
             'settings' => $s,
             'warehouses' => $warehouses,
             'currencies' => $currencies,
+            'hero_product_options' => $this->heroProductOptions($s->hero_product_ids ?? []),
             'pending_customers_count' => $pendingCustomersCount,
         ]);
     }
@@ -159,6 +253,7 @@ class SettingsApiController extends Controller
 
             'hero_title' => 'nullable|string|max:255',
             'hero_subtitle' => 'nullable|string|max:1000',
+            'hero_product_ids' => 'nullable',
 
             'seo_meta_title' => 'nullable|string|max:255',
             'seo_meta_description' => 'nullable|string|max:1000',
@@ -182,13 +277,50 @@ class SettingsApiController extends Controller
         ]);
 
         // --- Decode JSON fields ---
-        foreach (['social_links', 'homepage_lineup', 'home_collections'] as $key) {
+        foreach (['social_links', 'homepage_lineup', 'home_collections', 'hero_product_ids'] as $key) {
             if (array_key_exists($key, $data) && is_string($data[$key])) {
                 $decoded = json_decode($data[$key], true);
                 if (json_last_error() === JSON_ERROR_NONE) {
                     $data[$key] = $decoded;
                 }
             }
+        }
+
+        if (array_key_exists('hero_product_ids', $data)) {
+            if (! is_array($data['hero_product_ids'])) {
+                throw ValidationException::withMessages([
+                    'hero_product_ids' => __('The hero products selection must be a list.'),
+                ]);
+            }
+
+            $heroProductIds = collect($data['hero_product_ids'])
+                ->map(fn ($id) => filter_var($id, FILTER_VALIDATE_INT))
+                ->filter(fn ($id) => $id !== false && $id > 0)
+                ->map(fn ($id) => (int) $id)
+                ->unique()
+                ->values();
+
+            if ($heroProductIds->count() > 2) {
+                throw ValidationException::withMessages([
+                    'hero_product_ids' => __('Select no more than two hero products.'),
+                ]);
+            }
+
+            $validHeroProductIds = Product::query()
+                ->whereIn('id', $heroProductIds)
+                ->where('is_active', 1)
+                ->where('hide_from_online_store', 0)
+                ->whereNull('deleted_at')
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id);
+
+            if ($validHeroProductIds->count() !== $heroProductIds->count()) {
+                throw ValidationException::withMessages([
+                    'hero_product_ids' => __('One or more selected hero products are unavailable for the online store.'),
+                ]);
+            }
+
+            $data['hero_product_ids'] = $heroProductIds->all();
         }
 
         // --- Normalize unified lineup ---
@@ -303,6 +435,64 @@ class SettingsApiController extends Controller
         $s->fill($data)->save();
 
         return response()->json($s->fresh());
+    }
+
+    /**
+     * Product choices for the hero selector, ordered by lifetime units sold.
+     * Selected products are always included even if they fall outside the top list.
+     */
+    private function heroProductOptions(array $selectedIds = []): array
+    {
+        $selectedIds = collect($selectedIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->unique()
+            ->values();
+
+        $sales = DB::table('sale_details')
+            ->select('product_id', DB::raw('SUM(quantity) AS sold_quantity'))
+            ->groupBy('product_id');
+
+        $baseQuery = fn () => Product::query()
+            ->select(
+                'products.id',
+                'products.name',
+                'products.code',
+                'products.image',
+                DB::raw('COALESCE(hero_sales.sold_quantity, 0) AS sold_quantity')
+            )
+            ->with(['images:id,product_id,image_path,is_main,sort_order'])
+            ->leftJoinSub($sales, 'hero_sales', function ($join) {
+                $join->on('hero_sales.product_id', '=', 'products.id');
+            })
+            ->where('products.is_active', 1)
+            ->where('products.hide_from_online_store', 0)
+            ->whereNull('products.deleted_at');
+
+        $products = $baseQuery()
+            ->orderByDesc('sold_quantity')
+            ->orderBy('products.name')
+            ->limit(50)
+            ->get();
+
+        if ($selectedIds->isNotEmpty()) {
+            $selected = $baseQuery()->whereIn('products.id', $selectedIds)->get();
+            $products = $products->concat($selected)->unique('id')->values();
+        }
+
+        return $products->map(function (Product $product) {
+            $filename = $product->primaryProductImageFilename();
+
+            return [
+                'id' => (int) $product->id,
+                'name' => (string) $product->name,
+                'code' => (string) $product->code,
+                'sold_quantity' => (float) ($product->sold_quantity ?? 0),
+                'image_url' => $filename
+                    ? asset('images/products/'.$filename)
+                    : asset('images/products/no-image.png'),
+            ];
+        })->all();
     }
 
     /**

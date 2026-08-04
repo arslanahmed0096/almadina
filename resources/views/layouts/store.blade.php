@@ -58,7 +58,10 @@
   $modalRegEnabled = $s->registration_enabled ?? true;
   $modalInviteRequired = $s->require_invite_code ?? false;
   $hidePrices = !$client && ($s->hide_prices_for_guests ?? false);
-  $isStoreHome = request()->routeIs('store.index');
+  // The storefront home is exposed at both `/` and `/online_store`.
+  // Keep the dedicated home shell active for both named routes.
+  $isStoreHome = request()->routeIs('store.home', 'store.index');
+  $usesOnsusChrome = $isStoreHome || request()->routeIs('store.about', 'store.contact');
 @endphp
 <!doctype html>
 <html lang="{{ str_replace('_','-', app()->getLocale() ?? 'en') }}" dir="{{ $isRtl ? 'rtl' : 'ltr' }}">
@@ -107,12 +110,17 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&family=Poppins:wght@100;200;300;400;500;600;700;800&display=swap">
 
   {{-- Storefront bundle --}}
   <link rel="stylesheet" href="{{ $cssStore }}">
-  @if($isStoreHome)
+  @if($usesOnsusChrome)
     <link rel="stylesheet" href="{{ asset('css/storefront-home.css') }}?v={{ @filemtime(public_path('css/storefront-home.css')) }}">
+    <link rel="stylesheet" href="{{ asset('css/storefront-home2-cover.css') }}?v={{ @filemtime(public_path('css/storefront-home2-cover.css')) }}">
+    <link rel="stylesheet" href="{{ asset('css/storefront-home2-exact.css') }}?v={{ @filemtime(public_path('css/storefront-home2-exact.css')) }}">
+  @endif
+  @if(request()->routeIs('store.about', 'store.contact'))
+    <link rel="stylesheet" href="{{ asset('css/storefront-contact.css') }}?v={{ @filemtime(public_path('css/storefront-contact.css')) }}">
   @endif
 
   <style>
@@ -139,13 +147,87 @@
     {!! $s->custom_css ?? '' !!}
   </style>
 </head>
-<body x-data class="bg-bg-base text-fg-primary antialiased min-h-screen flex flex-col {{ $isStoreHome ? 'store-home-page' : '' }}">
+<body x-data class="bg-bg-base text-fg-primary antialiased min-h-screen flex flex-col {{ $usesOnsusChrome ? 'store-home-page' : '' }}">
 
   {{-- Page loader --}}
   <div id="page-loader" x-data="pageLoader()"
        class="fixed inset-0 z-[2000] flex items-center justify-center bg-bg-base transition-opacity duration-300">
     <div class="w-10 h-10 border-2 border-line-subtle border-t-accent-500 rounded-full animate-spin"></div>
   </div>
+
+  @if($usesOnsusChrome)
+  {{-- Reference marketplace header --}}
+  <div class="onsus-utility-bar">
+    <div class="container">
+      <div class="onsus-utility-left">
+        <span><x-store.icon name="phone" class="w-3.5 h-3.5" /> Call us for free: <b>{{ $s->contact_phone ?? '+1(800) 123 4567' }}</b></span>
+        <span>Free Shipping on Orders <strong>$50+</strong></span>
+      </div>
+      <div class="onsus-utility-right">
+        @if($client)
+          <a href="{{ $accountUrl }}"><x-store.icon name="user" class="w-3.5 h-3.5" /> My account</a>
+        @else
+          <button type="button" @click="$dispatch('account-login'); window.StoreUI.open('authModal')"><x-store.icon name="user" class="w-3.5 h-3.5" /> My account</button>
+        @endif
+      </div>
+    </div>
+  </div>
+
+  <header class="onsus-header">
+    <div class="container onsus-masthead">
+      <a href="{{ route('store.index') }}" class="onsus-logo" aria-label="{{ $s->store_name ?? 'Store' }} home">
+        @if(!empty($s->logo_path))
+          <img src="{{ $assetPath($s->logo_path) }}" alt="{{ $s->store_name ?? 'Store' }}">
+        @else
+          <span class="onsus-logo-mark"><i></i></span>
+          <strong>nsus</strong><b>.</b>
+        @endif
+      </a>
+
+      <div class="onsus-search" x-data="searchBox('{{ route('store.search.suggestions') }}')" @click.outside="results = []">
+        <form action="{{ route('store.shop') }}" method="GET">
+          <button type="button" class="onsus-search-category">All categories <x-store.icon name="chevron-down" class="w-3.5 h-3.5" /></button>
+          <span class="onsus-search-divider"></span>
+          <input type="text" name="q" placeholder="Search for products" x-model="q" @input.debounce.250ms="fetch" autocomplete="off">
+          <button class="onsus-search-submit" type="submit" aria-label="{{ __('messages.Search') }}"><x-store.icon name="search" class="w-5 h-5" /></button>
+          <div x-show="results.length" x-cloak class="onsus-search-results">
+            <template x-for="p in results" :key="p.id">
+              <a :href="p.url"><img :src="p.image_url" alt=""><span><b x-text="p.name"></b><small x-text="'{{ $s->currency_code ?? '$' }}' + p.display_price"></small></span></a>
+            </template>
+          </div>
+        </form>
+      </div>
+
+      <div class="onsus-header-actions">
+        <button type="button" class="onsus-action onsus-wishlist" aria-label="Wishlist">
+          <span class="onsus-action-icon"><x-store.icon name="heart" class="w-7 h-7" /><i class="wishlist-count">0</i></span>
+          <span><small>wishlist:</small><strong class="wishlist-label">0 items</strong></span>
+        </button>
+        <button type="button" class="onsus-action" @click="window.StoreUI.open('miniCart')" aria-label="{{ __('messages.Cart') }}">
+          <span class="onsus-action-icon"><x-store.icon name="cart" class="w-8 h-8" /><i class="cart-count">0</i></span>
+          <span><small>Your cart:</small><strong class="onsus-cart-total">{{ $s->currency_code ?? '$' }}0.000</strong></span>
+        </button>
+      </div>
+
+      <div class="onsus-mobile-actions">
+        <button type="button" @click="window.StoreUI.open('mobileSearchOverlay')"><x-store.icon name="search" class="w-5 h-5" /></button>
+        <button type="button" @click="window.StoreUI.open('miniCart')"><x-store.icon name="cart" class="w-5 h-5" /><i class="cart-count">0</i></button>
+        <button type="button" @click="window.StoreUI.open('mobileCategorySidebar')"><x-store.icon name="menu" class="w-6 h-6" /></button>
+      </div>
+    </div>
+
+    <nav class="onsus-nav">
+      <div class="container">
+        <button type="button" class="onsus-all-categories" @click="window.StoreUI.open('mobileCategorySidebar')"><x-store.icon name="grid" class="w-4 h-4" /> All Categories</button>
+        <a href="{{ route('store.index') }}" class="{{ request()->routeIs('store.home', 'store.index') ? 'active' : '' }}">Home</a>
+        <a href="{{ route('store.shop') }}" class="{{ request()->routeIs('store.shop', 'store.collection.show') ? 'active' : '' }}">Shop</a>
+        <a href="{{ route('store.shop', ['deals' => 1]) }}">Product</a>
+        <a href="{{ route('store.about') }}" class="{{ request()->routeIs('store.about') ? 'active' : '' }}">About</a>
+        <a href="{{ route('store.contact') }}" class="{{ request()->routeIs('store.contact') ? 'active' : '' }}">Contact</a>
+      </div>
+    </nav>
+  </header>
+  @else
 
   {{-- Topbar --}}
   <div class="store-topbar bg-bg-elevated border-b border-line-subtle text-xs text-fg-secondary">
@@ -193,9 +275,14 @@
             {{ __('messages.Shop') }}
           </a>
 
+          <a href="{{ route('store.about') }}"
+             class="px-3 h-10 inline-flex items-center text-sm font-medium text-fg-secondary hover:text-fg-primary rounded-md transition-colors">
+            About
+          </a>
+
           <a href="{{ route('store.contact') }}"
              class="px-3 h-10 inline-flex items-center text-sm font-medium text-fg-secondary hover:text-fg-primary rounded-md transition-colors">
-            {{ __('messages.Support') }}
+            {{ __('messages.ContactUs') }}
           </a>
         </nav>
 
@@ -347,6 +434,7 @@
       </div>
     @endif
   </header>
+  @endif
 
   {{-- Mobile Category Sidebar (Alpine drawer) --}}
   <div id="mobileCategorySidebar" x-data="drawer({ side: 'start' })" @keydown.window="onEsc">
@@ -395,6 +483,13 @@
               </form>
             </div>
           </div>
+
+          <nav class="grid grid-cols-2 border-b border-line-subtle" aria-label="Store pages">
+            <a href="{{ route('store.index') }}" class="flex items-center gap-2 px-4 py-3 text-sm font-semibold text-fg-secondary hover:text-accent-500 hover:bg-bg-muted"><x-store.icon name="home" class="w-4 h-4" /> {{ __('messages.Home') }}</a>
+            <a href="{{ route('store.shop') }}" class="flex items-center gap-2 px-4 py-3 text-sm font-semibold text-fg-secondary hover:text-accent-500 hover:bg-bg-muted"><x-store.icon name="grid" class="w-4 h-4" /> {{ __('messages.Shop') }}</a>
+            <a href="{{ route('store.about') }}" class="flex items-center gap-2 px-4 py-3 text-sm font-semibold text-fg-secondary hover:text-accent-500 hover:bg-bg-muted"><x-store.icon name="info" class="w-4 h-4" /> About</a>
+            <a href="{{ route('store.contact') }}" class="flex items-center gap-2 px-4 py-3 text-sm font-semibold text-fg-secondary hover:text-accent-500 hover:bg-bg-muted"><x-store.icon name="mail" class="w-4 h-4" /> {{ __('messages.ContactUs') }}</a>
+          </nav>
 
           <div class="drawer-body p-0">
             <ul class="divide-y divide-line-subtle" x-data="sidebarMenu()">
@@ -482,7 +577,7 @@
   <nav class="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-bg-base/95 backdrop-blur-md border-t border-line-subtle pb-[env(safe-area-inset-bottom)]">
     <div class="grid grid-cols-5 h-16">
       @php
-        $isHome = request()->routeIs('store.index');
+        $isHome = request()->routeIs('store.home', 'store.index');
         $isShop = request()->routeIs('store.shop');
         $isAcct = request()->routeIs('store.account*') || str_contains(url()->current(), '/online_store/account');
       @endphp
@@ -525,6 +620,28 @@
   </nav>
 
   {{-- Footer --}}
+  @if($usesOnsusChrome)
+  <footer class="onsus-footer">
+    <div class="container onsus-footer-grid">
+      <div class="onsus-footer-brand">
+        <a href="{{ route('store.index') }}" class="onsus-logo">
+          @if(!empty($s->logo_path))
+            <img src="{{ $assetPath($s->logo_path) }}" alt="{{ $s->store_name ?? 'Store' }}">
+          @else
+            <span class="onsus-logo-mark"><i></i></span><strong>nsus</strong><b>.</b>
+          @endif
+        </a>
+        <p>We accept:</p>
+        <div class="onsus-payments"><b>VISA</b><b>Pay</b><b>DISCOVER</b><b>MC</b></div>
+      </div>
+      <div><h3>Get help</h3><a href="{{ route('store.contact') }}">Delivery Information</a><a href="{{ route('store.contact') }}">Sale Terms &amp; Conditions</a><a href="{{ route('store.contact') }}">Returns &amp; Refunds</a><a href="{{ route('store.contact') }}">Privacy Notice</a><a href="{{ route('store.contact') }}">Shopping FAQs</a></div>
+      <div><h3>Popular categories</h3>@foreach($categories->take(6) as $category)<a href="{{ route('store.shop', ['category' => $category->id]) }}">{{ $category->name }}</a>@endforeach</div>
+      <div><h3>Customer Care</h3><a href="{{ $accountUrl }}">My Account</a><a href="{{ $ordersUrl }}">Track your Order</a><a href="{{ route('store.contact') }}">Customer Service</a><a href="{{ route('store.contact') }}">Returns/Exchange</a><a href="{{ route('store.contact') }}">Product Support</a></div>
+      <div class="onsus-contact"><h3>Contact</h3><p><x-store.icon name="map-pin" class="w-4 h-4" /> {{ $s->contact_address ?? 'Store address is not provided' }}</p><p><x-store.icon name="phone" class="w-4 h-4" /> <b>{{ $s->contact_phone ?? 'Phone is not provided' }}</b></p><p><x-store.icon name="mail" class="w-4 h-4" /> {{ $s->contact_email ?? 'Email is not provided' }}</p></div>
+    </div>
+    <div class="onsus-footer-bottom"><div class="container"><span>New arrivals</span><span>Best sale</span><span>Value of the day</span><span>Top 100 offers</span><span>Blog</span><span>50% OFF</span><small>© {{ date('Y') }} {{ $s->store_name ?? 'Store' }}. All rights reserved.</small></div></div>
+  </footer>
+  @else
   <footer class="store-footer mt-16 bg-bg-surface border-t border-line-subtle">
     <div class="container py-10">
       <div class="grid grid-cols-2 md:grid-cols-4 gap-8">
@@ -588,6 +705,7 @@
       </div>
     </div>
   </footer>
+  @endif
 
   {{-- Mini Cart (Alpine drawer + miniCart renderer) --}}
   <div id="miniCart" x-data="drawer({ side: 'end' })" @keydown.window="onEsc">
@@ -721,21 +839,24 @@
 
           {{-- Login --}}
           <div x-show="is('login')" class="auth-body">
+            @if($usesOnsusChrome)
+              <h3 class="onsus-auth-title">Log In</h3>
+            @endif
             <form method="POST" action="{{ route('store.login') }}" class="space-y-4">
               @csrf
-              <input type="hidden" name="redirect" value="{{ route('checkout') }}">
+              <input type="hidden" name="redirect" value="{{ $usesOnsusChrome ? $accountUrl : route('checkout') }}">
 
               <div class="auth-field">
-                <label class="auth-label">{{ __('messages.Email') }}</label>
+                <label class="auth-label">{{ $usesOnsusChrome ? 'Phone number *' : __('messages.Email') }}</label>
                 <div class="auth-input-wrap">
                   <x-store.icon name="mail" class="auth-input-icon w-4 h-4" />
                   <input type="email" name="email" class="auth-input" required
-                         autocomplete="email" placeholder="you@example.com">
+                         autocomplete="email" placeholder="{{ $usesOnsusChrome ? 'Your email' : 'you@example.com' }}">
                 </div>
               </div>
 
               <div class="auth-field" x-data="{ show: false }">
-                <label class="auth-label">{{ __('messages.Password') }}</label>
+                <label class="auth-label">{{ $usesOnsusChrome ? 'Password *' : __('messages.Password') }}</label>
                 <div class="auth-input-wrap">
                   <x-store.icon name="shield-check" class="auth-input-icon w-4 h-4" />
                   <input :type="show ? 'text' : 'password'" name="password" class="auth-input auth-input-pw"
@@ -759,17 +880,31 @@
                 </div>
               </div>
 
-              <div class="flex items-center justify-between text-sm">
+              <div class="flex items-center justify-between text-sm {{ $usesOnsusChrome ? 'onsus-auth-forgot-row' : '' }}">
+                @if($usesOnsusChrome)
+                  <span></span>
+                  <a href="{{ route('store.login.show') }}">Forgot password ?</a>
+                @else
                 <label class="flex items-center gap-2 cursor-pointer select-none">
                   <input class="checkbox" type="checkbox" name="remember">
                   <span class="text-fg-secondary">{{ __('messages.RememberMe') }}</span>
                 </label>
+                @endif
               </div>
 
               <button type="submit" class="btn btn-primary btn-block btn-lg auth-submit">
                 <x-store.icon name="log-in" class="w-5 h-5" />
                 <span>{{ __('messages.SignIn') }}</span>
               </button>
+
+              @if($usesOnsusChrome)
+                <p class="onsus-auth-register">Don't you have an account? <a href="{{ route('store.register.show') }}">Register</a></p>
+                <div class="onsus-auth-divider"><span>Or login with</span></div>
+                <div class="onsus-auth-socials">
+                  <button type="button"><b>f</b> Facebook</button>
+                  <button type="button"><b>G</b> Google</button>
+                </div>
+              @endif
             </form>
           </div>
 

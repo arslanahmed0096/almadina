@@ -2,197 +2,176 @@
 
 @section('content')
 @php
-  $title   = __('messages.ContactUs');
-  $email   = $s->contact_email ?? '';
-  $phone   = $s->contact_phone ?? '';
+  $email = $s->contact_email ?? '';
+  $phone = $s->contact_phone ?? '';
   $address = $s->contact_address ?? '';
-  use App\Models\StoreSetting;
-  $s = $s ?? StoreSetting::first();
+  $currency = $s->currency_code ?? '$';
+  $hidePrices = !\Illuminate\Support\Facades\Auth::guard('store')->check()
+    && ($s->hide_prices_for_guests ?? false);
+  $usesDemoAddress = !$address || stripos($address, 'Sample City') !== false;
+  $mapUrl = $usesDemoAddress
+    ? 'https://www.openstreetmap.org/export/embed.html?bbox=-75.59%2C39.13%2C-75.48%2C39.20&layer=mapnik&marker=39.16793%2C-75.53673'
+    : 'https://www.google.com/maps?q=' . urlencode($address) . '&output=embed';
+  $ref = fn (string $path) => asset('images/store/home-2/reference/images/' . ltrim($path, '/'));
+  $recentProducts = [
+    ['category' => 'Headphone', 'title' => 'Urbanears Pampas - Wireless Over-Ear Headphones', 'price' => '48.990', 'image' => $ref('product/product-134.jpg')],
+    ['category' => 'Headphone', 'title' => 'Upgrader Headphones - Altec Lansing by ECCO Design', 'price' => '27.500', 'image' => $ref('product/product-2.jpg')],
+    ['category' => 'Smartwatch', 'title' => 'Apple Watch Series 6 (GPS) - 40mm Aluminum Case', 'price' => '63.999', 'image' => $ref('product/product-3.jpg')],
+    ['category' => 'Laptop & Computer', 'title' => 'Lenovo Yoga 910 - 2-in-1 Ultrabook with Touchscreen', 'price' => '39.990', 'image' => $ref('product/product-4.jpg')],
+    ['category' => 'Wireless Earphones', 'title' => 'JBL LIVE200BT - Wireless Neckband Earphones', 'price' => '14.999', 'image' => $ref('product/product-5.jpg')],
+  ];
 @endphp
 
-<section class="py-8 border-b border-line-subtle"
-         style="background: linear-gradient(135deg, rgb(var(--color-accent-500) / .12), rgb(var(--color-accent-400) / .06));">
-  <div class="container">
-    <div class="flex items-center justify-between flex-wrap gap-3">
-      <div>
-        <span class="section-kicker">{{ __('messages.ContactUs') }}</span>
-        <h1 class="section-title mt-1">{{ $title }}</h1>
-        <div class="text-fg-secondary mt-1">{{ __('messages.WeLoveToHearFromYou') }}</div>
-      </div>
-      <nav aria-label="breadcrumb">
-        <ol class="flex items-center gap-2 text-sm text-fg-muted m-0 p-0 list-none">
-          <li><a class="hover:text-accent-500" href="{{ route('store.index') }}">{{ __('messages.Home') }}</a></li>
-          <li aria-hidden="true">/</li>
-          <li class="text-fg-primary" aria-current="page">{{ $title }}</li>
-        </ol>
-      </nav>
+<div class="onsus-contact-page">
+  <div class="contact-breadcrumb">
+    <div class="container">
+      <a href="{{ route('store.index') }}">Home</a>
+      <x-store.icon name="chevron-right" class="w-3 h-3" />
+      <span>Contact</span>
     </div>
   </div>
-</section>
 
-<section class="py-10">
-  <div class="container">
-    <div class="grid lg:grid-cols-[1fr_2fr] gap-5">
+  <section class="contact-main">
+    <div class="container">
+      <div class="contact-map-shell">
+        <iframe
+          title="Store location"
+          src="{{ $mapUrl }}"
+          loading="lazy"
+          referrerpolicy="no-referrer-when-downgrade"
+          allowfullscreen></iframe>
 
-      {{-- Contact info --}}
-      <div>
-        <div class="card h-full">
-          <div class="card-body space-y-4">
-            <h5 class="font-semibold mb-2">{{ __('messages.ContactInformation') }}</h5>
+        <div class="contact-quote-card">
+          <div class="contact-card-heading">
+            <h1>Get A Quote</h1>
+            <p>Fill up the form and our Team will get back to you within 24 hours.</p>
+          </div>
 
-            <div class="flex items-start gap-3">
-              <span class="w-10 h-10 rounded-full flex items-center justify-center text-accent-500 shrink-0"
-                    style="background: rgb(var(--color-accent-500) / .1);">
-                <x-store.icon name="mail" class="w-4 h-4" />
-              </span>
-              <div class="min-w-0">
-                <div class="text-xs text-fg-muted">{{ __('messages.Email') }}</div>
-                @if($email)
-                  <a href="mailto:{{ $email }}" class="text-accent-500 hover:underline break-all">{{ $email }}</a>
-                @else
-                  <span class="text-fg-muted">{{ __('messages.NotProvided') }}</span>
-                @endif
-              </div>
+          <form id="contactForm" method="POST" action="{{ route('store.contact.send') }}" novalidate>
+            @csrf
+
+            <label>
+              <span>Name</span>
+              <input type="text" name="name" autocomplete="name" required>
+            </label>
+
+            <label>
+              <span>Email</span>
+              <input type="email" name="email" autocomplete="email" required>
+            </label>
+
+            <label>
+              <span>Subject</span>
+              <input type="text" name="subject" required>
+            </label>
+
+            <label>
+              <span>Your message</span>
+              <textarea name="message" rows="6" required></textarea>
+            </label>
+
+            <div class="contact-honeypot" aria-hidden="true">
+              <label>Company<input type="text" name="company" tabindex="-1" autocomplete="off"></label>
             </div>
 
-            <div class="flex items-start gap-3">
-              <span class="w-10 h-10 rounded-full flex items-center justify-center text-accent-500 shrink-0"
-                    style="background: rgb(var(--color-accent-500) / .1);">
-                <x-store.icon name="phone" class="w-4 h-4" />
-              </span>
-              <div class="min-w-0">
-                <div class="text-xs text-fg-muted">{{ __('messages.Phone') }}</div>
-                @if($phone)
-                  <a href="tel:{{ preg_replace('/\s+/', '', $phone) }}" class="text-accent-500 hover:underline">{{ $phone }}</a>
-                @else
-                  <span class="text-fg-muted">{{ __('messages.NotProvided') }}</span>
-                @endif
-              </div>
-            </div>
+            <button id="contactSubmit" type="submit">Send message</button>
+            <div id="contactAlert" class="contact-alert" role="alert" aria-live="polite" hidden></div>
+          </form>
+        </div>
 
-            <div class="flex items-start gap-3">
-              <span class="w-10 h-10 rounded-full flex items-center justify-center text-accent-500 shrink-0"
-                    style="background: rgb(var(--color-accent-500) / .1);">
-                <x-store.icon name="map-pin" class="w-4 h-4" />
-              </span>
-              <div class="min-w-0">
-                <div class="text-xs text-fg-muted">{{ __('messages.Address') }}</div>
-                @if($address)
-                  <div>{{ $address }}</div>
-                @else
-                  <span class="text-fg-muted">{{ __('messages.NotProvided') }}</span>
-                @endif
-              </div>
+        <div class="contact-info-panel">
+          <h2>Contact Information</h2>
+          <div class="contact-info-list">
+            <div class="contact-info-item">
+              <x-store.icon name="map-pin" class="w-5 h-5" />
+              @if($address)
+                <a href="https://www.google.com/maps?q={{ urlencode($address) }}" target="_blank" rel="noopener">{{ $address }}</a>
+              @else
+                <span>Store address is not provided</span>
+              @endif
+            </div>
+            <div class="contact-info-item">
+              <x-store.icon name="phone" class="w-5 h-5" />
+              @if($phone)
+                <a class="contact-info-emphasis" href="tel:{{ preg_replace('/\s+/', '', $phone) }}">{{ $phone }}</a>
+              @else
+                <span>Phone is not provided</span>
+              @endif
+            </div>
+            <div class="contact-info-item">
+              <x-store.icon name="send" class="w-5 h-5" />
+              @if($email)
+                <a href="mailto:{{ $email }}">{{ $email }}</a>
+              @else
+                <span>Email is not provided</span>
+              @endif
             </div>
           </div>
         </div>
       </div>
+    </div>
+  </section>
 
-      {{-- Form --}}
-      <div class="space-y-4">
-        <div class="card">
-          <div class="card-body">
-            <h5 class="font-semibold mb-4">{{ __('messages.SendUsAMessage') }}</h5>
-
-            <form id="contactForm" method="POST" action="{{ route('store.contact.send') }}" class="grid md:grid-cols-2 gap-4" novalidate>
-              @csrf
-
-              <div>
-                <label class="form-label">{{ __('messages.YourName') }} *</label>
-                <input type="text" name="name" class="input" required>
-              </div>
-
-              <div>
-                <label class="form-label">{{ __('messages.EmailAddress') }} *</label>
-                <input type="email" name="email" class="input" required>
-              </div>
-
-              <div>
-                <label class="form-label">{{ __('messages.PhoneOptional') }}</label>
-                <input type="text" name="phone" class="input">
-              </div>
-
-              <div>
-                <label class="form-label">{{ __('messages.Subject') }}</label>
-                <input type="text" name="subject" class="input" placeholder="{{ __('messages.HowCanWeHelp') }}">
-              </div>
-
-              <div class="md:col-span-2">
-                <label class="form-label">{{ __('messages.Message') }} *</label>
-                <textarea name="message" rows="5" class="input" required></textarea>
-              </div>
-
-              <div style="position:absolute; left:-10000px; top:auto;">
-                <input type="text" name="company" tabindex="-1" autocomplete="off">
-              </div>
-
-              <div class="md:col-span-2 flex items-center justify-between flex-wrap gap-2">
-                <small class="text-fg-muted">{{ __('messages.ReplyWithinOneBusinessDay') }}</small>
-                <button id="contactSubmit" type="submit" class="btn btn-primary">
-                  <x-store.icon name="send" class="w-4 h-4" />{{ __('messages.SendMessage') }}
-                </button>
-              </div>
-
-              <div class="md:col-span-2">
-                <div id="contactAlert" class="alert hidden" role="alert" aria-live="polite"></div>
-              </div>
-            </form>
-          </div>
+  <section class="contact-recent">
+    <div class="container">
+      <div class="contact-section-title">
+        <h2>Recently Viewed</h2>
+        <div>
+          <button type="button" aria-label="Previous products"><x-store.icon name="chevron-left" class="w-4 h-4" /></button>
+          <button type="button" aria-label="Next products"><x-store.icon name="chevron-right" class="w-4 h-4" /></button>
         </div>
-
-        @if($address)
-          <div class="card">
-            <div class="card-body p-0">
-              <div class="aspect-video w-full">
-                <iframe
-                  class="w-full h-full rounded-lg"
-                  src="https://www.google.com/maps?q={{ urlencode($address) }}&output=embed"
-                  loading="lazy"
-                  referrerpolicy="no-referrer-when-downgrade"
-                  allowfullscreen>
-                </iframe>
-              </div>
-            </div>
-          </div>
-        @endif
+      </div>
+      <div class="contact-recent-grid">
+        @foreach($recentProducts as $product)
+          <a href="{{ route('store.shop', ['q' => $product['title']]) }}" class="contact-product-card">
+            <span class="contact-product-image"><img src="{{ $product['image'] }}" alt="{{ $product['title'] }}"></span>
+            <small>{{ $product['category'] }}</small>
+            <strong>{{ $product['title'] }}</strong>
+            @unless($hidePrices)
+              <b>{{ $currency }}{{ $product['price'] }}</b>
+            @endunless
+          </a>
+        @endforeach
       </div>
     </div>
-  </div>
-</section>
+  </section>
+
+  <section class="onsus-newsletter contact-newsletter">
+    <div class="container">
+      <strong><x-store.icon name="mail" class="w-5 h-5" /> 10% Off Your First Order</strong>
+      <span>Be the first to know about offers, new products and discounted products</span>
+      <form id="contactNewsletterForm" action="{{ route('newsletter.subscribe') }}" method="POST">
+        @csrf
+        <input name="email" type="email" placeholder="Enter your email address" aria-label="Email address" required>
+        <button type="submit">{{ __('messages.Subscribe') }}</button>
+      </form>
+      <div id="contactNewsletterMsg" aria-live="polite"></div>
+    </div>
+  </section>
+</div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
   var form = document.getElementById('contactForm');
-  var btn  = document.getElementById('contactSubmit');
-  var box  = document.getElementById('contactAlert');
+  var button = document.getElementById('contactSubmit');
+  var alertBox = document.getElementById('contactAlert');
 
-  function clearValidation() {
-    var invalids = form.querySelectorAll('.is-invalid');
-    for (var i = 0; i < invalids.length; i++) {
-      invalids[i].classList.remove('is-invalid');
-      invalids[i].style.borderColor = '';
-    }
-    var dyn = form.querySelectorAll('.js-dyn-err');
-    for (var j = 0; j < dyn.length; j++) dyn[j].parentNode.removeChild(dyn[j]);
+  function showAlert(type, message) {
+    alertBox.className = 'contact-alert is-' + type;
+    alertBox.innerHTML = message;
+    alertBox.hidden = false;
   }
 
-  function showAlert(type, html) {
-    box.className = 'alert alert-' + type;
-    box.innerHTML = html;
-    box.classList.remove('hidden');
-    box.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();
+    alertBox.hidden = true;
+    form.querySelectorAll('.is-invalid').forEach(function (field) {
+      field.classList.remove('is-invalid');
+    });
 
-  form.addEventListener('submit', function (e) {
-    e.preventDefault();
-    clearValidation();
-    box.classList.add('hidden');
-
-    var originalBtnHtml = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '<svg class="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg>{{ __("messages.Sending") }}';
-
-    var fd = new FormData(form);
+    var originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = '{{ __("messages.Sending") }}';
 
     fetch(form.action, {
       method: 'POST',
@@ -200,53 +179,72 @@ document.addEventListener('DOMContentLoaded', function () {
         'Accept': 'application/json',
         'X-CSRF-TOKEN': form.querySelector('input[name="_token"]').value
       },
-      body: fd
+      body: new FormData(form)
     })
-    .then(function (resp) {
-      var ct = (resp.headers.get('content-type') || '').toLowerCase();
-      if (ct.indexOf('application/json') !== -1) {
-        return resp.json().then(function (json) { return { ok: resp.ok, status: resp.status, data: json }; });
-      }
-      return resp.text().then(function (text) { return { ok: resp.ok, status: resp.status, data: { message: text } }; });
+    .then(function (response) {
+      return response.json().catch(function () { return {}; }).then(function (data) {
+        return { ok: response.ok, status: response.status, data: data };
+      });
     })
-    .then(function (res) {
-      if (res.ok) {
-        showAlert('success', (res.data && res.data.message) ? res.data.message : '{{ __("messages.ContactSuccess") }}');
+    .then(function (result) {
+      if (result.ok) {
         form.reset();
+        showAlert('success', result.data.message || '{{ __("messages.ContactSuccess") }}');
         return;
       }
 
-      if (res.status === 422 && res.data && res.data.errors) {
-        var errors = res.data.errors || {};
-        var listHtml = '<strong>{{ __("messages.FixFollowingAndTryAgain") }}</strong><ul class="mb-0 list-disc ps-5 mt-1">';
-        for (var field in errors) {
-          if (!errors.hasOwnProperty(field)) continue;
-          var msgs = errors[field];
-          for (var k = 0; k < msgs.length; k++) listHtml += '<li>' + msgs[k] + '</li>';
-          var input = form.querySelector('[name="' + field + '"]');
-          if (input) {
-            input.classList.add('is-invalid');
-            input.style.borderColor = 'rgb(var(--color-danger))';
-            var div = document.createElement('div');
-            div.className = 'js-dyn-err text-xs text-danger mt-1';
-            div.textContent = msgs[0];
-            if (input.parentNode) input.parentNode.appendChild(div);
-          }
-        }
-        listHtml += '</ul>';
-        showAlert('danger', listHtml);
+      if (result.status === 422 && result.data.errors) {
+        var messages = [];
+        Object.keys(result.data.errors).forEach(function (fieldName) {
+          var field = form.querySelector('[name="' + fieldName + '"]');
+          if (field) field.classList.add('is-invalid');
+          messages = messages.concat(result.data.errors[fieldName]);
+        });
+        showAlert('error', messages.join('<br>'));
         return;
       }
 
-      var msg = (res.data && (res.data.message || res.data.error)) || '{{ __("messages.SomethingWentWrong") }}';
-      showAlert('danger', msg);
+      showAlert('error', result.data.message || '{{ __("messages.SomethingWentWrong") }}');
     })
     .catch(function () {
-      showAlert('danger', '{{ __("messages.NetworkErrorTryAgain") }}');
+      showAlert('error', '{{ __("messages.NetworkErrorTryAgain") }}');
     })
     .finally(function () {
-      btn.disabled = false;
-      btn.innerHTML = originalBtnHtml;
+      button.disabled = false;
+      button.textContent = originalText;
+    });
+  });
+
+  var newsletter = document.getElementById('contactNewsletterForm');
+  var newsletterMessage = document.getElementById('contactNewsletterMsg');
+  newsletter.addEventListener('submit', function (event) {
+    event.preventDefault();
+    var submit = newsletter.querySelector('button');
+    submit.disabled = true;
+
+    fetch(newsletter.action, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': newsletter.querySelector('input[name="_token"]').value
+      },
+      body: new FormData(newsletter)
+    })
+    .then(function (response) {
+      return response.json().catch(function () { return {}; }).then(function (data) {
+        if (!response.ok) throw data;
+        return data;
+      });
+    })
+    .then(function (data) {
+      newsletter.reset();
+      newsletterMessage.textContent = data.message || 'You have successfully subscribed.';
+    })
+    .catch(function (error) {
+      newsletterMessage.textContent = error.message || 'Unable to subscribe right now.';
+    })
+    .finally(function () {
+      submit.disabled = false;
     });
   });
 });

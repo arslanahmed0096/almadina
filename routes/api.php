@@ -78,6 +78,8 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
 
     Route::get('/admin/store/settings', [SettingsApiController::class, 'show']);
     Route::post('/admin/store/settings', [SettingsApiController::class, 'update']);
+    Route::get('/admin/store/top-categories', [SettingsApiController::class, 'showTopCategories']);
+    Route::put('/admin/store/top-categories', [SettingsApiController::class, 'updateTopCategories']);
     Route::get('/settings/calendar', [SettingsApiController::class, 'showCalendar']);
     Route::patch('/settings/calendar', [SettingsApiController::class, 'updateCalendar']);
 

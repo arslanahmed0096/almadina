@@ -86,6 +86,68 @@ class StoreFrontController extends Controller
             END, 2
         )";
 
+        // Products selected in Store Settings for the two cards beside the hero.
+        $heroProductIds = collect($s->hero_product_ids ?? [])
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->unique()
+            ->take(2)
+            ->values();
+
+        $heroProducts = collect();
+        if ($heroProductIds->isNotEmpty()) {
+            $heroProducts = Product::query()
+                ->where('products.is_active', 1)
+                ->where('products.hide_from_online_store', 0)
+                ->whereIn('products.id', $heroProductIds)
+                ->with([
+                    'category:id,name',
+                    'variants:id,product_id,name,price,image',
+                    'images:id,product_id,image_path,is_main,sort_order',
+                ])
+                ->leftJoinSub($minVariantSub, 'pvmin', function ($join) {
+                    $join->on('pvmin.product_id', '=', 'products.id');
+                })
+                ->addSelect(
+                    'products.*',
+                    DB::raw("$baseExpr AS base_price"),
+                    DB::raw("$finalExpr AS final_display_price")
+                )
+                ->get()
+                ->sortBy(fn ($product) => $heroProductIds->search((int) $product->id))
+                ->values();
+
+            $this->attachStockToProducts($heroProducts, $s->default_warehouse_id);
+
+            foreach ($heroProducts as $product) {
+                $filename = $product->primaryProductImageFilename();
+                $product->display_price = (float) ($product->final_display_price ?? 0);
+                $product->original_price = (float) ($product->base_price ?? 0);
+                $product->hero_image_url = $filename
+                    ? asset('images/products/'.$filename)
+                    : asset('images/products/no-image.png');
+
+                $taxRate = is_numeric($product->TaxNet) ? (float) $product->TaxNet : (float) ($s->default_tax_rate ?? 0);
+                $discount = is_numeric($product->discount) ? (float) $product->discount : 0.0;
+                $isPercentDiscount = (string) $product->discount_method === '1';
+                $isTaxInclusive = (string) $product->tax_method === '2';
+
+                foreach ($product->variants as $variant) {
+                    $price = (float) ($variant->price ?? 0);
+                    if ($discount > 0) {
+                        $price = $isPercentDiscount
+                            ? $price - ($price * $discount / 100)
+                            : $price - min($discount, $price);
+                        $price = max(0, $price);
+                    }
+                    if (! $isTaxInclusive && $taxRate > 0) {
+                        $price *= 1 + ($taxRate / 100);
+                    }
+                    $variant->display_price = round($price, 2);
+                }
+            }
+        }
+
         // 3) Build blocks
         $blocks = [];
         $defaultTaxRate = (float) ($s->default_tax_rate ?? 0);
@@ -141,6 +203,7 @@ class StoreFrontController extends Controller
                     ->where('products.is_active', 1)
                     ->where('products.hide_from_online_store', 0)
                     ->with([
+                        'category:id,name',
                         'variants:id,product_id,name,price,image',
                         'images:id,product_id,image_path,is_main,sort_order',
                     ]) // QuickView / gallery + variant picker
@@ -298,11 +361,153 @@ class StoreFrontController extends Controller
         }
 
         $categories = Category::with('subcategories')->orderBy('name')->get();
+        $configuredTopCategoryIds = collect($s->top_category_ids ?? [])
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->unique()
+            ->take(8)
+            ->values();
+
+        if ($configuredTopCategoryIds->isNotEmpty()) {
+            $homeCategoryIds = $configuredTopCategoryIds;
+        } else {
+            $onlineProductQuery = Product::query()
+                ->whereNull('products.deleted_at')
+                ->where('products.is_active', 1)
+                ->where('products.hide_from_online_store', 0);
+
+            $legacyCategoryIds = (clone $onlineProductQuery)
+                ->whereNotNull('products.category_id')
+                ->distinct()
+                ->pluck('products.category_id');
+            $additionalCategoryIds = DB::table('category_product')
+                ->join('products', 'products.id', '=', 'category_product.product_id')
+                ->whereNull('products.deleted_at')
+                ->where('products.is_active', 1)
+                ->where('products.hide_from_online_store', 0)
+                ->distinct()
+                ->pluck('category_product.category_id');
+            $availableCategoryIds = $legacyCategoryIds
+                ->merge($additionalCategoryIds)
+                ->map(fn ($id) => (int) $id)
+                ->filter()
+                ->unique()
+                ->values();
+            $homeCategoryIds = Category::query()
+                ->whereIn('id', $availableCategoryIds)
+                ->orderBy('name')
+                ->take(8)
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->values();
+        }
+
+        $homeCategories = Category::query()
+            ->whereIn('id', $homeCategoryIds)
+            ->get()
+            ->sortBy(fn ($category) => $homeCategoryIds->search((int) $category->id))
+            ->values();
+
+        foreach ($homeCategories as $category) {
+            $representativeProduct = Product::query()
+                ->whereNull('products.deleted_at')
+                ->where('products.is_active', 1)
+                ->where('products.hide_from_online_store', 0)
+                ->where(function ($query) use ($category) {
+                    $query->where('products.category_id', $category->id)
+                        ->orWhereHas('categories', fn ($categoriesQuery) => $categoriesQuery->where('categories.id', $category->id));
+                })
+                ->with('images:id,product_id,image_path,is_main,sort_order')
+                ->orderByRaw("CASE WHEN products.image IS NOT NULL AND products.image <> '' AND products.image NOT LIKE '%no-image%' THEN 0 ELSE 1 END")
+                ->orderByDesc('products.updated_at')
+                ->first();
+
+            $categoryImage = $representativeProduct?->primaryProductImageFilename();
+            $category->home_image_url = $categoryImage
+                ? asset('images/products/'.$categoryImage)
+                : asset('images/products/no-image.png');
+        }
+
+        $dealBlock = collect($blocks)->first(function ($block) {
+            return ($block['type'] ?? null) === 'collection'
+                && ($block['collection']->slug ?? null) === 'deal-of-the-day';
+        });
+
+        $dealProducts = collect($dealBlock['products'] ?? []);
+        if ($dealProducts->isNotEmpty()) {
+            $soldQuery = DB::table('sale_details')
+                ->join('sales', 'sales.id', '=', 'sale_details.sale_id')
+                ->whereIn('sale_details.product_id', $dealProducts->pluck('id'))
+                ->whereNull('sales.deleted_at')
+                ->where('sales.statut', 'completed');
+
+            if (Schema::hasColumn('sale_details', 'deleted_at')) {
+                $soldQuery->whereNull('sale_details.deleted_at');
+            }
+
+            $soldByProduct = $soldQuery
+                ->groupBy('sale_details.product_id')
+                ->pluck(DB::raw('SUM(sale_details.quantity)'), 'sale_details.product_id');
+
+            foreach ($dealProducts as $product) {
+                $product->sold_quantity = (float) ($soldByProduct[$product->id] ?? 0);
+            }
+        }
+
+        $homeProductTabs = collect([
+            ['label' => 'Feature', 'slug' => 'feature'],
+            ['label' => 'Top Rate', 'slug' => 'top-rate'],
+            ['label' => 'On Sale', 'slug' => 'on-sale'],
+        ])->map(function ($tab) use ($blocks) {
+            $block = collect($blocks)->first(function ($block) use ($tab) {
+                return ($block['type'] ?? null) === 'collection'
+                    && ($block['collection']->slug ?? null) === $tab['slug'];
+            });
+
+            $products = collect($block['products'] ?? [])->take(6)->values();
+
+            if ($tab['slug'] === 'on-sale') {
+                foreach ($products as $product) {
+                    $regularPrice = (float) ($product->fix_price ?? 0);
+                    if ($regularPrice > (float) ($product->display_price ?? 0)) {
+                        $product->base_price = $regularPrice;
+                    }
+                }
+            }
+
+            return [
+                'label' => $tab['label'],
+                'slug' => $tab['slug'],
+                'products' => $products,
+            ];
+        });
+
+        $homeSectionCollections = collect([
+            'trending' => ['slug' => 'trending-products', 'limit' => 6],
+            'best_sellers' => ['slug' => 'best-sellers', 'limit' => 6],
+            'recently_viewed' => ['slug' => 'recently-viewed', 'limit' => 6],
+            'smart_home' => ['slug' => 'smart-home-appliances', 'limit' => 10],
+        ])->map(function ($config) use ($blocks) {
+            $block = collect($blocks)->first(function ($block) use ($config) {
+                return ($block['type'] ?? null) === 'collection'
+                    && ($block['collection']->slug ?? null) === $config['slug'];
+            });
+
+            return [
+                'slug' => $config['slug'],
+                'products' => collect($block['products'] ?? [])->take($config['limit'])->values(),
+            ];
+        });
 
         $viewData = [
             's' => $s,
             'blocks' => $blocks,
+            'dealBlock' => $dealBlock,
+            'homeProductTabs' => $homeProductTabs,
+            'homeSectionCollections' => $homeSectionCollections,
+            'heroProducts' => $heroProducts,
             'categories' => $categories,
+            'homeCategories' => $homeCategories,
             'banners' => $banners,
             'showCategoryBar' => true,
         ];
@@ -472,6 +677,13 @@ class StoreFrontController extends Controller
         ]);
     }
  
+
+    public function about()
+    {
+        $s = StoreSetting::first();
+
+        return view('store.about', compact('s'));
+    }
 
     public function contact()
     {

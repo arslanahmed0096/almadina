@@ -597,6 +597,17 @@
           </router-link>
         </li>
 
+        <!-- Top Categories -->
+        <li
+          class="nav-item"
+          v-if="currentUserPermissions && currentUserPermissions.includes('Store_settings_view')"
+        >
+          <router-link tag="a" class="nav-item-hold" to="/app/Store/TopCategories">
+            <lucide-icon class="nav-icon" name="list" />
+            <span class="item-name">Top Categories</span>
+          </router-link>
+        </li>
+
         <!-- Orders -->
         <li
           class="nav-item"

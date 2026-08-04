@@ -8,7 +8,11 @@
     ->values()
     ->all();
   $primaryFile = $p->primaryProductImageFilename();
-  $imgUrl = $primaryFile ? asset('images/products/' . $primaryFile) : asset('images/products/no-image.png');
+  $fallbackImage = $fallbackImage ?? null;
+  $usesPlaceholder = empty($primaryFile) || in_array(strtolower(basename((string) $primaryFile)), ['no-image.png', 'no_image.png', 'noimage.png'], true);
+  $imgUrl = ($fallbackImage && $usesPlaceholder)
+    ? $fallbackImage
+    : ($primaryFile ? asset('images/products/' . $primaryFile) : asset('images/products/no-image.png'));
   $descShort = \Illuminate\Support\Str::limit(strip_tags($p->note ?? ''), 600);
   $minPrice  = (float) ($p->display_price ?? ($p->price ?? 0));
   $variants  = $p->relationLoaded('variants') ? $p->variants : collect($p->variants ?? []);
@@ -80,6 +84,10 @@
      aria-label="{{ __('messages.QuickView') }}: {{ $p->name }}"
      @click.prevent>
     <img src="{{ $imgUrl }}" alt="{{ $p->name }}" loading="lazy">
+
+    @if(isset($dealIndex))
+      <span class="onsus-sale">SALE<br>{{ 18 + ((int) $dealIndex * 3) }}%</span>
+    @endif
 
     @if($isPreorderActive)
       <span class="product-badge product-badge-pre">{{ __('messages.PreOrder') }}</span>

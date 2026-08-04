@@ -68,6 +68,7 @@ if ($installed === true) {
 
             Route::get('/', [StoreFrontController::class, 'index'])->name('store.index');
             Route::get('/shop', [StoreFrontController::class, 'shop'])->name('store.shop');
+            Route::get('/about', [StoreFrontController::class, 'about'])->name('store.about');
             Route::get('/contact', [StoreFrontController::class, 'contact'])->name('store.contact');
             Route::post('/store/orders', [CheckoutController::class, 'store'])->name('store.orders.store');
             Route::post('/store/payment-intent', [CheckoutController::class, 'createPaymentIntent'])->name('store.payment.intent');
