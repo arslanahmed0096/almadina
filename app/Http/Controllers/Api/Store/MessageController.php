@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Store;
 
 use App\Http\Controllers\Controller;
 use App\Models\Message;
+use App\Models\Warehouse;
 use Illuminate\Http\Request;
 
 class MessageController extends Controller
@@ -14,7 +15,8 @@ class MessageController extends Controller
             'name' => 'required|string|max:190',
             'email' => 'required|email|max:190',
             'phone' => 'nullable|string|max:50',
-            'subject' => 'nullable|string|max:190',
+            'subject' => 'required|string|max:190',
+            'branch_id' => 'nullable|integer|exists:warehouses,id',
             'message' => 'required|string',
             'company' => 'nullable|string', // honeypot if you want
         ]);
@@ -22,6 +24,17 @@ class MessageController extends Controller
         // Optional honeypot: if filled, pretend success
         if ($request->filled('company')) {
             return response()->json(['ok' => true, 'message' => __('Thanks! If needed, we will get back to you.')]);
+        }
+
+        $branchId = $data['branch_id'] ?? null;
+        unset($data['branch_id'], $data['company']);
+
+        if ($branchId) {
+            $branch = Warehouse::query()->whereNull('deleted_at')->find($branchId);
+            if ($branch) {
+                $subject = trim((string) ($data['subject'] ?? 'General inquiry'));
+                $data['subject'] = mb_strimwidth($subject.' — '.$branch->name, 0, 190, '…');
+            }
         }
 
         Message::create($data);

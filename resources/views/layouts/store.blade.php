@@ -6,8 +6,8 @@
   $categories = $categories ?? collect();
   $primary   = $s->primary_color   ?? '#3B82F6';
   $secondary = $s->secondary_color ?? '#22D3EE';
-  $title     = $s->seo_meta_title  ?? ($s->store_name ?? __('messages.Store'));
-  $desc      = $s->seo_meta_description ?? '';
+  $title     = $pageTitle ?? ($s->seo_meta_title ?? ($s->store_name ?? __('messages.Store')));
+  $desc      = $pageDescription ?? ($s->seo_meta_description ?? '');
 
   // Social links — normalize to [{platform,url}]
   $social = $s->social_links ?? [];
@@ -61,7 +61,9 @@
   // The storefront home is exposed at both `/` and `/online_store`.
   // Keep the dedicated home shell active for both named routes.
   $isStoreHome = request()->routeIs('store.home', 'store.index');
-  $usesOnsusChrome = $isStoreHome || request()->routeIs('store.about', 'store.contact');
+  $isAlmadinaContact = request()->routeIs('store.contact');
+  $usesAlmadinaChrome = $isStoreHome || $isAlmadinaContact;
+  $usesOnsusChrome = request()->routeIs('store.about');
 @endphp
 <!doctype html>
 <html lang="{{ str_replace('_','-', app()->getLocale() ?? 'en') }}" dir="{{ $isRtl ? 'rtl' : 'ltr' }}">
@@ -114,13 +116,21 @@
 
   {{-- Storefront bundle --}}
   <link rel="stylesheet" href="{{ $cssStore }}">
-  @if($usesOnsusChrome)
+  @if($usesAlmadinaChrome)
+    @if($isStoreHome)
+      <link rel="preload" as="image" href="{{ asset('images/storefront/almadina-appliances-hero-v1.webp') }}" type="image/webp">
+    @endif
+    <link rel="stylesheet" href="{{ asset('css/storefront-almadina.css') }}?v={{ @filemtime(public_path('css/storefront-almadina.css')) }}">
+  @elseif($usesOnsusChrome)
     <link rel="stylesheet" href="{{ asset('css/storefront-home.css') }}?v={{ @filemtime(public_path('css/storefront-home.css')) }}">
     <link rel="stylesheet" href="{{ asset('css/storefront-home2-cover.css') }}?v={{ @filemtime(public_path('css/storefront-home2-cover.css')) }}">
     <link rel="stylesheet" href="{{ asset('css/storefront-home2-exact.css') }}?v={{ @filemtime(public_path('css/storefront-home2-exact.css')) }}">
   @endif
-  @if(request()->routeIs('store.about', 'store.contact'))
+  @if(request()->routeIs('store.about'))
     <link rel="stylesheet" href="{{ asset('css/storefront-contact.css') }}?v={{ @filemtime(public_path('css/storefront-contact.css')) }}">
+  @endif
+  @if($isAlmadinaContact)
+    <link rel="stylesheet" href="{{ asset('css/storefront-contact-almadina.css') }}?v={{ @filemtime(public_path('css/storefront-contact-almadina.css')) }}">
   @endif
 
   <style>
@@ -147,7 +157,7 @@
     {!! $s->custom_css ?? '' !!}
   </style>
 </head>
-<body x-data class="bg-bg-base text-fg-primary antialiased min-h-screen flex flex-col {{ $usesOnsusChrome ? 'store-home-page' : '' }}">
+<body x-data class="bg-bg-base text-fg-primary antialiased min-h-screen flex flex-col {{ $usesOnsusChrome ? 'store-home-page' : '' }} {{ $usesAlmadinaChrome ? 'is-almadina-home' : '' }} {{ $isAlmadinaContact ? 'is-almadina-contact' : '' }}">
 
   {{-- Page loader --}}
   <div id="page-loader" x-data="pageLoader()"
@@ -155,7 +165,9 @@
     <div class="w-10 h-10 border-2 border-line-subtle border-t-accent-500 rounded-full animate-spin"></div>
   </div>
 
-  @if($usesOnsusChrome)
+  @if($usesAlmadinaChrome)
+    @include('store.partials.almadina.header')
+  @elseif($usesOnsusChrome)
   {{-- Reference marketplace header --}}
   <div class="onsus-utility-bar">
     <div class="container">
@@ -620,7 +632,9 @@
   </nav>
 
   {{-- Footer --}}
-  @if($usesOnsusChrome)
+  @if($usesAlmadinaChrome)
+    @include('store.partials.almadina.footer')
+  @elseif($usesOnsusChrome)
   <footer class="onsus-footer">
     <div class="container onsus-footer-grid">
       <div class="onsus-footer-brand">

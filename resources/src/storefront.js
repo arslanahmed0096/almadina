@@ -487,6 +487,46 @@ Alpine.data('pageLoader', () => ({
   },
 }));
 
+/* Deal countdowns use an ISO timestamp rendered by the server. Invalid or
+ * expired values never roll over into a synthetic countdown. */
+function initDealCountdowns() {
+  document.querySelectorAll('[data-deal-countdown]').forEach((countdown) => {
+    const end = Date.parse(countdown.dataset.expiresAt || '');
+    if (!Number.isFinite(end)) return;
+
+    const hours = countdown.querySelector('[data-countdown-hours]');
+    const minutes = countdown.querySelector('[data-countdown-minutes]');
+    const seconds = countdown.querySelector('[data-countdown-seconds]');
+    let timer = null;
+
+    const render = () => {
+      const remaining = Math.max(0, end - Date.now());
+      const totalSeconds = Math.floor(remaining / 1000);
+      const hourValue = Math.floor(totalSeconds / 3600);
+      const minuteValue = Math.floor((totalSeconds % 3600) / 60);
+      const secondValue = totalSeconds % 60;
+
+      if (hours) hours.textContent = String(hourValue).padStart(2, '0');
+      if (minutes) minutes.textContent = String(minuteValue).padStart(2, '0');
+      if (seconds) seconds.textContent = String(secondValue).padStart(2, '0');
+
+      if (remaining === 0 && timer) {
+        window.clearInterval(timer);
+        timer = null;
+      }
+    };
+
+    render();
+    if (end > Date.now()) timer = window.setInterval(render, 1000);
+  });
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initDealCountdowns, { once: true });
+} else {
+  initDealCountdowns();
+}
+
 /* ----------------------------------------------------------------------------
  * Alpine plugins + start
  * -------------------------------------------------------------------------- */

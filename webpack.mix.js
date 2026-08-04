@@ -17,6 +17,15 @@ const { CleanWebpackPlugin } = require('clean-webpack-plugin');
 const tailwindcss = require('tailwindcss');
 const autoprefixer = require('autoprefixer');
 
+// The application bundle is large enough that Terser's default worker pool can
+// exhaust memory on Windows. A single worker is slower but deterministic and
+// keeps production builds within the available heap.
+mix.options({
+    terser: {
+        parallel: false,
+    },
+});
+
 
 mix.js('resources/src/main.js', 'public')
     .js('resources/src/login.js', 'public')
@@ -26,6 +35,12 @@ mix.js('resources/src/main.js', 'public')
     .js('resources/src/storefront.js', 'public')
     .postCss('resources/css/storefront.css', 'public/css', [
         tailwindcss('./tailwind.config.js'),
+        autoprefixer(),
+    ])
+    .postCss('resources/css/storefront-almadina.css', 'public/css', [
+        autoprefixer(),
+    ])
+    .postCss('resources/css/storefront-contact-almadina.css', 'public/css', [
         autoprefixer(),
     ])
     .vue()

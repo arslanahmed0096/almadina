@@ -3,10 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\Category;
+use App\Models\Brand;
 use App\Models\Collection;
+use App\Models\KnowledgeBaseArticle;
 use App\Models\Product;
 use App\Models\StoreBanner;
 use App\Models\StoreSetting;
+use App\Models\Warehouse;
 use Illuminate\Support\Facades\Schema;
 use DB;
 use Illuminate\Http\Request;
@@ -268,6 +271,7 @@ class StoreFrontController extends Controller
                         'limit' => $limit,
                         'layout' => $layout,
                         'index' => $i,
+                        'expires_at' => $item['expires_at'] ?? $item['ends_at'] ?? $item['end_at'] ?? null,
                     ],
                 ];
             }
@@ -499,6 +503,28 @@ class StoreFrontController extends Controller
             ];
         });
 
+        // Editorial homepage content backed by existing catalog and branch data.
+        // Brand artwork is optional; the view falls back to an accessible wordmark.
+        $trustedBrands = Brand::query()
+            ->orderBy('name')
+            ->take(12)
+            ->get(['id', 'name', 'image']);
+
+        $storeBranches = Warehouse::query()
+            ->whereNull('deleted_at')
+            ->orderBy('name')
+            ->take(5)
+            ->get(['id', 'name', 'mobile', 'city', 'country']);
+
+        $dealExpiresAt = data_get($dealBlock, 'cfg.expires_at');
+        if ($dealExpiresAt) {
+            try {
+                $dealExpiresAt = \Illuminate\Support\Carbon::parse($dealExpiresAt)->toIso8601String();
+            } catch (\Throwable $exception) {
+                $dealExpiresAt = null;
+            }
+        }
+
         $viewData = [
             's' => $s,
             'blocks' => $blocks,
@@ -508,6 +534,9 @@ class StoreFrontController extends Controller
             'heroProducts' => $heroProducts,
             'categories' => $categories,
             'homeCategories' => $homeCategories,
+            'trustedBrands' => $trustedBrands,
+            'storeBranches' => $storeBranches,
+            'dealExpiresAt' => $dealExpiresAt,
             'banners' => $banners,
             'showCategoryBar' => true,
         ];
@@ -687,9 +716,80 @@ class StoreFrontController extends Controller
 
     public function contact()
     {
-        $s = StoreSetting::first();
+        $s = StoreSetting::firstOrFail();
 
-        return view('store.contact', compact('s'));
+        $categories = Category::with('subcategories')
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        // Warehouses marked as branches are the canonical public location source.
+        // Internal warehouse-only records (WHR-*) are deliberately not exposed.
+        $storeBranches = Warehouse::query()
+            ->whereNull('deleted_at')
+            ->where('name', 'not like', '%WHR-%')
+            ->get(['id', 'name', 'mobile', 'email', 'city', 'country', 'zip'])
+            ->sortBy(function (Warehouse $branch) {
+                preg_match('/BRN-(\d+)/i', (string) $branch->name, $matches);
+
+                return isset($matches[1]) ? (int) $matches[1] : PHP_INT_MAX;
+            })
+            ->values();
+
+        $primaryBranch = $storeBranches->first();
+        $contactPhone = trim((string) ($primaryBranch->mobile ?? ''));
+        $contactEmail = trim((string) ($primaryBranch->email ?? ''));
+        $contactAddress = collect([
+            $primaryBranch->city ?? null,
+            $primaryBranch->country ?? null,
+            $primaryBranch->zip ?? null,
+        ])->filter()->implode(', ');
+
+        $whatsappNumber = preg_replace('/\D+/', '', $contactPhone);
+        if (str_starts_with($whatsappNumber, '0')) {
+            $whatsappNumber = '92'.substr($whatsappNumber, 1);
+        }
+
+        $faqs = KnowledgeBaseArticle::query()
+            ->where('is_internal', false)
+            ->where(function ($query) {
+                $query->whereNull('published_at')
+                    ->orWhereDate('published_at', '<=', now()->toDateString());
+            })
+            ->orderBy('sort_order')
+            ->orderBy('title')
+            ->take(8)
+            ->get(['title', 'content'])
+            ->map(fn (KnowledgeBaseArticle $article) => [
+                'question' => $article->title,
+                'answer' => trim(preg_replace('/\s+/', ' ', strip_tags((string) $article->content))),
+            ])
+            ->filter(fn (array $faq) => $faq['question'] !== '' && $faq['answer'] !== '')
+            ->values();
+
+        if ($faqs->isEmpty()) {
+            $faqs = collect([
+                ['question' => 'How can I track my order?', 'answer' => 'Sign in to your account to review your order history. You can also contact our team with your order reference for an update.'],
+                ['question' => 'Do you deliver across Pakistan?', 'answer' => 'Yes. Delivery availability and timing depend on the product and destination, and our team can confirm the options before dispatch.'],
+                ['question' => 'How do warranty claims work?', 'answer' => 'Keep your invoice and contact our support team or the nearest branch. Warranty coverage follows the terms supplied with the product.'],
+                ['question' => 'Can I ask about a product before ordering?', 'answer' => 'Yes. Send the product name or model through the form, phone, or WhatsApp and our team will help with availability and specifications.'],
+                ['question' => 'Do you support business or bulk purchases?', 'answer' => 'Yes. Choose Business or Bulk Purchase in the contact form and include the products, quantities, and delivery location you need.'],
+                ['question' => 'How quickly will I receive a response?', 'answer' => 'Messages are reviewed during business hours. Response time can vary, but including your phone number and order or product details helps us respond faster.'],
+            ]);
+        }
+
+        return view('store.contact', [
+            's' => $s,
+            'categories' => $categories,
+            'storeBranches' => $storeBranches,
+            'primaryBranch' => $primaryBranch,
+            'contactPhone' => $contactPhone,
+            'contactEmail' => $contactEmail,
+            'contactAddress' => $contactAddress,
+            'whatsappNumber' => $whatsappNumber,
+            'faqs' => $faqs,
+            'pageTitle' => 'Contact Al Madina Electronics | Sales, Support & Branches',
+            'pageDescription' => 'Contact Al Madina Electronics for product advice, order support, warranty help and directions to our branches across Attock, Hazro and Kamra.',
+        ]);
     }
 
     /**
