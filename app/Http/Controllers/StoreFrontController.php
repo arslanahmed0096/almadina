@@ -777,6 +777,11 @@ class StoreFrontController extends Controller
             ]);
         }
 
+        $trustedBrands = Brand::query()
+            ->orderBy('name')
+            ->take(9)
+            ->get(['id', 'name', 'image']);
+
         return view('store.contact', [
             's' => $s,
             'categories' => $categories,
@@ -787,6 +792,7 @@ class StoreFrontController extends Controller
             'contactAddress' => $contactAddress,
             'whatsappNumber' => $whatsappNumber,
             'faqs' => $faqs,
+            'trustedBrands' => $trustedBrands,
             'pageTitle' => 'Contact Al Madina Electronics | Sales, Support & Branches',
             'pageDescription' => 'Contact Al Madina Electronics for product advice, order support, warranty help and directions to our branches across Attock, Hazro and Kamra.',
         ]);

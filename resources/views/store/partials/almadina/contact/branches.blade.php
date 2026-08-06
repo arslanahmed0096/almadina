@@ -1,48 +1,35 @@
 <section class="alm-contact-branches" id="branches" aria-labelledby="branches-title">
   <div class="alm-container">
-    <div class="alm-contact-section-heading is-centered">
-      <span>Store network</span>
-      <h2 id="branches-title">Our Branches</h2>
-      <p>Visit the location that is most convenient for you.</p>
+    <div class="alm-contact-section-heading">
+      <h2 id="branches-title">Our Store Locations</h2>
+      <p>Visit your nearest Al Madina branch for products, expert advice and after-sales support.</p>
     </div>
 
     <div class="alm-branch-grid">
-      @forelse($storeBranches as $branch)
+      @forelse($storeBranches->take(5) as $branch)
         @php
           $branchAddress = collect([$branch->city, $branch->country, $branch->zip])->filter()->implode(', ');
-          $branchMapUrl = 'https://www.google.com/maps?q='.urlencode($branchAddress).'&output=embed';
           $branchDirectionsUrl = 'https://www.google.com/maps/search/?api=1&query='.urlencode($branchAddress);
           $branchPhone = preg_replace('/[^+0-9]/', '', (string) $branch->mobile);
+          $branchNumber = str_pad((string) $loop->iteration, 2, '0', STR_PAD_LEFT);
+          $branchDisplayName = $loop->first ? 'Main Branch' : 'Branch '.$branchNumber;
         @endphp
-        <article class="alm-branch-card {{ $loop->first ? 'is-selected' : '' }}">
-          <div class="alm-branch-card-bar">
-            <span>{{ $loop->first ? 'Featured location' : 'Al Madina showroom' }}</span>
-            <b>{{ str_pad((string) $loop->iteration, 2, '0', STR_PAD_LEFT) }}</b>
+        <article class="alm-branch-card">
+          <div class="alm-branch-media">
+            <img src="{{ asset('images/storefront/almadina-branch-'.$branchNumber.'.webp') }}" alt="{{ $branchDisplayName }} storefront" width="720" height="480" loading="lazy" decoding="async">
+            @if($loop->first)<span>Main Branch</span>@endif
           </div>
           <div class="alm-branch-card-body">
-            <span class="alm-branch-icon"><x-store.icon name="store" class="w-7 h-7" /></span>
-            <h3>{{ $branch->name }}</h3>
-            <p><x-store.icon name="map-pin" class="w-4 h-4" /> {{ $branchAddress }}</p>
+            <h3 title="{{ $branch->name }}">{{ $branchDisplayName }}</h3>
+            <p><x-store.icon name="map-pin" class="w-4 h-4" /> {{ $branchAddress ?: 'Complete branch address' }}</p>
+            <p><x-store.icon name="phone" class="w-4 h-4" /> {{ $branch->mobile ?: 'Contact number' }}</p>
+            <p><x-store.icon name="clock" class="w-4 h-4" /> Mon&ndash;Sat, 9:00 AM&ndash;9:00 PM</p>
+            <a href="{{ $branchDirectionsUrl }}" class="alm-contact-btn is-outline-red" target="_blank" rel="noopener noreferrer">
+              <x-store.icon name="map-pin" class="w-4 h-4" /> Get Directions
+            </a>
             @if($branch->mobile)
-              <a href="tel:{{ $branchPhone }}"><x-store.icon name="phone" class="w-4 h-4" /> {{ $branch->mobile }}</a>
+              <a href="tel:{{ $branchPhone }}" class="alm-branch-call"><x-store.icon name="phone" class="w-4 h-4" /> Call Branch</a>
             @endif
-            @if($branch->email)
-              <a href="mailto:{{ $branch->email }}"><x-store.icon name="mail" class="w-4 h-4" /> {{ $branch->email }}</a>
-            @endif
-          </div>
-          <div class="alm-branch-actions">
-            @if($branch->mobile)
-              <a href="tel:{{ $branchPhone }}" class="alm-contact-btn is-red">Call Branch</a>
-            @endif
-            <a href="{{ $branchDirectionsUrl }}" class="alm-contact-btn is-outline-dark" target="_blank" rel="noopener noreferrer">Directions</a>
-            <button type="button"
-                    class="alm-branch-map-trigger"
-                    data-map-url="{{ $branchMapUrl }}"
-                    data-directions-url="{{ $branchDirectionsUrl }}"
-                    data-branch-name="{{ $branch->name }}"
-                    data-branch-address="{{ $branchAddress }}">
-              View on map
-            </button>
           </div>
         </article>
       @empty

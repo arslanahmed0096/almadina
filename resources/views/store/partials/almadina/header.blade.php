@@ -65,6 +65,36 @@
     </div>
   </div>
 
+  <nav class="alm-primary-nav" aria-label="Main navigation">
+    <div class="alm-container">
+      <a
+        href="{{ route('store.index') }}"
+        @class(['active' => request()->routeIs('store.home', 'store.index')])
+        @if(request()->routeIs('store.home', 'store.index')) aria-current="page" @endif
+      >Home</a>
+      <a
+        href="{{ route('store.about') }}"
+        @class(['active' => request()->routeIs('store.about')])
+        @if(request()->routeIs('store.about')) aria-current="page" @endif
+      >About Us</a>
+      <a
+        href="{{ route('store.shop') }}"
+        @class(['active' => request()->routeIs('store.shop') && request('sort') !== 'latest'])
+        @if(request()->routeIs('store.shop') && request('sort') !== 'latest') aria-current="page" @endif
+      >Shop</a>
+      <a
+        href="{{ route('store.shop', ['sort' => 'latest']) }}"
+        @class(['active' => request()->routeIs('store.collection.show') || (request()->routeIs('store.shop') && request('sort') === 'latest')])
+        @if(request()->routeIs('store.collection.show') || (request()->routeIs('store.shop') && request('sort') === 'latest')) aria-current="page" @endif
+      >Products</a>
+      <a
+        href="{{ route('store.contact') }}"
+        @class(['active' => request()->routeIs('store.contact')])
+        @if(request()->routeIs('store.contact')) aria-current="page" @endif
+      >Contact Us</a>
+    </div>
+  </nav>
+
   <nav class="alm-category-nav" aria-label="Product categories">
     <div class="alm-container">
       <button type="button" class="alm-all-categories" @click="window.StoreUI.open('mobileCategorySidebar')"><x-store.icon name="menu" class="w-5 h-5" /> All Categories</button>
