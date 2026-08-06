@@ -127,6 +127,7 @@
                           <th scope="col">{{$t('Net_Unit_Price')}}</th>
                           <th scope="col">{{$t('CurrentStock')}}</th>
                           <th scope="col">{{$t('Qty')}}</th>
+                          <th scope="col">Actual Price</th>
                           <th scope="col">{{$t('Discount')}}</th>
                           <th scope="col">{{$t('Tax')}}</th>
                           <th scope="col">{{$t('SubTotal')}}</th>
@@ -137,7 +138,7 @@
                       </thead>
                       <tbody>
                         <tr v-if="details.length <=0">
-                          <td colspan="9">{{$t('NodataAvailable')}}</td>
+                          <td colspan="10">{{$t('NodataAvailable')}}</td>
                         </tr>
                         <template v-for="detail in details">
                         <tr
@@ -147,9 +148,9 @@
                           >
                           <td>{{detail.detail_id}}</td>
                           <td>
-                            <span>{{detail.code}}</span>
+                            <span>{{detail.name}}</span>
                             <br>
-                            <span class="badge badge-success">{{detail.name}}</span>
+                            <span class="badge badge-success">{{detail.code}}</span>
                             <div v-if="detail.warehouse_location" class="text-muted mt-1" style="font-size: 12px;">
                               {{ $t('Warehouse_Locations') }}: <strong>{{ detail.warehouse_location }}</strong>
                             </div>
@@ -190,6 +191,7 @@
                               </b-input-group>
                             </div>
                           </td>
+                          <td>{{currentUser.currency}} {{formatNumber(detail.Unit_price, 3)}}</td>
                           <td>{{currentUser.currency}} {{formatNumber(detail.DiscountNet * detail.quantity, 2)}}</td>
                           <td>{{currentUser.currency}} {{formatNumber(detail.taxe * detail.quantity , 2)}}</td>
                           <td>{{currentUser.currency}} {{detail.subtotal.toFixed(2)}}</td>
@@ -202,7 +204,7 @@
                         <!-- Optional batch override row for batch-tracked products.
                              Leaving batches empty makes the backend auto-FEFO on save. -->
                         <tr v-if="detail.is_batch_tracked" :key="'batches-' + detail.detail_id" style="background: transparent;">
-                          <td colspan="9" style="padding: 0; border-top: 0;">
+                          <td colspan="10" style="padding: 0; border-top: 0;">
                             <div style="margin: 6px 8px 14px 8px; border: 1px solid #e0e7ff; border-radius: 10px; overflow: hidden; background: linear-gradient(180deg, #f8faff 0%, #ffffff 100%);">
                               <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color: #fff; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px;">
                                 <div style="display: flex; align-items: center; gap: 8px;">
@@ -323,8 +325,12 @@
                           <span>{{currentUser.currency}} {{sale.TaxNet.toFixed(2)}} ({{formatNumber(sale.tax_rate ,2)}} %)</span>
                         </td>
                       </tr>
+                      <tr v-if="getLineDiscountAmount() > 0">
+                        <td class="bold">Item Discount</td>
+                        <td>{{currentUser.currency}} {{getLineDiscountAmount().toFixed(2)}}</td>
+                      </tr>
                       <tr>
-                        <td class="bold">{{$t('Discount')}}</td>
+                        <td class="bold">Additional Order Discount</td>
                         <td>
                           <!-- If percentage: show percent value AND discount amount; else amount only -->
                           <template v-if="String(sale.discount_Method || '2') === '1'">
@@ -358,7 +364,7 @@
                 </div>
 
                  <!-- Order Tax  -->
-                <b-col lg="4" md="4" sm="12" class="mb-3" v-if="currentUserPermissions && currentUserPermissions.includes('edit_tax_discount_shipping_sale')">
+                <b-col lg="3" md="6" sm="12" class="mb-3" v-if="currentUserPermissions && currentUserPermissions.includes('edit_tax_discount_shipping_sale')">
                   <validation-provider
                     name="Order Tax"
                     :rules="{ regex: /^\d*\.?\d*$/}"
@@ -381,14 +387,27 @@
                   </validation-provider>
                 </b-col>
 
-                <!-- Discount -->
-                <b-col lg="4" md="4" sm="12" class="mb-3" v-if="currentUserPermissions && currentUserPermissions.includes('edit_tax_discount_shipping_sale')">
+                <!-- Item discount (already included in each line's net price) -->
+                <b-col lg="3" md="6" sm="12" class="mb-3" v-if="currentUserPermissions && currentUserPermissions.includes('edit_tax_discount_shipping_sale')">
+                  <b-form-group label="Discount">
+                    <b-input-group :append="currentUser.currency">
+                      <b-form-input
+                        :value="getLineDiscountAmount().toFixed(2)"
+                        aria-label="Item discount already applied"
+                        readonly
+                      ></b-form-input>
+                    </b-input-group>
+                  </b-form-group>
+                </b-col>
+
+                <!-- Additional order discount -->
+                <b-col lg="3" md="6" sm="12" class="mb-3" v-if="currentUserPermissions && currentUserPermissions.includes('edit_tax_discount_shipping_sale')">
                   <validation-provider
-                    name="Discount"
+                    name="Additional Order Discount"
                     :rules="{ regex: /^\d*\.?\d*$/}"
                     v-slot="validationContext"
                   >
-                    <b-form-group :label="$t('Discount')">
+                    <b-form-group label="Additional Order Discount">
                       <div class="d-flex" style="gap:8px; align-items:center;">
                         <b-input-group :append="sale.discount_Method === '1' ? '%' : currentUser.currency" class="flex-grow-1">
                           <b-form-input
@@ -417,8 +436,8 @@
 
                 <!-- Points to convert (loyalty) -->
                 <b-col
-                  lg="4"
-                  md="4"
+                  lg="3"
+                  md="6"
                   sm="12"
                   class="mb-3"
                   v-if="showPointsSection && currentUserPermissions && currentUserPermissions.includes('edit_tax_discount_shipping_sale')"
@@ -472,10 +491,12 @@
                     will be applied
                   </div>
                 </b-col>
-                
+
+                <div class="w-100"></div>
+
 
                 <!-- Shipping  -->
-                <b-col lg="4" md="4" sm="12" class="mb-3" v-if="currentUserPermissions && currentUserPermissions.includes('edit_tax_discount_shipping_sale')">
+                <b-col lg="3" md="6" sm="12" class="mb-3" v-if="currentUserPermissions && currentUserPermissions.includes('edit_tax_discount_shipping_sale')">
                   <validation-provider
                     name="Shipping"
                     :rules="{ regex: /^\d*\.?\d*$/}"
@@ -499,7 +520,7 @@
                 </b-col>
 
                   <!-- Status  -->
-                <b-col lg="4" md="4" sm="12" class="mb-3">
+                <b-col lg="3" md="6" sm="12" class="mb-3">
                   <validation-provider name="Status" :rules="{ required: true}">
                     <b-form-group slot-scope="{ valid, errors }" :label="$t('Status') + ' ' + '*'">
                       <v-select
@@ -1470,6 +1491,25 @@ export default {
       }else {
         this.Calcul_Total();
       }
+    },
+
+    // Item-level discounts are already included in each row's Net_price.
+    // Keep this amount display-only so it is not deducted again as an order discount.
+    getLineDiscountAmount() {
+      if (!Array.isArray(this.details)) return 0;
+
+      const amount = this.details.reduce((total, detail) => {
+        const unitDiscount = Number(detail && detail.DiscountNet);
+        const quantity = Number(detail && detail.quantity);
+
+        if (!Number.isFinite(unitDiscount) || !Number.isFinite(quantity)) {
+          return total;
+        }
+
+        return total + Math.max(unitDiscount, 0) * Math.max(quantity, 0);
+      }, 0);
+
+      return parseFloat(amount.toFixed(2));
     },
 
     // Calculate discount amount for current sale (for display in summary card)

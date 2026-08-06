@@ -146,6 +146,7 @@
                           <th scope="col">{{$t('Net_Unit_Price')}}</th>
                           <th scope="col">{{$t('CurrentStock')}}</th>
                           <th scope="col">{{$t('Qty')}}</th>
+                          <th scope="col">Actual Price</th>
                           <th scope="col">{{$t('Discount')}}</th>
                           <th scope="col">{{$t('Tax')}}</th>
                           <th scope="col">{{$t('SubTotal')}}</th>
@@ -156,15 +157,15 @@
                       </thead>
                       <tbody>
                         <tr v-if="details.length <=0">
-                          <td colspan="9">{{$t('NodataAvailable')}}</td>
+                          <td colspan="10">{{$t('NodataAvailable')}}</td>
                         </tr>
                         <template v-for="detail in details">
                         <tr :key="'row-' + detail.detail_id">
                           <td >{{detail.detail_id}}</td>
                           <td>
-                            <span>{{detail.code}}</span>
+                            <span>{{detail.name}}</span>
                             <br>
-                            <span class="badge badge-success">{{detail.name}}</span>
+                            <span class="badge badge-success">{{detail.code}}</span>
                             <div v-if="detail.warehouse_location" class="text-muted mt-1" style="font-size: 12px;">
                               {{ $t('Warehouse_Locations') }}: <strong>{{ detail.warehouse_location }}</strong>
                             </div>
@@ -225,6 +226,7 @@
                               </b-input-group>
                             </div>
                           </td>
+                          <td>{{currentUser.currency}} {{formatNumber(detail.Unit_price, 3)}}</td>
                           <td>{{currentUser.currency}} {{formatNumber(detail.DiscountNet * detail.quantity, 2)}}</td>
                           <td>{{currentUser.currency}} {{formatNumber(detail.taxe  * detail.quantity, 2)}}</td>
                           <td>{{currentUser.currency}} {{detail.subtotal.toFixed(2)}}</td>
@@ -236,7 +238,7 @@
 
                         <!-- Batch selection row for batch-tracked products -->
                         <tr v-if="detail.is_batch_tracked" :key="'batches-' + detail.detail_id" style="background: transparent;">
-                          <td colspan="9" style="padding: 0; border-top: 0;">
+                          <td colspan="10" style="padding: 0; border-top: 0;">
                             <div style="margin: 6px 8px 14px 8px; border: 1px solid #e0e7ff; border-radius: 10px; overflow: hidden; background: linear-gradient(180deg, #f8faff 0%, #ffffff 100%);">
                               <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color: #fff; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px;">
                                 <div style="display: flex; align-items: center; gap: 8px;">
@@ -357,8 +359,12 @@
                           <span>{{currentUser.currency}} {{sale.TaxNet.toFixed(2)}} ({{formatNumber(sale.tax_rate,2)}} %)</span>
                         </td>
                       </tr>
+                      <tr v-if="getLineDiscountAmount() > 0">
+                        <td class="bold">Item Discount</td>
+                        <td>{{currentUser.currency}} {{getLineDiscountAmount().toFixed(2)}}</td>
+                      </tr>
                       <tr>
-                        <td class="bold">{{$t('Discount')}}</td>
+                        <td class="bold">Additional Order Discount</td>
                         <td>
                           <!-- If percentage: show percent value AND discount amount; else amount only -->
                           <template v-if="String(sale.discount_Method || '2') === '1'">
@@ -392,7 +398,7 @@
                 </div>
 
                 <!-- Order Tax  -->
-                <b-col lg="4" md="4" sm="12" class="mb-3" v-if="currentUserPermissions && currentUserPermissions.includes('edit_tax_discount_shipping_sale')">
+                <b-col lg="3" md="6" sm="12" class="mb-3" v-if="currentUserPermissions && currentUserPermissions.includes('edit_tax_discount_shipping_sale')">
                   <validation-provider
                     name="Order Tax"
                     :rules="{ regex: /^\d*\.?\d*$/}"
@@ -415,14 +421,27 @@
                   </validation-provider>
                 </b-col>
 
-                <!-- Discount -->
-                <b-col lg="4" md="4" sm="12" class="mb-3" v-if="currentUserPermissions && currentUserPermissions.includes('edit_tax_discount_shipping_sale')">
+                <!-- Item discount (already included in each line's net price) -->
+                <b-col lg="3" md="6" sm="12" class="mb-3" v-if="currentUserPermissions && currentUserPermissions.includes('edit_tax_discount_shipping_sale')">
+                  <b-form-group label="Discount">
+                    <b-input-group :append="currentUser.currency">
+                      <b-form-input
+                        :value="getLineDiscountAmount().toFixed(2)"
+                        aria-label="Item discount already applied"
+                        readonly
+                      ></b-form-input>
+                    </b-input-group>
+                  </b-form-group>
+                </b-col>
+
+                <!-- Additional order discount -->
+                <b-col lg="3" md="6" sm="12" class="mb-3" v-if="currentUserPermissions && currentUserPermissions.includes('edit_tax_discount_shipping_sale')">
                   <validation-provider
-                    name="Discount"
+                    name="Additional Order Discount"
                     :rules="{ regex: /^\d*\.?\d*$/}"
                     v-slot="validationContext"
                   >
-                    <b-form-group :label="$t('Discount')">
+                    <b-form-group label="Additional Order Discount">
                       <div class="d-flex" style="gap:8px; align-items:center;">
                         <b-input-group :append="sale.discount_Method === '1' ? '%' : currentUser.currency" class="flex-grow-1">
                           <b-form-input
@@ -449,7 +468,7 @@
                   </validation-provider>
                 </b-col>
 
-                <b-col lg="4" md="4" sm="12" class="mb-3" v-if="clientIsEligible && currentUserPermissions && currentUserPermissions.includes('edit_tax_discount_shipping_sale')">
+                <b-col lg="3" md="6" sm="12" class="mb-3" v-if="clientIsEligible && currentUserPermissions && currentUserPermissions.includes('edit_tax_discount_shipping_sale')">
                   <label>Points to convert</label>
                   <div class="field mb-2">
                     <b-form-input
@@ -486,8 +505,10 @@
                   <input type="hidden" name="discount_from_points" :value="discount_from_points">
                 </b-col>
 
+                <div class="w-100"></div>
+
                 <!-- Shipping  -->
-                <b-col lg="4" md="4" sm="12" class="mb-3" v-if="currentUserPermissions && currentUserPermissions.includes('edit_tax_discount_shipping_sale')">
+                <b-col lg="3" md="6" sm="12" class="mb-3" v-if="currentUserPermissions && currentUserPermissions.includes('edit_tax_discount_shipping_sale')">
                   <validation-provider
                     name="Shipping"
                     :rules="{ regex: /^\d*\.?\d*$/}"
@@ -512,7 +533,7 @@
                 </b-col>
 
                 <!-- Status  -->
-                <b-col lg="4" md="4" sm="12" class="mb-3">
+                <b-col lg="3" md="6" sm="12" class="mb-3">
                   <validation-provider name="Status" :rules="{ required: true}">
                     <b-form-group slot-scope="{ valid, errors }" :label="$t('Status') + ' ' + '*'">
                       <v-select
@@ -535,7 +556,7 @@
                 </b-col>
 
                 <!-- PaymentStatus  -->
-                <b-col md="4" v-if="sale.statut == 'completed'">
+                <b-col lg="3" md="6" sm="12" class="mb-3" v-if="sale.statut == 'completed'">
                   <validation-provider name="PaymentStatus">
                     <b-form-group :label="$t('PaymentStatus')">
                       <v-select
@@ -555,8 +576,10 @@
                   </validation-provider>
                 </b-col>
 
+                <div class="w-100"></div>
+
                 <!-- Payment choice -->
-                <b-col md="4" v-if="payment.status != 'pending' && sale.statut == 'completed'">
+                <b-col lg="3" md="6" sm="12" class="mb-3" v-if="payment.status != 'pending' && sale.statut == 'completed'">
                   <validation-provider name="Payment choice" :rules="{ required: true}">
                     <b-form-group slot-scope="{ valid, errors }" :label="$t('Paymentchoice') + ' ' + '*'">
                       <v-select
@@ -574,42 +597,30 @@
                 </b-col>
 
 
-                  <!-- Payable Amount -->
-                  <b-col md="4" v-if="payment.status != 'pending' && sale.statut == 'completed'">
-                      <validation-provider
-                        name="Payable Amount"
-                        :rules="{ required: true , regex: /^\d*\.?\d*$/}"
-                        v-slot="validationContext"
-                      >
-                        <b-form-group label="Payable Amount *">
-                          <b-form-input
-                            @keyup="Verified_Received_Amount(payment.received_amount)"
-                            label="Payable Amount"
-                            placeholder="Payable Amount"
-                            v-model.number="payment.received_amount"
-                            :state="getValidationState(validationContext)"
-                            aria-describedby="Received_Amount-feedback"
-                          ></b-form-input>
-                          <b-form-invalid-feedback
-                            id="Received_Amount-feedback"
-                          >{{ validationContext.errors[0] }}</b-form-invalid-feedback>
-                        </b-form-group>
-                      </validation-provider>
-                    </b-col>
+                <!-- Payable Amount -->
+                <b-col lg="3" md="6" sm="12" class="mb-3" v-if="payment.status != 'pending' && sale.statut == 'completed'">
+                  <b-form-group label="Payable Amount *">
+                    <b-form-input
+                      :value="GrandTotal.toFixed(2)"
+                      label="Payable Amount"
+                      aria-label="Payable Amount"
+                      readonly
+                    ></b-form-input>
+                  </b-form-group>
+                </b-col>
 
 
-                <!-- Amount  -->
-                <b-col md="4" v-if="payment.status != 'pending' && sale.statut == 'completed'">
+                <!-- Payment Amount -->
+                <b-col lg="3" md="6" sm="12" class="mb-3" v-if="payment.status != 'pending' && sale.statut == 'completed'">
                   <validation-provider
-                    name="Amount"
+                    name="Payment Amount"
                     :rules="{ required: true , regex: /^\d*\.?\d*$/}"
                     v-slot="validationContext"
                   >
-                    <b-form-group :label="$t('Paying_Amount') + ' ' + '*'">
+                    <b-form-group label="Payment Amount *">
                       <b-form-input
-                        :disabled="payment.status == 'paid'"
                         label="Amount"
-                        :placeholder="$t('Paying_Amount')"
+                        placeholder="Payment Amount"
                         v-model.number="payment.amount"
                         @keyup="Verified_paidAmount(payment.amount)"
                         :state="getValidationState(validationContext)"
@@ -623,16 +634,21 @@
                 </b-col>
 
                 <!-- Balance -->
-                <b-col md="4" v-if="payment.status != 'pending' && sale.statut == 'completed'">
-                  <label>{{$t('Balance')}} :</label>
-                  <p
-                    class="change_amount"
-                  >{{parseFloat(payment.received_amount - payment.amount).toFixed(2)}}</p>
+                <b-col lg="3" md="6" sm="12" class="mb-3" v-if="payment.status != 'pending' && sale.statut == 'completed'">
+                  <b-form-group :label="$t('Balance')">
+                    <b-form-input
+                      :value="getPaymentBalance().toFixed(2)"
+                      aria-label="Balance"
+                      readonly
+                    ></b-form-input>
+                  </b-form-group>
                 </b-col>
+
+                <div class="w-100"></div>
 
                
                    <!-- Account -->
-                  <b-col lg="4" md="4" sm="12" v-if="payment.status != 'pending' && sale.statut == 'completed'">
+                  <b-col lg="3" md="6" sm="12" class="mb-3" v-if="payment.status != 'pending' && sale.statut == 'completed'">
                     <validation-provider name="Account">
                       <b-form-group slot-scope="{ valid, errors }" :label="$t('Account')">
                         <v-select
@@ -1447,13 +1463,13 @@ export default {
     //---------------------- Event Select Payment Status ------------------------------\\
 
     Selected_PaymentStatus(value){
+      this.payment.received_amount = this.formatNumber(this.GrandTotal, 2);
+
       if (value == "paid") {
         var payment_amount = this.GrandTotal.toFixed(2);
         this.payment.amount = this.formatNumber(payment_amount, 2);
-        this.payment.received_amount = this.formatNumber(payment_amount, 2);
       }else{
         this.payment.amount = 0;
-        this.payment.received_amount = 0;
       }
     },
 
@@ -1462,15 +1478,7 @@ export default {
     Verified_paidAmount() {
       if (isNaN(this.payment.amount)) {
         this.payment.amount = 0;
-      } else if (this.payment.amount > this.payment.received_amount) {
-          this.makeToast(
-            "warning",
-            this.$t("Paying_amount_is_greater_than_Received_amount"),
-            this.$t("Warning")
-          );
-          this.payment.amount = 0;
-      } 
-      else if (this.payment.amount > this.GrandTotal) {
+      } else if (this.payment.amount > this.GrandTotal) {
         this.makeToast(
           "warning",
           this.$t("Paying_amount_is_greater_than_Grand_Total"),
@@ -1480,12 +1488,11 @@ export default {
       }
     },
 
-    //---------- keyup Received Amount
-
-    Verified_Received_Amount() {
-      if (isNaN(this.payment.received_amount)) {
-        this.payment.received_amount = 0;
-      } 
+    // The payable amount is the sale total; balance is the unpaid portion.
+    getPaymentBalance() {
+      const payable = Number(this.GrandTotal) || 0;
+      const paid = Number(this.payment.amount) || 0;
+      return parseFloat(Math.max(payable - paid, 0).toFixed(2));
     },
 
 
@@ -1516,16 +1523,7 @@ export default {
           const msg = this.$t ? `${this.$t('pos.Total_Payable')} ${this.$t('cannot_be_negative') || 'cannot be negative'}` : 'Total Payable cannot be negative';
           this.makeToast('warning', msg, this.$t ? this.$t('Warning') : 'Warning');
           return;
-        } else if (this.payment.amount > this.payment.received_amount) {
-          this.paymentProcessing = false;
-          this.makeToast(
-            "warning",
-            this.$t("Paying_amount_is_greater_than_Received_amount"),
-            this.$t("Warning")
-          );
-          this.payment.received_amount = 0;
-        }
-          else if (this.payment.amount > this.GrandTotal) {
+        } else if (this.payment.amount > this.GrandTotal) {
             this.paymentProcessing = false;
             this.makeToast(
               "warning",
@@ -2266,10 +2264,7 @@ export default {
 
       var grand_total =  this.GrandTotal.toFixed(2);
       this.GrandTotal = parseFloat(grand_total);
-
-      if(this.payment.status == 'paid'){
-          this.payment.amount = this.formatNumber(this.GrandTotal, 2);
-      }
+      this.payment.received_amount = this.formatNumber(this.GrandTotal, 2);
 
     },
 
@@ -2350,6 +2345,25 @@ export default {
       }else {
         this.CalculTotal();
       }
+    },
+
+    // Item-level discounts are already included in each row's Net_price.
+    // Keep this amount display-only so it is not deducted again as an order discount.
+    getLineDiscountAmount() {
+      if (!Array.isArray(this.details)) return 0;
+
+      const amount = this.details.reduce((total, detail) => {
+        const unitDiscount = Number(detail && detail.DiscountNet);
+        const quantity = Number(detail && detail.quantity);
+
+        if (!Number.isFinite(unitDiscount) || !Number.isFinite(quantity)) {
+          return total;
+        }
+
+        return total + Math.max(unitDiscount, 0) * Math.max(quantity, 0);
+      }, 0);
+
+      return parseFloat(amount.toFixed(2));
     },
 
     // Calculate discount amount for current sale (for display in summary card)
@@ -2477,8 +2491,8 @@ export default {
               details: detailsPayload,
               payment: this.payment,
               amount: parseFloat(this.payment.amount).toFixed(2),
-              received_amount: parseFloat(this.payment.received_amount).toFixed(2),
-              change: parseFloat(this.payment.received_amount - this.payment.amount).toFixed(2),
+              received_amount: parseFloat(this.GrandTotal).toFixed(2),
+              change: this.getPaymentBalance().toFixed(2),
               discount_from_points: this.discount_from_points,
               used_points: this.used_points,
             })

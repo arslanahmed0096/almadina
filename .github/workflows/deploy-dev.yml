@@ -35,11 +35,44 @@ jobs:
 
       - name: Setup SSH
         shell: bash
+        env:
+          SSH_HOST: ${{ secrets.HOSTINGER_HOST }}
+          SSH_PORT: ${{ secrets.HOSTINGER_PORT }}
+          SSH_PRIVATE_KEY: ${{ secrets.HOSTINGER_SSH_PRIVATE_KEY || secrets.HOSTINGER_SSH_KEY }}
         run: |
+          set -euo pipefail
+
+          if [[ -z "$SSH_HOST" || -z "$SSH_PORT" || -z "$SSH_PRIVATE_KEY" ]]; then
+            echo "::error::Missing HOSTINGER_HOST, HOSTINGER_PORT, or HOSTINGER_SSH_PRIVATE_KEY GitHub secret."
+            exit 1
+          fi
+
           mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.HOSTINGER_SSH_KEY }}" > ~/.ssh/id_rsa
+          printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H -p "${{ secrets.HOSTINGER_PORT }}" "${{ secrets.HOSTINGER_HOST }}" >> ~/.ssh/known_hosts
+
+          if ! ssh-keygen -y -f ~/.ssh/id_rsa >/dev/null 2>&1; then
+            echo "::error::HOSTINGER_SSH_PRIVATE_KEY is invalid or passphrase-protected. Store the complete unencrypted private key, including its BEGIN and END lines."
+            exit 1
+          fi
+
+          : > ~/.ssh/known_hosts
+          scan_ok=false
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 15 -H -p "$SSH_PORT" "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null; then
+              scan_ok=true
+              break
+            fi
+            echo "SSH host-key scan attempt $attempt failed; retrying..."
+            sleep 2
+          done
+
+          if [[ "$scan_ok" != true || ! -s ~/.ssh/known_hosts ]]; then
+            echo "::error::Unable to reach SSH at $SSH_HOST:$SSH_PORT. Verify HOSTINGER_HOST and HOSTINGER_PORT and confirm SSH access is enabled in Hostinger."
+            exit 1
+          fi
+
+          chmod 600 ~/.ssh/known_hosts
 
       - name: Upload files
         run: |
