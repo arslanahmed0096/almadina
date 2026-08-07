@@ -90,6 +90,11 @@ class Sale extends Model
         return $this->hasMany('App\Models\SaleDocument', 'sale_id');
     }
 
+    public function shipments()
+    {
+        return $this->hasMany(Shipment::class)->whereNull('shipments.deleted_at');
+    }
+
     protected static function booted()
     {
         static::updating(function ($sale) {

@@ -419,6 +419,7 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
     Route::get('get_points_client/{id}', 'ClientController@getPoints');
     Route::post('customers/{id}/update-points', 'ClientController@updatePoints');
     Route::post('customers/{id}/adjust-opening-balance', 'ClientController@adjustOpeningBalance');
+    Route::post('customers/{id}/initial-credit-limit', 'ClientController@setInitialCreditLimit');
 
     // Customer Ledger (separate endpoints)
     Route::get('/sales_client', 'ClientController@salesByClient');

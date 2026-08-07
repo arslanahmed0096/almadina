@@ -486,6 +486,26 @@ class BatchService
     }
 
     /**
+     * Consume batches once when an ordered sale detail is physically shipped.
+     * The unique shipment-item marker protects the caller from duplicate execution;
+     * the pivot check also protects legacy/manual retries.
+     */
+    public function applyForShippedSaleDetail(Sale $sale, SaleDetail $detail): void
+    {
+        if (! $this->isSupported() || ! Schema::hasTable('sale_detail_batches')) {
+            return;
+        }
+        if (! $this->productIsTracked($detail->product_id)) {
+            return;
+        }
+        if (SaleDetailBatch::where('sale_detail_id', $detail->id)->exists()) {
+            return;
+        }
+
+        $this->autoFefoForSaleDetail($sale, $detail);
+    }
+
+    /**
      * FEFO-auto-consume for a SaleDetail using its stored quantity.
      * Walks active batches for this product+warehouse(+variant) in expiry-ascending
      * order and decrements qty until the line is satisfied or batches run out.

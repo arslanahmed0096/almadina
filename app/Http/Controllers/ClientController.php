@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use ArPHP\I18N\Arabic;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 
@@ -179,7 +180,12 @@ class ClientController extends BaseController
                 // Ensure email is unique in ecommerce_clients table (exclude soft-deleted)
                 Rule::unique('ecommerce_clients', 'email')->whereNull('deleted_at'),
             ],
+            'credit_limit' => ['nullable', 'numeric', 'min:0'],
         ]);
+
+        if ((float) $request->input('credit_limit', 0) > 0) {
+            $this->authorizeForUser($request->user('api'), 'updateCreditLimit', Client::class);
+        }
 
         if ($request['is_royalty_eligible'] == '1' || $request['is_royalty_eligible'] == 'true') {
             $is_royalty_eligible = 1;
@@ -232,6 +238,15 @@ class ClientController extends BaseController
     {
         $this->authorizeForUser($request->user('api'), 'update', Client::class);
 
+        $existingClient = Client::whereNull('deleted_at')->findOrFail($id);
+        $previousCreditLimit = round((float) ($existingClient->credit_limit ?? 0), 2);
+        $newCreditLimit = $request->has('credit_limit')
+            ? round((float) $request->input('credit_limit'), 2)
+            : $previousCreditLimit;
+        if ($newCreditLimit !== $previousCreditLimit) {
+            $this->authorizeForUser($request->user('api'), 'updateCreditLimit', Client::class);
+        }
+
         // Get existing ecommerce_client id if it exists (for ignoring in validation)
         $existingEcommerceClient = EcommerceClient::where('client_id', $id)
             ->whereNull('deleted_at')
@@ -276,7 +291,7 @@ class ClientController extends BaseController
         // Normalize boolean flag from various inputs: '1', 'true', true, etc.
         $isRoyaltyEligible = filter_var($request->input('is_royalty_eligible'), FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
 
-        DB::transaction(function () use ($request, $id, $isRoyaltyEligible, $existingEcommerceClient) {
+        DB::transaction(function () use ($request, $id, $isRoyaltyEligible, $existingEcommerceClient, $newCreditLimit) {
             // 1) Update Client
             // opening_balance is adjusted via the dedicated adjust-opening-balance endpoint
             Client::whereKey($id)->update([
@@ -294,7 +309,7 @@ class ClientController extends BaseController
                 'zip' => $request->input('zip'),
                 'tax_number' => $request->input('tax_number'),
                 'is_royalty_eligible' => $isRoyaltyEligible,
-                'credit_limit' => $request->input('credit_limit', 0),
+                'credit_limit' => $newCreditLimit,
             ]);
 
             // Portal credentials are managed separately. If this customer
@@ -1045,6 +1060,42 @@ class ClientController extends BaseController
         $client->save();
 
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * Set an initial customer credit limit from the shipment workflow.
+     * This endpoint intentionally cannot replace an existing non-zero limit.
+     */
+    public function setInitialCreditLimit(Request $request, $id)
+    {
+        $this->authorizeForUser($request->user('api'), 'updateCreditLimit', Client::class);
+
+        $validated = $request->validate([
+            'credit_limit' => ['required', 'numeric', 'gt:0', 'max:9999999999999.99'],
+        ]);
+
+        $result = DB::transaction(function () use ($id, $validated) {
+            $client = Client::whereNull('deleted_at')->whereKey($id)->lockForUpdate()->firstOrFail();
+            $previous = round((float) ($client->credit_limit ?? 0), 2);
+
+            if ($previous > 0) {
+                throw ValidationException::withMessages([
+                    'credit_limit' => ['This customer already has a credit limit. Edit the customer to change it.'],
+                ]);
+            }
+
+            $client->credit_limit = round((float) $validated['credit_limit'], 2);
+            $client->save();
+
+            return $client;
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Customer credit limit added successfully.',
+            'customer_id' => (int) $result->id,
+            'credit_limit' => round((float) $result->credit_limit, 2),
+        ]);
     }
 
     public function adjustOpeningBalance(Request $request, $id)

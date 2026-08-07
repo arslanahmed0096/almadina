@@ -2121,6 +2121,18 @@
                                 <span class="checkmark"></span>
                               </label>
                             </b-col>
+                            <!-- Customer credit limit update (financial control) -->
+                            <b-col md="12">
+                              <label class="checkbox checkbox-outline-primary">
+                                <input
+                                  type="checkbox"
+                                  v-model="permissions"
+                                  value="customer_credit_limit_update"
+                                >
+                                <span>Update Customer Credit Limit</span>
+                                <span class="checkmark"></span>
+                              </label>
+                            </b-col>
                             <!--Customers Delete -->
                             <b-col md="6">
                               <label class="checkbox checkbox-outline-primary">

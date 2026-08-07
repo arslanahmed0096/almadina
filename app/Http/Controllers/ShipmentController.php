@@ -4,10 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Models\Sale;
 use App\Models\Shipment;
+use App\Models\UserWarehouse;
+use App\Services\ShipmentEligibilityService;
 use App\utils\helpers;
 use DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\ValidationException;
 
 class ShipmentController extends BaseController
 {
@@ -87,46 +90,54 @@ class ShipmentController extends BaseController
 
     // ----------- Store new Shipment -------\\
 
-    public function store(Request $request)
+    public function store(Request $request, ShipmentEligibilityService $eligibilityService)
     {
         $this->authorizeForUser($request->user('api'), 'create', Shipment::class);
 
-        request()->validate([
-            'status' => 'required',
+        $validated = $request->validate([
+            'sale_id' => ['required', 'integer', 'exists:sales,id'],
+            'sale_detail_ids' => ['required', 'array', 'min:1'],
+            'sale_detail_ids.*' => ['required', 'integer', 'distinct', 'exists:sale_details,id'],
+            'Ref' => ['nullable', 'string', 'max:192'],
+            'delivered_to' => ['nullable', 'string', 'max:192'],
+            'shipping_address' => ['nullable', 'string'],
+            'shipping_details' => ['nullable', 'string'],
         ]);
 
-        \DB::transaction(function () use ($request) {
-            $shipment = Shipment::firstOrNew(['Ref' => $request['Ref']]);
+        $sale = Sale::findOrFail($validated['sale_id']);
+        $this->assertSaleAccess($request, $sale);
+        $result = $eligibilityService->shipSelectedItems(
+            $sale,
+            $validated['sale_detail_ids'],
+            $validated,
+            (int) Auth::id()
+        );
 
-            $shipment->user_id = Auth::user()->id;
-            $shipment->sale_id = $request['sale_id'];
-            $shipment->delivered_to = $request['delivered_to'];
-            $shipment->shipping_address = $request['shipping_address'];
-            $shipment->shipping_details = $request['shipping_details'];
-            $shipment->status = $request['status'];
-            $shipment->save();
-
-            $sale = Sale::findOrFail($request['sale_id']);
-            $sale->update([
-                'shipping_status' => $request['status'],
-            ]);
-
-        }, 10);
-
-        return response()->json(['success' => true]);
+        return response()->json([
+            'success' => true,
+            'message' => $result['all_shipped']
+                ? 'All items were shipped and the sale is now Completed.'
+                : 'Selected items were shipped. The sale remains Ordered.',
+            'sale_status' => $result['sale']->statut,
+            'shipment_status' => $result['shipment']->status,
+        ]);
 
     }
 
-    public function show($id)
+    public function show(Request $request, $id, ShipmentEligibilityService $eligibilityService)
     {
+        $this->authorizeForUser($request->user('api'), 'view', Shipment::class);
 
-        $get_shipment = Shipment::where('sale_id', $id)->first();
+        $sale = Sale::findOrFail($id);
+        $this->assertSaleAccess($request, $sale);
+
+        $get_shipment = Shipment::where('sale_id', $id)->whereNull('deleted_at')->first();
 
         if ($get_shipment) {
 
             $shipment_data['Ref'] = $get_shipment->Ref;
             $shipment_data['sale_id'] = $get_shipment->sale_id;
-            $shipment_data['delivered_to'] = $get_shipment->delivered_to;
+            $shipment_data['delivered_to'] = $get_shipment->delivered_to ?: optional($sale->client)->name;
             $shipment_data['shipping_address'] = $get_shipment->shipping_address;
             $shipment_data['status'] = $get_shipment->status;
             $shipment_data['shipping_details'] = $get_shipment->shipping_details;
@@ -135,7 +146,7 @@ class ShipmentController extends BaseController
 
             $shipment_data['Ref'] = $this->getNumberOrder();
             $shipment_data['sale_id'] = $id;
-            $shipment_data['delivered_to'] = '';
+            $shipment_data['delivered_to'] = optional($sale->client)->name ?: '';
             $shipment_data['shipping_address'] = '';
             $shipment_data['status'] = '';
             $shipment_data['shipping_details'] = '';
@@ -143,32 +154,49 @@ class ShipmentController extends BaseController
 
         return response()->json([
             'shipment' => $shipment_data,
+            'eligibility' => $eligibilityService->forSale($sale),
         ]);
 
     }
 
     // ----------- Update Shipment-------\\
 
-    public function update(Request $request, $id)
+    public function update(Request $request, $id, ShipmentEligibilityService $eligibilityService)
     {
         $this->authorizeForUser($request->user('api'), 'update', Shipment::class);
 
-        request()->validate([
-            'status' => 'required',
+        $validated = $request->validate([
+            'sale_id' => ['required', 'integer', 'exists:sales,id'],
+            'sale_detail_ids' => ['required', 'array', 'min:1'],
+            'sale_detail_ids.*' => ['required', 'integer', 'distinct', 'exists:sale_details,id'],
+            'delivered_to' => ['nullable', 'string', 'max:192'],
+            'shipping_address' => ['nullable', 'string'],
+            'shipping_details' => ['nullable', 'string'],
         ]);
 
-        \DB::transaction(function () use ($request, $id) {
-
-            Shipment::whereId($id)->update($request->all());
-
-            $sale = Sale::findOrFail($request['sale_id']);
-            $sale->update([
-                'shipping_status' => $request['status'],
+        $shipment = Shipment::findOrFail($id);
+        if ((int) $shipment->sale_id !== (int) $validated['sale_id']) {
+            throw ValidationException::withMessages([
+                'sale_id' => ['The shipment does not belong to the selected sale.'],
             ]);
+        }
+        $sale = Sale::findOrFail($validated['sale_id']);
+        $this->assertSaleAccess($request, $sale);
+        $result = $eligibilityService->shipSelectedItems(
+            $sale,
+            $validated['sale_detail_ids'],
+            $validated,
+            (int) Auth::id()
+        );
 
-        }, 10);
-
-        return response()->json(['success' => true]);
+        return response()->json([
+            'success' => true,
+            'message' => $result['all_shipped']
+                ? 'All items were shipped and the sale is now Completed.'
+                : 'Selected items were shipped. The sale remains Ordered.',
+            'sale_status' => $result['sale']->statut,
+            'shipment_status' => $result['shipment']->status,
+        ]);
 
     }
 
@@ -180,7 +208,10 @@ class ShipmentController extends BaseController
 
         \DB::transaction(function () use ($request, $id) {
 
-            $shipment = Shipment::find($id);
+            $shipment = Shipment::findOrFail($id);
+            if ($shipment && $shipment->items()->exists()) {
+                abort(422, 'A shipment with shipped items cannot be deleted.');
+            }
             $shipment->delete();
 
             $sale = Sale::findOrFail($shipment->sale_id);
@@ -211,5 +242,20 @@ class ShipmentController extends BaseController
         }
 
         return $code;
+    }
+
+    private function assertSaleAccess(Request $request, Sale $sale): void
+    {
+        $user = $request->user('api');
+        if (! $user->hasRecordView()) {
+            $this->authorizeForUser($user, 'check_record', $sale);
+        }
+
+        if (! $user->is_all_warehouses) {
+            $allowed = UserWarehouse::where('user_id', $user->id)
+                ->where('warehouse_id', $sale->warehouse_id)
+                ->exists();
+            abort_unless($allowed, 403, 'You are not allowed to access this sale warehouse.');
+        }
     }
 }
