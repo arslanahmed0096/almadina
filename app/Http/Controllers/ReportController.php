@@ -48,6 +48,7 @@ use App\Models\UserWarehouse;
 use App\Models\Warehouse;
 use App\Models\Staff;
 use App\Traits\CalculatesCogsAndAverageCost;
+use App\Services\ProductStockOverviewService;
 use App\utils\helpers;
 use ArPHP\I18N\Arabic;
 use Carbon\Carbon;
@@ -3671,6 +3672,32 @@ class ReportController extends BaseController
             'warehouses' => $warehouses,
         ]);
 
+    }
+
+    // ----------------- Complete product stock overview -----------------------\\
+
+    public function product_stock_overview(
+        Request $request,
+        $id,
+        ProductStockOverviewService $overviewService
+    ) {
+        $this->authorizeForUser($request->user('api'), 'stock_report', Product::class);
+
+        $product = Product::with('unit')
+            ->where('deleted_at', '=', null)
+            ->findOrFail($id);
+        $user = $request->user('api');
+
+        $warehouseIds = $user->is_all_warehouses
+            ? Warehouse::where('deleted_at', '=', null)->pluck('id')->all()
+            : UserWarehouse::where('user_id', $user->id)->pluck('warehouse_id')->all();
+
+        // Users without record-view access see only transactions created by them.
+        $visibleUserId = $user->hasRecordView() ? null : (int) $user->id;
+
+        return response()->json(
+            $overviewService->build($product, $warehouseIds, $visibleUserId)
+        );
     }
 
     // -------------------- Get Sales By product -------------\\

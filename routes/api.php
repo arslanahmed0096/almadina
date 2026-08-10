@@ -223,6 +223,7 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
 
     Route::get('report/users', 'ReportController@users_Report');
     Route::get('report/stock', 'ReportController@stock_Report');
+    Route::get('report/product_stock_overview/{id}', 'ReportController@product_stock_overview');
     Route::get('report/get_sales_by_user', 'ReportController@get_sales_by_user');
     Route::get('report/get_quotations_by_user', 'ReportController@get_quotations_by_user');
     Route::get('report/get_sales_return_by_user', 'ReportController@get_sales_return_by_user');

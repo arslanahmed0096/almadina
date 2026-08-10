@@ -7,6 +7,127 @@
         <b-col lg="12" class="mb-4">
             <h3 class="text-center">{{product.name}}</h3>
         </b-col>
+
+        <b-col lg="12" class="mb-4">
+          <b-card class="stock-overview-card" no-body>
+            <div class="stock-overview-header">
+              <div>
+                <h4 class="mb-1">Product Stock Overview</h4>
+                <div class="text-muted">
+                  {{ overview.product.code || product.code }}
+                  <span v-if="overviewUnit"> &middot; Quantities in {{ overviewUnit }}</span>
+                </div>
+              </div>
+              <b-badge variant="primary" class="stock-overview-badge">Complete picture</b-badge>
+            </div>
+
+            <div v-if="overviewLoading" class="stock-overview-loading">
+              <div class="spinner spinner-primary mr-3"></div>
+            </div>
+
+            <div v-else class="stock-overview-body">
+              <b-row class="stock-summary-row">
+                <b-col xl="3" md="6" class="mb-3">
+                  <div class="stock-summary-card summary-purchased">
+                    <span class="stock-summary-label">Net Purchased</span>
+                    <strong>{{ formatOverviewQuantity(overview.totals.net_purchased) }} {{ overviewUnit }}</strong>
+                    <small>Purchased {{ formatOverviewQuantity(overview.totals.purchased) }} &middot; Returned {{ formatOverviewQuantity(overview.totals.purchase_returned) }}</small>
+                  </div>
+                </b-col>
+                <b-col xl="3" md="6" class="mb-3">
+                  <div class="stock-summary-card summary-stock">
+                    <span class="stock-summary-label">Currently In Stock</span>
+                    <strong>{{ formatOverviewQuantity(overview.totals.in_stock) }} {{ overviewUnit }}</strong>
+                    <small>Across {{ overview.warehouses.length }} accessible store(s)</small>
+                  </div>
+                </b-col>
+                <b-col xl="3" md="6" class="mb-3">
+                  <div class="stock-summary-card summary-sold">
+                    <span class="stock-summary-label">Net Sold</span>
+                    <strong>{{ formatOverviewQuantity(overview.totals.net_sold) }} {{ overviewUnit }}</strong>
+                    <small>Sold {{ formatOverviewQuantity(overview.totals.sold) }} &middot; Returned {{ formatOverviewQuantity(overview.totals.sale_returned) }}</small>
+                  </div>
+                </b-col>
+                <b-col xl="3" md="6" class="mb-3">
+                  <div class="stock-summary-card summary-customers">
+                    <span class="stock-summary-label">Customers</span>
+                    <strong>{{ overview.totals.customers || 0 }}</strong>
+                    <small>Customers who purchased this product</small>
+                  </div>
+                </b-col>
+              </b-row>
+
+              <b-row>
+                <b-col xl="4" class="mb-3 mb-xl-0">
+                  <div class="stock-detail-panel">
+                    <div class="stock-detail-title">Stock by Store / Warehouse</div>
+                    <div class="table-responsive">
+                      <table class="table table-sm stock-overview-table mb-0">
+                        <thead>
+                          <tr>
+                            <th>Store / Warehouse</th>
+                            <th class="text-right">In Stock</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr v-for="warehouse in overview.warehouses" :key="warehouse.warehouse_id">
+                            <td>{{ warehouse.warehouse_name }}</td>
+                            <td class="text-right font-weight-bold">{{ formatOverviewQuantity(warehouse.quantity) }} {{ overviewUnit }}</td>
+                          </tr>
+                          <tr v-if="!overview.warehouses.length">
+                            <td colspan="2" class="text-center text-muted py-4">No accessible stores found.</td>
+                          </tr>
+                        </tbody>
+                        <tfoot v-if="overview.warehouses.length">
+                          <tr>
+                            <th>Total Stock</th>
+                            <th class="text-right">{{ formatOverviewQuantity(overview.totals.in_stock) }} {{ overviewUnit }}</th>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                </b-col>
+
+                <b-col xl="8">
+                  <div class="stock-detail-panel">
+                    <div class="stock-detail-title">Sold To Customers</div>
+                    <div class="table-responsive customer-stock-table">
+                      <table class="table table-sm stock-overview-table mb-0">
+                        <thead>
+                          <tr>
+                            <th>Customer</th>
+                            <th>Phone</th>
+                            <th class="text-right">Sold</th>
+                            <th class="text-right">Returned</th>
+                            <th class="text-right">Net Sold</th>
+                            <th class="text-right">Sales</th>
+                            <th>Last Sale</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr v-for="customer in overview.customers" :key="customer.customer_id || customer.customer_name">
+                            <td class="font-weight-bold">{{ customer.customer_name }}</td>
+                            <td>{{ customer.phone || '-' }}</td>
+                            <td class="text-right">{{ formatOverviewQuantity(customer.sold_quantity) }}</td>
+                            <td class="text-right text-danger">{{ formatOverviewQuantity(customer.returned_quantity) }}</td>
+                            <td class="text-right font-weight-bold text-success">{{ formatOverviewQuantity(customer.net_quantity) }}</td>
+                            <td class="text-right">{{ customer.sale_count }}</td>
+                            <td>{{ customer.last_sale_date || '-' }}</td>
+                          </tr>
+                          <tr v-if="!overview.customers.length">
+                            <td colspan="7" class="text-center text-muted py-4">No completed sales found for this product.</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </b-col>
+              </b-row>
+            </div>
+          </b-card>
+        </b-col>
+
       <!-- Warehouse Quantity -->
           <b-col md="5" v-if="product.type == 'is_single'">
           
@@ -489,6 +610,22 @@ export default {
 
       isLoading: true,
       product:{},
+      overviewLoading: true,
+      overview: {
+        product: {},
+        totals: {
+          purchased: 0,
+          purchase_returned: 0,
+          net_purchased: 0,
+          in_stock: 0,
+          sold: 0,
+          sale_returned: 0,
+          net_sold: 0,
+          customers: 0
+        },
+        warehouses: [],
+        customers: []
+      },
       purchases: [],
       rows_purchases: [{ statut: '', children: [] }],
       sales: [],
@@ -508,6 +645,9 @@ export default {
 
   computed: {
     ...mapGetters(["currentUser"]),
+    overviewUnit() {
+      return this.overview.product.unit || this.product.unit || "";
+    },
     columns_quotations() {
       return [
          {
@@ -1147,6 +1287,35 @@ export default {
         });
     },
 
+    Get_Product_Overview() {
+      this.overviewLoading = true;
+      axios
+        .get(`/report/product_stock_overview/${this.$route.params.id}`)
+        .then(response => {
+          this.overview = response.data;
+        })
+        .catch(() => {
+          if (this.$bvToast) {
+            this.$bvToast.toast("Unable to load the product stock overview.", {
+              title: this.$t("Failed"),
+              variant: "danger",
+              solid: true
+            });
+          }
+        })
+        .then(() => {
+          this.overviewLoading = false;
+        });
+    },
+
+    formatOverviewQuantity(value) {
+      const quantity = Number(value || 0);
+      return quantity.toLocaleString(undefined, {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 4
+      });
+    },
+
 
     //------------------------------Formetted Numbers -------------------------\\
     formatNumber(number, dec) {
@@ -1682,6 +1851,7 @@ export default {
 
   created: function() {
     this.showDetails();
+    this.Get_Product_Overview();
     this.Get_Sales(1);
     this.Get_Purchases(1);
     this.Get_Quotations(1);
@@ -1692,3 +1862,129 @@ export default {
   }
 };
 </script>
+
+<style scoped>
+.stock-overview-card {
+  border: 1px solid #e4e7ec;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 3px 14px rgba(16, 24, 40, 0.05);
+}
+
+.stock-overview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px;
+  border-bottom: 1px solid #eaecf0;
+  background: #fff;
+}
+
+.stock-overview-badge {
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+.stock-overview-loading {
+  min-height: 170px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stock-overview-body {
+  padding: 20px;
+  background: #f8f9fb;
+}
+
+.stock-summary-card {
+  height: 100%;
+  min-height: 112px;
+  padding: 16px 18px;
+  border: 1px solid #e4e7ec;
+  border-left-width: 4px;
+  border-radius: 8px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+}
+
+.stock-summary-label {
+  color: #667085;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.stock-summary-card strong {
+  margin: 5px 0 4px;
+  color: #101828;
+  font-size: 23px;
+  line-height: 1.2;
+}
+
+.stock-summary-card small {
+  margin-top: auto;
+  color: #667085;
+}
+
+.summary-purchased { border-left-color: #7b2cbf; }
+.summary-stock { border-left-color: #12b76a; }
+.summary-sold { border-left-color: #f79009; }
+.summary-customers { border-left-color: #2e90fa; }
+
+.stock-detail-panel {
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid #e4e7ec;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.stock-detail-title {
+  padding: 13px 15px;
+  border-bottom: 1px solid #eaecf0;
+  color: #101828;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.customer-stock-table {
+  max-height: 330px;
+  overflow-y: auto;
+}
+
+.stock-overview-table th,
+.stock-overview-table td {
+  padding: 10px 12px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.stock-overview-table thead th {
+  border-top: 0;
+  border-bottom: 1px solid #eaecf0;
+  color: #475467;
+  background: #f9fafb;
+  font-size: 12px;
+}
+
+.stock-overview-table tfoot th {
+  border-top: 2px solid #e4e7ec;
+  background: #f9fafb;
+}
+
+@media (max-width: 575.98px) {
+  .stock-overview-header,
+  .stock-overview-body {
+    padding: 14px;
+  }
+
+  .stock-overview-header {
+    align-items: flex-start;
+  }
+
+  .stock-overview-badge {
+    margin-left: 10px;
+  }
+}
+</style>
