@@ -3594,6 +3594,10 @@ class ReportController extends BaseController
         $order = $request->SortField;
         $dir = $request->SortType;
         $data = [];
+        $requestedStockFilter = $request->input('stock_filter', 'all');
+        $stockFilter = in_array($requestedStockFilter, ['all', 'available'], true)
+            ? $requestedStockFilter
+            : 'all';
 
         // get warehouses assigned to user
         $user_auth = auth()->user();
@@ -3604,6 +3608,7 @@ class ReportController extends BaseController
             $warehouses_id = UserWarehouse::where('user_id', $user_auth->id)->pluck('warehouse_id')->toArray();
             $warehouses = Warehouse::where('deleted_at', '=', null)->whereIn('id', $warehouses_id)->get(['id', 'name']);
         }
+        $warehouses_id = array_map('intval', $warehouses_id);
 
         $products_data = Product::with('unit', 'category', 'brand')
             ->where('deleted_at', '=', null)
@@ -3620,6 +3625,19 @@ class ReportController extends BaseController
                         });
                 });
             });
+
+        if ($stockFilter === 'available') {
+            $stockWarehouseIds = $warehouses_id;
+
+            if ($request->filled('warehouse_id')) {
+                $selectedWarehouseId = (int) $request->warehouse_id;
+                $stockWarehouseIds = in_array($selectedWarehouseId, $warehouses_id, true)
+                    ? [$selectedWarehouseId]
+                    : [];
+            }
+
+            $products_data->withAvailableStock($stockWarehouseIds);
+        }
 
         $totalRows = $products_data->count();
         if ($perPage == '-1') {
