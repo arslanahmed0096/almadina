@@ -28,7 +28,7 @@
 
        <div slot="table-actions" class="mt-2 mb-3 stock-report-filter-bar">
         <!-- warehouse -->
-        <b-form-group :label="$t('warehouse')" class="stock-report-filter">
+        <b-form-group :label="$t('warehouse')" class="stock-report-filter warehouse-stock-report-filter">
           <v-select
             @input="Selected_Warehouse"
             v-model="warehouse_id"
@@ -475,6 +475,10 @@ export default {
   margin-bottom: 0;
 }
 
+.warehouse-stock-report-filter {
+  width: 340px;
+}
+
 @media (max-width: 575.98px) {
   .stock-report-filter-bar {
     min-width: 0;
@@ -482,6 +486,10 @@ export default {
   }
 
   .stock-report-filter {
+    width: 100%;
+  }
+
+  .warehouse-stock-report-filter {
     width: 100%;
   }
 }
