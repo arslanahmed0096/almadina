@@ -87,7 +87,7 @@
                 </b-dropdown-item>
 
                 <b-dropdown-item
-                  v-if="currentUserPermissions.includes('payment_returns_view')"
+                  v-if="currentUserPermissions.includes('payment_sale_returns_view')"
                   @click="Show_Payments(props.row.id , props.row)"
                 >
                   <lucide-icon class="nav-icon font-weight-bold mr-2" name="wallet" />
@@ -95,7 +95,7 @@
                 </b-dropdown-item>
 
                 <b-dropdown-item
-                  v-if="currentUserPermissions.includes('payment_returns_add')"
+                  v-if="currentUserPermissions.includes('payment_sale_returns_add')"
                   @click="New_Payment(props.row)"
                 >
                   <lucide-icon class="nav-icon font-weight-bold mr-2" name="plus" />

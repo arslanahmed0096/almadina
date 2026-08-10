@@ -28,9 +28,10 @@ class PaymentSaleReturnsPolicy
      */
     public function view(User $user)
     {
-        $permission = Permission::where('name', 'payment_returns_view')->first();
+        $permission = Permission::where('name', 'payment_sale_returns_view')->first()
+            ?? Permission::where('name', 'payment_returns_view')->first();
 
-        return $user->hasRole($permission->roles);
+        return $permission && $user->hasRole($permission->roles);
     }
 
     /**
@@ -40,9 +41,10 @@ class PaymentSaleReturnsPolicy
      */
     public function create(User $user)
     {
-        $permission = Permission::where('name', 'payment_returns_add')->first();
+        $permission = Permission::where('name', 'payment_sale_returns_add')->first()
+            ?? Permission::where('name', 'payment_returns_add')->first();
 
-        return $user->hasRole($permission->roles);
+        return $permission && $user->hasRole($permission->roles);
     }
 
     /**

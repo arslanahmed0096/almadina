@@ -1170,6 +1170,32 @@
                                 <span class="checkmark"></span>
                               </label>
                             </b-col>
+                            <!-- Show Sales Payments -->
+                            <b-col md="12">
+                              <label class="checkbox checkbox-outline-primary">
+                                <input
+                                  type="checkbox"
+                                  checked
+                                  v-model="permissions"
+                                  value="payment_sales_view"
+                                >
+                                <span>Show Payments</span>
+                                <span class="checkmark"></span>
+                              </label>
+                            </b-col>
+                            <!-- Create Sales Payment -->
+                            <b-col md="12">
+                              <label class="checkbox checkbox-outline-primary">
+                                <input
+                                  type="checkbox"
+                                  checked
+                                  v-model="permissions"
+                                  value="payment_sales_add"
+                                >
+                                <span>Create Payment</span>
+                                <span class="checkmark"></span>
+                              </label>
+                            </b-col>
                             <!--Sales POS -->
                             <b-col md="12">
                               <label class="checkbox checkbox-outline-primary">
@@ -1516,6 +1542,34 @@
                               </label>
                             </b-col>
 
+                            <!-- Show Purchase Payments -->
+                            <b-col md="12">
+                              <label class="checkbox checkbox-outline-primary">
+                                <input
+                                  type="checkbox"
+                                  checked
+                                  v-model="permissions"
+                                  value="payment_purchases_view"
+                                >
+                                <span>Show Payments</span>
+                                <span class="checkmark"></span>
+                              </label>
+                            </b-col>
+
+                            <!-- Create Purchase Payment -->
+                            <b-col md="12">
+                              <label class="checkbox checkbox-outline-primary">
+                                <input
+                                  type="checkbox"
+                                  checked
+                                  v-model="permissions"
+                                  value="payment_purchases_add"
+                                >
+                                <span>Create Payment</span>
+                                <span class="checkmark"></span>
+                              </label>
+                            </b-col>
+
                             <!--Change product details -->
                             <b-col md="12">
                               <label class="checkbox checkbox-outline-primary">
@@ -1734,6 +1788,34 @@
                                 <span class="checkmark"></span>
                               </label>
                             </b-col>
+
+                            <!-- Show Sale Return Payments -->
+                            <b-col md="12">
+                              <label class="checkbox checkbox-outline-primary">
+                                <input
+                                  type="checkbox"
+                                  checked
+                                  v-model="permissions"
+                                  value="payment_sale_returns_view"
+                                >
+                                <span>Show Payments</span>
+                                <span class="checkmark"></span>
+                              </label>
+                            </b-col>
+
+                            <!-- Create Sale Return Payment -->
+                            <b-col md="12">
+                              <label class="checkbox checkbox-outline-primary">
+                                <input
+                                  type="checkbox"
+                                  checked
+                                  v-model="permissions"
+                                  value="payment_sale_returns_add"
+                                >
+                                <span>Create Payment</span>
+                                <span class="checkmark"></span>
+                              </label>
+                            </b-col>
                           </b-row>
                         </b-card-text>
                       </b-card-body>
@@ -1842,32 +1924,6 @@
                       <b-card-body>
                         <b-card-text>
                           <b-row>
-                            <!--Payment Sales View -->
-                            <b-col md="6">
-                              <label class="checkbox checkbox-outline-primary">
-                                <input
-                                  type="checkbox"
-                                  checked
-                                  v-model="permissions"
-                                  value="payment_sales_view"
-                                >
-                                <span>{{$t('View')}}</span>
-                                <span class="checkmark"></span>
-                              </label>
-                            </b-col>
-                            <!--Payment Sales ADD -->
-                            <b-col md="6">
-                              <label class="checkbox checkbox-outline-primary">
-                                <input
-                                  type="checkbox"
-                                  checked
-                                  v-model="permissions"
-                                  value="payment_sales_add"
-                                >
-                                <span>{{$t('Add')}}</span>
-                                <span class="checkmark"></span>
-                              </label>
-                            </b-col>
                             <!--Payment Sales Edit -->
                             <b-col md="6">
                               <label class="checkbox checkbox-outline-primary">
@@ -1922,32 +1978,6 @@
                       <b-card-body>
                         <b-card-text>
                           <b-row>
-                            <!--Payment Purchases View -->
-                            <b-col md="6">
-                              <label class="checkbox checkbox-outline-primary">
-                                <input
-                                  type="checkbox"
-                                  checked
-                                  v-model="permissions"
-                                  value="payment_purchases_view"
-                                >
-                                <span>{{$t('View')}}</span>
-                                <span class="checkmark"></span>
-                              </label>
-                            </b-col>
-                            <!--Payment Purchases ADD -->
-                            <b-col md="6">
-                              <label class="checkbox checkbox-outline-primary">
-                                <input
-                                  type="checkbox"
-                                  checked
-                                  v-model="permissions"
-                                  value="payment_purchases_add"
-                                >
-                                <span>{{$t('Add')}}</span>
-                                <span class="checkmark"></span>
-                              </label>
-                            </b-col>
                             <!--Payment Purchases Edit -->
                             <b-col md="6">
                               <label class="checkbox checkbox-outline-primary">
@@ -2002,32 +2032,6 @@
                       <b-card-body>
                         <b-card-text>
                           <b-row>
-                            <!--Payment Returns View -->
-                            <b-col md="6">
-                              <label class="checkbox checkbox-outline-primary">
-                                <input
-                                  type="checkbox"
-                                  checked
-                                  v-model="permissions"
-                                  value="payment_returns_view"
-                                >
-                                <span>{{$t('View')}}</span>
-                                <span class="checkmark"></span>
-                              </label>
-                            </b-col>
-                            <!--Payment Returns ADD -->
-                            <b-col md="6">
-                              <label class="checkbox checkbox-outline-primary">
-                                <input
-                                  type="checkbox"
-                                  checked
-                                  v-model="permissions"
-                                  value="payment_returns_add"
-                                >
-                                <span>{{$t('Add')}}</span>
-                                <span class="checkmark"></span>
-                              </label>
-                            </b-col>
                             <!--Payment Returns Edit -->
                             <b-col md="6">
                               <label class="checkbox checkbox-outline-primary">
