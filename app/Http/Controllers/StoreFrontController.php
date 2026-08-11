@@ -2,17 +2,19 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Category;
 use App\Models\Brand;
+use App\Models\Category;
 use App\Models\Collection;
 use App\Models\KnowledgeBaseArticle;
 use App\Models\Product;
 use App\Models\StoreBanner;
 use App\Models\StoreSetting;
 use App\Models\Warehouse;
-use Illuminate\Support\Facades\Schema;
 use DB;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\AbstractPaginator;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Schema;
 
 class StoreFrontController extends Controller
 {
@@ -337,7 +339,7 @@ class StoreFrontController extends Controller
             }
 
             if ($products->isNotEmpty()) {
-                $featured = new \stdClass();
+                $featured = new \stdClass;
                 $featured->title = __('Featured products');
                 $featured->name = __('Featured products');
                 $featured->slug = null;
@@ -519,7 +521,7 @@ class StoreFrontController extends Controller
         $dealExpiresAt = data_get($dealBlock, 'cfg.expires_at');
         if ($dealExpiresAt) {
             try {
-                $dealExpiresAt = \Illuminate\Support\Carbon::parse($dealExpiresAt)->toIso8601String();
+                $dealExpiresAt = Carbon::parse($dealExpiresAt)->toIso8601String();
             } catch (\Throwable $exception) {
                 $dealExpiresAt = null;
             }
@@ -549,13 +551,13 @@ class StoreFrontController extends Controller
      * Sorting/filters use base "effective_price" (min variant or product price).
      * UI shows final display price (discount + tax) computed per item after fetch.
      */
-
-     public function shop(Request $request)
+    public function shop(Request $request)
     {
         $s = StoreSetting::firstOrFail();
 
         $q = trim((string) $request->get('q', ''));
         $cat = $request->get('category');
+        $brand = $request->get('brand');
         $subCat = $request->get('sub_category');
         $minPrice = $request->get('min');
         $maxPrice = $request->get('max');
@@ -595,6 +597,8 @@ class StoreFrontController extends Controller
             ->where('hide_from_online_store', 0)
             // Note: product_variants table doesn't have a `qty` column; stock comes from product_warehouse.qte
             ->with([
+                'brand:id,name',
+                'category:id,name',
                 'variants:id,product_id,name,price,image',
                 'images:id,product_id,image_path,is_main,sort_order',
             ]) // Quick View / gallery + picker
@@ -632,6 +636,9 @@ class StoreFrontController extends Controller
                         });
                     }
                 });
+            })
+            ->when($brand, function ($qb) use ($brand) {
+                $qb->where('products.brand_id', (int) $brand);
             })
             // Sub Category (legacy column OR product_subcategory pivot)
             ->when($subCat, function ($qb) use ($subCat) {
@@ -677,6 +684,10 @@ class StoreFrontController extends Controller
 
         $products = $products->paginate(12)->withQueryString();
         $categories = Category::with('subcategories')->orderBy('name')->get(['id', 'name']);
+        $brands = Brand::query()
+            ->whereNull('deleted_at')
+            ->orderBy('name')
+            ->get(['id', 'name']);
         $collections = Collection::orderBy('title')
             ->get(['id', 'title', 'slug'])
             ->map(function ($c) {
@@ -684,6 +695,16 @@ class StoreFrontController extends Controller
 
                 return $c;
             });
+        $storeBranches = Warehouse::query()
+            ->whereNull('deleted_at')
+            ->where('name', 'not like', '%WHR-%')
+            ->get(['id', 'name', 'mobile', 'email', 'city', 'country', 'zip'])
+            ->sortBy(function (Warehouse $branch) {
+                preg_match('/BRN-(\d+)/i', (string) $branch->name, $matches);
+
+                return isset($matches[1]) ? (int) $matches[1] : PHP_INT_MAX;
+            })
+            ->values();
 
         // Attach display_price for the Blade (use SQL-computed final_display_price)
         foreach ($products as $p) {
@@ -695,23 +716,62 @@ class StoreFrontController extends Controller
             's' => $s,
             'products' => $products,
             'categories' => $categories,
+            'brands' => $brands,
             'collections' => $collections,
+            'storeBranches' => $storeBranches,
             'q' => $q,
             'cat' => $cat,
+            'brand' => $brand,
             'min' => $minPrice,
             'max' => $maxPrice,
             'sort' => $sort,
             'collection' => $coll,
+            'pageTitle' => trim((string) ($s->seo_meta_title ?? '')) !== '' && strcasecmp((string) $s->seo_meta_title, 'Online Store') !== 0
+                ? $s->seo_meta_title
+                : 'Shop Electronics & Home Appliances | Al Madina Electronics',
+            'pageDescription' => trim((string) ($s->seo_meta_description ?? '')) !== '' && !str_contains(strtolower((string) $s->seo_meta_description), 'modern online storefront')
+                ? $s->seo_meta_description
+                : 'Shop genuine electronics and home appliances from trusted brands at Al Madina Electronics, with official warranty and dependable customer support.',
             'showCategoryBar' => true,
         ]);
     }
- 
 
     public function about()
     {
-        $s = StoreSetting::first();
+        $s = StoreSetting::firstOrFail();
 
-        return view('store.about', compact('s'));
+        $categories = Category::with('subcategories')
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        $storeBranches = Warehouse::query()
+            ->whereNull('deleted_at')
+            ->where('name', 'not like', '%WHR-%')
+            ->get(['id', 'name', 'mobile', 'email', 'city', 'country', 'zip'])
+            ->sortBy(function (Warehouse $branch) {
+                preg_match('/BRN-(\d+)/i', (string) $branch->name, $matches);
+
+                return isset($matches[1]) ? (int) $matches[1] : PHP_INT_MAX;
+            })
+            ->values();
+
+        $pageTitle = trim((string) ($s->seo_meta_title ?? ''));
+        if ($pageTitle === '' || strcasecmp($pageTitle, 'Online Store') === 0) {
+            $pageTitle = 'About Al Madina Electronics | Trusted Appliances in Pakistan';
+        }
+
+        $pageDescription = trim((string) ($s->seo_meta_description ?? ''));
+        if ($pageDescription === '' || str_contains(strtolower($pageDescription), 'modern online storefront')) {
+            $pageDescription = 'Learn about Al Madina Electronics, our commitment to genuine appliances, official warranties, reliable service and trusted store locations across Pakistan.';
+        }
+
+        return view('store.about', compact(
+            's',
+            'categories',
+            'storeBranches',
+            'pageTitle',
+            'pageDescription',
+        ));
     }
 
     public function contact()
@@ -817,7 +877,7 @@ class StoreFrontController extends Controller
             return;
         }
 
-        $items = $products instanceof \Illuminate\Pagination\AbstractPaginator ? $products->items() : $products;
+        $items = $products instanceof AbstractPaginator ? $products->items() : $products;
         $productIds = collect($items)->pluck('id')->unique()->filter()->values()->all();
         if (empty($productIds)) {
             return;
@@ -864,7 +924,7 @@ class StoreFrontController extends Controller
                 $p->stock = null;
                 $productFallback = $stockMap["{$pid}:p"] ?? null;
                 foreach ($p->variants as $v) {
-                    $key = "{$pid}:" . (int) $v->id;
+                    $key = "{$pid}:".(int) $v->id;
                     if (array_key_exists($key, $stockMap)) {
                         $v->stock = (float) $stockMap[$key];
                     } elseif ($productFallback !== null) {
@@ -922,6 +982,7 @@ class StoreFrontController extends Controller
 
         return array_values(array_unique(array_merge($inStockIds, $preorderIds)));
     }
+
     /**
      * Search suggestions for autocomplete.
      */
@@ -951,7 +1012,7 @@ class StoreFrontController extends Controller
             $fn = $p->primaryProductImageFilename();
             $p->image_url = $fn ? asset('images/products/'.$fn) : asset('images/products/no-image.png');
             $p->display_price = $p->computeFinalPrice()['final'];
-            $p->url = route('store.shop', ['q' => $p->name]); 
+            $p->url = route('store.shop', ['q' => $p->name]);
         }
 
         return response()->json($products);

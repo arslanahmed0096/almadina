@@ -1,0 +1,737 @@
+.alm-about-page {
+  color: var(--text-primary);
+  background: var(--background-page);
+  font-family: var(--font-body);
+}
+
+.alm-about-page *,
+.alm-about-page *::before,
+.alm-about-page *::after {
+  box-sizing: border-box;
+}
+
+.alm-about-page img {
+  display: block;
+  max-width: 100%;
+}
+
+.alm-about-page h1,
+.alm-about-page h2,
+.alm-about-page h3 {
+  margin-top: 0;
+  font-family: var(--font-heading);
+}
+
+.alm-about-page p,
+.alm-about-page ol,
+.alm-about-page ul,
+.alm-about-page figure {
+  margin-top: 0;
+  margin-bottom: 0;
+  font-family: var(--font-body);
+}
+
+.alm-about-page section[id] {
+  scroll-margin-top: 110px;
+}
+
+.alm-about-page a,
+.alm-about-page button {
+  transition: color 180ms ease, background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.alm-about-page a:focus-visible,
+.alm-about-page button:focus-visible {
+  outline: 3px solid rgba(227, 6, 19, 0.24);
+  outline-offset: 3px;
+}
+
+.alm-about-page .alm-container {
+  width: 100%;
+  max-width: 1440px;
+  margin-inline: auto;
+  padding-inline: 40px;
+}
+
+.alm-about-breadcrumb {
+  border-bottom: 1px solid var(--border-light);
+  background: #fff;
+}
+
+.alm-about-eyebrow {
+  margin-bottom: 12px;
+  color: var(--brand-red);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.alm-about-section {
+  padding: 22px 0;
+}
+
+.alm-about-section-heading {
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.alm-about-section-heading .alm-about-eyebrow {
+  margin-bottom: 0;
+}
+
+.alm-about-hero {
+  padding: 24px 0 18px;
+}
+
+.alm-about-hero-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.03fr);
+  overflow: hidden;
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 18px 44px rgba(17, 24, 39, 0.06);
+}
+
+.alm-about-hero-copy {
+  padding: 54px 48px;
+  background: linear-gradient(135deg, #fff9f4 0%, #fffdfb 100%);
+}
+
+.alm-about-hero-copy h1 {
+  max-width: 420px;
+  margin-bottom: 18px;
+  font-size: clamp(34px, 3.2vw, 50px);
+  line-height: 1.12;
+  font-weight: 800;
+  letter-spacing: -0.045em;
+}
+
+.alm-about-lead,
+.alm-about-intro-copy p:not(.alm-about-eyebrow),
+.alm-about-store-intro > p:not(.alm-about-eyebrow),
+.alm-about-cta-copy p {
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.alm-about-hero-copy .alm-about-lead {
+  max-width: 390px;
+  margin-bottom: 26px;
+}
+
+.alm-about-btn {
+  display: inline-flex;
+  min-height: 46px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 22px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.alm-about-btn:hover {
+  transform: translateY(-1px);
+}
+
+.alm-about-btn-primary {
+  color: #fff;
+  background: var(--brand-red);
+}
+
+.alm-about-btn-primary:hover {
+  background: var(--brand-red-dark);
+}
+
+.alm-about-btn-outline {
+  color: var(--brand-red);
+  border-color: rgba(227, 6, 19, 0.3);
+  background: #fff;
+}
+
+.alm-about-btn-outline:hover {
+  color: #fff;
+  border-color: var(--brand-red);
+  background: var(--brand-red);
+}
+
+.alm-about-btn-dark-outline {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.34);
+  background: transparent;
+}
+
+.alm-about-btn-dark-outline:hover {
+  border-color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.alm-about-hero-media img {
+  width: 100%;
+  height: 100%;
+  min-height: 430px;
+  object-fit: cover;
+}
+
+.alm-about-intro {
+  padding: 18px 0;
+}
+
+.alm-about-intro-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: center;
+}
+
+.alm-about-intro-media {
+  overflow: hidden;
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
+  box-shadow: 0 16px 40px rgba(17, 24, 39, 0.05);
+}
+
+.alm-about-intro-media img {
+  width: 100%;
+  height: 100%;
+  min-height: 350px;
+  object-fit: cover;
+}
+
+.alm-about-intro-copy h2,
+.alm-about-store-intro h2 {
+  margin-bottom: 14px;
+  font-size: clamp(28px, 2.45vw, 40px);
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+}
+
+.alm-about-intro-copy > p:not(.alm-about-eyebrow) {
+  margin-bottom: 14px;
+}
+
+.alm-about-benefits {
+  display: grid;
+  gap: 13px;
+  padding: 10px 0 0;
+  list-style: none;
+}
+
+.alm-about-benefits li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #eceef1;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.alm-about-benefits svg {
+  flex: 0 0 auto;
+  color: var(--brand-red);
+}
+
+.alm-about-stats {
+  padding: 8px 0 22px;
+}
+
+.alm-about-stats-card {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 14px 32px rgba(17, 24, 39, 0.04);
+}
+
+.alm-about-stat {
+  display: flex;
+  min-height: 106px;
+  align-items: center;
+  gap: 14px;
+  padding: 22px 18px;
+}
+
+.alm-about-stat + .alm-about-stat {
+  border-left: 1px solid var(--border-light);
+}
+
+.alm-about-stat-icon {
+  flex: 0 0 auto;
+  color: var(--brand-red);
+}
+
+.alm-about-stat:nth-child(3) .alm-about-stat-icon {
+  color: var(--brand-yellow-dark);
+}
+
+.alm-about-stat strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: clamp(24px, 2vw, 38px);
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.alm-about-stat span {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.alm-about-card-grid {
+  display: grid;
+  gap: 24px;
+}
+
+.alm-about-card-grid-three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.alm-about-card-grid-four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.alm-about-info-card,
+.alm-about-value-card {
+  min-height: 190px;
+  padding: 24px;
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(17, 24, 39, 0.04);
+}
+
+.alm-about-info-card:hover,
+.alm-about-value-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 36px rgba(17, 24, 39, 0.06);
+}
+
+.alm-about-icon-badge,
+.alm-about-value-icon {
+  display: inline-grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  margin-bottom: 16px;
+}
+
+.alm-about-icon-badge {
+  border-radius: 16px;
+}
+
+.alm-about-icon-badge.is-rose {
+  color: var(--brand-red);
+  background: var(--brand-red-light);
+}
+
+.alm-about-icon-badge.is-gold {
+  color: var(--brand-yellow-dark);
+  background: var(--brand-yellow-light);
+}
+
+.alm-about-value-icon {
+  color: var(--brand-red);
+  border: 1px solid rgba(227, 6, 19, 0.18);
+  border-radius: 50%;
+  background: #fff;
+}
+
+.alm-about-info-card h3,
+.alm-about-value-card h3,
+.alm-about-branch-card h3,
+.alm-about-why-item h3,
+.alm-about-timeline-item h3 {
+  margin-bottom: 8px;
+  font-size: 16px;
+  line-height: 1.3;
+  font-weight: 700;
+}
+
+.alm-about-info-card p,
+.alm-about-value-card p,
+.alm-about-branch-card p,
+.alm-about-why-item p,
+.alm-about-timeline-item p {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.alm-about-journey {
+  padding-bottom: 24px;
+}
+
+.alm-about-timeline {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 24px;
+  list-style: none;
+  padding: 28px 0 0;
+  margin: 0;
+}
+
+.alm-about-timeline::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 16px;
+  height: 3px;
+  border-radius: 999px;
+  background: #ffd3d6;
+}
+
+.alm-about-timeline-item {
+  position: relative;
+  text-align: center;
+}
+
+.alm-about-timeline-item::before {
+  content: "";
+  position: absolute;
+  top: -34px;
+  left: 50%;
+  width: 18px;
+  height: 18px;
+  border: 4px solid #ffd5d8;
+  border-radius: 50%;
+  background: var(--brand-red);
+  transform: translateX(-50%);
+}
+
+.alm-about-timeline-item strong {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.alm-about-stores {
+  padding-bottom: 26px;
+}
+
+.alm-about-stores-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.14fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.alm-about-store-intro > p {
+  margin-bottom: 18px;
+}
+
+.alm-about-map-panel {
+  margin-top: 18px;
+}
+
+.alm-about-map-svg {
+  width: 100%;
+  max-width: 340px;
+  height: auto;
+  display: block;
+}
+
+.alm-about-branch-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.alm-about-branch-card {
+  display: flex;
+  min-height: 102px;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 20px 18px;
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(17, 24, 39, 0.04);
+}
+
+.alm-about-branch-card.is-empty {
+  grid-column: 1 / -1;
+}
+
+.alm-about-branch-icon {
+  flex: 0 0 auto;
+  color: var(--brand-red);
+}
+
+.alm-about-branch-card a {
+  display: inline-flex;
+  margin-top: 8px;
+  color: var(--brand-red);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.alm-about-branch-card a:hover {
+  color: var(--brand-red-dark);
+}
+
+.alm-about-why-shell {
+  padding: 24px 28px;
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(17, 24, 39, 0.04);
+}
+
+.alm-about-why-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.alm-about-why-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 4px 8px;
+}
+
+.alm-about-why-item + .alm-about-why-item {
+  border-left: 1px solid var(--border-light);
+}
+
+.alm-about-why-item svg {
+  flex: 0 0 auto;
+  color: var(--success-green);
+}
+
+.alm-about-why-item h3 {
+  margin-bottom: 6px;
+  font-size: 15px;
+}
+
+.alm-about-cta {
+  padding: 8px 0 30px;
+}
+
+.alm-about-cta-shell {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr) auto;
+  gap: 20px;
+  align-items: center;
+  padding: 26px 28px;
+  border-left: 5px solid var(--brand-red);
+  border-radius: 10px;
+  background: linear-gradient(90deg, #22272b 0%, #2a2f33 100%);
+  box-shadow: 0 22px 48px rgba(17, 24, 39, 0.12);
+}
+
+.alm-about-cta-art {
+  min-width: 0;
+}
+
+.alm-about-cta-art-svg {
+  width: 100%;
+  max-width: 190px;
+  height: auto;
+  color: rgba(255, 255, 255, 0.74);
+}
+
+.alm-about-cta-copy h2 {
+  margin-bottom: 8px;
+  color: #fff;
+  font-size: clamp(24px, 2.15vw, 34px);
+  line-height: 1.12;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.alm-about-cta-copy p {
+  color: rgba(255, 255, 255, 0.76);
+}
+
+.alm-about-cta-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+@media (max-width: 1199px) {
+  .alm-about-page .alm-container {
+    padding-inline: 28px;
+  }
+
+  .alm-about-card-grid-four,
+  .alm-about-why-grid,
+  .alm-about-stats-card,
+  .alm-about-timeline {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .alm-about-stats-card .alm-about-stat:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .alm-about-stats-card .alm-about-stat:nth-child(n + 3) {
+    border-top: 1px solid var(--border-light);
+  }
+
+  .alm-about-why-item:nth-child(3) {
+    border-left: 0;
+  }
+
+  .alm-about-why-item:nth-child(even) {
+    border-left: 1px solid var(--border-light);
+  }
+
+  .alm-about-why-item:nth-child(n + 3) {
+    padding-top: 22px;
+    border-top: 1px solid var(--border-light);
+  }
+
+  .alm-about-stores-grid,
+  .alm-about-hero-card,
+  .alm-about-intro-grid,
+  .alm-about-cta-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .alm-about-cta-shell {
+    text-align: center;
+  }
+
+  .alm-about-cta-art,
+  .alm-about-cta-actions {
+    justify-self: center;
+  }
+}
+
+@media (max-width: 899px) {
+  .alm-about-card-grid-three,
+  .alm-about-card-grid-four,
+  .alm-about-branch-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .alm-about-intro-copy h2,
+  .alm-about-store-intro h2 {
+    font-size: 34px;
+  }
+}
+
+@media (max-width: 639px) {
+  .alm-about-page .alm-container {
+    padding-inline: 14px;
+  }
+
+  .alm-about-hero,
+  .alm-about-section,
+  .alm-about-stats,
+  .alm-about-cta {
+    padding-top: 16px;
+  }
+
+  .alm-about-hero-copy,
+  .alm-about-why-shell,
+  .alm-about-cta-shell,
+  .alm-about-info-card,
+  .alm-about-value-card {
+    padding: 24px 18px;
+  }
+
+  .alm-about-hero-copy h1,
+  .alm-about-intro-copy h2,
+  .alm-about-store-intro h2,
+  .alm-about-cta-copy h2 {
+    font-size: 30px;
+  }
+
+  .alm-about-hero-media img,
+  .alm-about-intro-media img {
+    min-height: 280px;
+  }
+
+  .alm-about-stats-card,
+  .alm-about-card-grid-three,
+  .alm-about-card-grid-four,
+  .alm-about-branch-grid,
+  .alm-about-why-grid,
+  .alm-about-timeline {
+    grid-template-columns: 1fr;
+  }
+
+  .alm-about-stat + .alm-about-stat,
+  .alm-about-why-item + .alm-about-why-item {
+    border-left: 0;
+  }
+
+  .alm-about-stat,
+  .alm-about-why-item:nth-child(n + 2) {
+    border-top: 1px solid var(--border-light);
+  }
+
+  .alm-about-timeline {
+    gap: 28px;
+    padding-top: 0;
+  }
+
+  .alm-about-timeline::before {
+    top: 10px;
+    bottom: 10px;
+    left: 11px;
+    right: auto;
+    width: 3px;
+    height: auto;
+  }
+
+  .alm-about-timeline-item {
+    padding-left: 40px;
+    text-align: left;
+  }
+
+  .alm-about-timeline-item::before {
+    top: 8px;
+    left: 11px;
+    transform: none;
+  }
+
+  .alm-about-cta-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .alm-about-cta-actions .alm-about-btn {
+    width: 100%;
+  }
+
+  .alm-about-cta-art {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .alm-about-page *,
+  .alm-about-page *::before,
+  .alm-about-page *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

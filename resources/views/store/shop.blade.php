@@ -2,92 +2,74 @@
 
 @section('content')
 @php
-  $currency   = $s->currency_code ?? '$';
-  $total      = $products->total();
-  $hasFilters = filled($q ?? null) || filled($cat ?? null) || filled($collection ?? null) || filled($min ?? null) || filled($max ?? null);
+  $currency = $s->currency_code ?? '$';
 @endphp
 
-{{-- ===== Top bar ===== --}}
-<section class="border-b border-line-subtle"
-         style="background: linear-gradient(135deg, rgb(var(--color-accent-500) / .04), rgb(var(--color-bg-surface)));">
-  <div class="container py-6">
-    <div class="flex items-end justify-between flex-wrap gap-4">
-      <div>
-        <span class="section-kicker">{{ __('messages.Shop') }}</span>
-        <h1 class="section-title mt-1">{{ __('messages.Shop') }}</h1>
-        <div class="text-sm text-fg-muted mt-1">
-          {{ trans_choice('messages.products', $total, ['count' => $total]) }}
-          @if($hasFilters) · <span class="text-accent-500">{{ __('messages.FiltersApplied') }}</span>@endif
-        </div>
+<div class="alm-shop-page">
+  @include('store.partials.almadina.shop.breadcrumb')
+
+  <section class="alm-shop-hero">
+    <div class="alm-container">
+      <div class="alm-shop-hero__copy">
+        <h1>Shop Electronics &amp; Home Appliances</h1>
+        <p>Discover top-quality electronics and home appliances at the best prices in Pakistan.</p>
       </div>
-
-      <form method="get" action="{{ route('store.shop') }}" class="flex items-end gap-2 flex-wrap">
-        @foreach(request()->except(['sort','page']) as $k => $v)
-          @if(is_array($v))
-            @foreach($v as $vv)<input type="hidden" name="{{ $k }}[]" value="{{ $vv }}">@endforeach
-          @else
-            <input type="hidden" name="{{ $k }}" value="{{ $v }}">
-          @endif
-        @endforeach
-
-        <div class="flex items-end gap-2">
-          <div>
-            <label class="form-label text-xs mb-1">{{ __('messages.Sort') }}</label>
-            <select name="sort" class="select h-9 text-sm py-1">
-              <option value="latest" @selected(($sort ?? 'latest') === 'latest')>{{ __('messages.Latest') }}</option>
-              <option value="price_asc" @selected($sort === 'price_asc')>{{ __('messages.PriceUp') }}</option>
-              <option value="price_desc" @selected($sort === 'price_desc')>{{ __('messages.PriceDown') }}</option>
-            </select>
-          </div>
-          <button class="btn btn-primary btn-sm" type="submit">
-            <x-store.icon name="refresh" class="w-4 h-4" />{{ __('messages.Update') }}
-          </button>
-        </div>
-
-        <button class="btn btn-outline btn-sm lg:hidden" type="button"
-                @click="window.StoreUI.open('filtersDrawer')">
-          <x-store.icon name="filter" class="w-4 h-4" />{{ __('messages.Filters') }}
-        </button>
-      </form>
     </div>
-  </div>
-</section>
+  </section>
 
-<div class="container py-8">
-  <div class="grid lg:grid-cols-[280px_1fr] gap-6">
-    {{-- ===== Sidebar filters (desktop) ===== --}}
-    <aside class="hidden lg:block">
-      @include('store.partials.filters-card', [
-        'q' => $q, 'cat' => $cat, 'collection' => $collection,
-        'min' => $min, 'max' => $max, 'sort' => $sort,
-        'categories' => $categories, 'collections' => $collections
-      ])
-    </aside>
+  <section class="alm-shop-results-section">
+    <div class="alm-container">
+      <div class="alm-shop-shell">
+        <aside class="alm-shop-sidebar">
+          @include('store.partials.almadina.shop.filters', [
+            'q' => $q,
+            'cat' => $cat,
+            'brand' => $brand,
+            'collection' => $collection,
+            'min' => $min,
+            'max' => $max,
+            'sort' => $sort,
+            'categories' => $categories,
+            'brands' => $brands,
+            'collections' => $collections,
+          ])
+        </aside>
 
-    {{-- ===== Main content ===== --}}
-    <main>
-      @include('store.partials.shop-product-grid', [
-        's' => $s,
-        'products' => $products,
-        'categories' => $categories,
-        'collections' => $collections,
-        'q' => $q,
-        'cat' => $cat,
-        'collection' => $collection,
-        'min' => $min,
-        'max' => $max,
-        'sort' => $sort,
-        'currency' => $currency,
-      ])
-    </main>
-  </div>
+        <main class="alm-shop-main">
+          @include('store.partials.almadina.shop.grid', [
+            's' => $s,
+            'products' => $products,
+            'categories' => $categories,
+            'brands' => $brands,
+            'collections' => $collections,
+            'q' => $q,
+            'cat' => $cat,
+            'brand' => $brand,
+            'collection' => $collection,
+            'min' => $min,
+            'max' => $max,
+            'sort' => $sort,
+            'currency' => $currency,
+          ])
+        </main>
+      </div>
+    </div>
+  </section>
+
+  <section class="alm-shop-confidence">
+    <div class="alm-container">
+      <div class="alm-shop-confidence__grid" aria-label="Shopping confidence benefits">
+        <div><x-store.icon name="shield-check" class="w-9 h-9" /><span><strong>Genuine Products</strong><small>100% original &amp; authentic</small></span></div>
+        <div><x-store.icon name="award" class="w-9 h-9" /><span><strong>Official Warranty</strong><small>Brand authorized warranty</small></span></div>
+        <div><x-store.icon name="truck" class="w-9 h-9" /><span><strong>Fast Delivery</strong><small>Across Pakistan</small></span></div>
+        <div><x-store.icon name="headset" class="w-9 h-9" /><span><strong>Customer Support</strong><small>We&apos;re here to help</small></span></div>
+      </div>
+    </div>
+  </section>
 </div>
 
-{{-- ===== Drawer Filters (mobile) ===== --}}
 <div x-data="drawer()" x-cloak id="filtersDrawer">
-  <div x-show="isOpen" class="drawer-backdrop"
-       x-transition.opacity
-       @click="close()"></div>
+  <div x-show="isOpen" class="drawer-backdrop" x-transition.opacity @click="close()"></div>
 
   <aside class="drawer-panel drawer-end"
          x-show="isOpen"
@@ -97,19 +79,28 @@
          x-transition:leave="transition-transform duration-200"
          x-transition:leave-start="translate-x-0"
          x-transition:leave-end="translate-x-full"
-         role="dialog" aria-modal="true" aria-label="{{ __('messages.Filters') }}">
+         role="dialog"
+         aria-modal="true"
+         aria-label="Shop filters">
     <div class="drawer-header">
-      <h5 class="font-semibold m-0">{{ __('messages.Filters') }}</h5>
-      <button type="button" class="btn btn-ghost btn-icon btn-sm" @click="close()" aria-label="{{ __('messages.Close') }}">
+      <h5 class="font-semibold m-0">Filters</h5>
+      <button type="button" class="btn btn-ghost btn-icon btn-sm" @click="close()" aria-label="Close filters">
         <x-store.icon name="x" class="w-5 h-5" />
       </button>
     </div>
     <div class="drawer-body">
-      @include('store.partials.filters-card', [
-        'q' => $q, 'cat' => $cat, 'collection' => $collection,
-        'min' => $min, 'max' => $max, 'sort' => $sort,
-        'categories' => $categories, 'collections' => $collections,
-        'isDrawer' => true
+      @include('store.partials.almadina.shop.filters', [
+        'q' => $q,
+        'cat' => $cat,
+        'brand' => $brand,
+        'collection' => $collection,
+        'min' => $min,
+        'max' => $max,
+        'sort' => $sort,
+        'categories' => $categories,
+        'brands' => $brands,
+        'collections' => $collections,
+        'isDrawer' => true,
       ])
     </div>
   </aside>

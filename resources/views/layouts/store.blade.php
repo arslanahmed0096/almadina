@@ -61,9 +61,11 @@
   // The storefront home is exposed at both `/` and `/online_store`.
   // Keep the dedicated home shell active for both named routes.
   $isStoreHome = request()->routeIs('store.home', 'store.index');
+  $isAlmadinaAbout = request()->routeIs('store.about');
+  $isAlmadinaShop = request()->routeIs('store.shop');
   $isAlmadinaContact = request()->routeIs('store.contact');
-  $usesAlmadinaChrome = $isStoreHome || $isAlmadinaContact;
-  $usesOnsusChrome = request()->routeIs('store.about');
+  $usesAlmadinaChrome = $isStoreHome || $isAlmadinaAbout || $isAlmadinaShop || $isAlmadinaContact;
+  $usesOnsusChrome = false;
 @endphp
 <!doctype html>
 <html lang="{{ str_replace('_','-', app()->getLocale() ?? 'en') }}" dir="{{ $isRtl ? 'rtl' : 'ltr' }}">
@@ -121,13 +123,16 @@
       <link rel="preload" as="image" href="{{ asset('images/storefront/almadina-appliances-hero-v1.webp') }}" type="image/webp">
     @endif
     <link rel="stylesheet" href="{{ asset('css/storefront-almadina.css') }}?v={{ @filemtime(public_path('css/storefront-almadina.css')) }}">
+    @if($isAlmadinaAbout)
+      <link rel="stylesheet" href="{{ asset('css/storefront-about-almadina.css') }}?v={{ @filemtime(public_path('css/storefront-about-almadina.css')) }}">
+    @endif
+    @if($isAlmadinaShop)
+      <link rel="stylesheet" href="{{ asset('css/storefront-shop-almadina.css') }}?v={{ @filemtime(public_path('css/storefront-shop-almadina.css')) }}">
+    @endif
   @elseif($usesOnsusChrome)
     <link rel="stylesheet" href="{{ asset('css/storefront-home.css') }}?v={{ @filemtime(public_path('css/storefront-home.css')) }}">
     <link rel="stylesheet" href="{{ asset('css/storefront-home2-cover.css') }}?v={{ @filemtime(public_path('css/storefront-home2-cover.css')) }}">
     <link rel="stylesheet" href="{{ asset('css/storefront-home2-exact.css') }}?v={{ @filemtime(public_path('css/storefront-home2-exact.css')) }}">
-  @endif
-  @if(request()->routeIs('store.about'))
-    <link rel="stylesheet" href="{{ asset('css/storefront-contact.css') }}?v={{ @filemtime(public_path('css/storefront-contact.css')) }}">
   @endif
   @if($isAlmadinaContact)
     <link rel="stylesheet" href="{{ asset('css/storefront-contact-almadina.css') }}?v={{ @filemtime(public_path('css/storefront-contact-almadina.css')) }}">
@@ -157,7 +162,7 @@
     {!! $s->custom_css ?? '' !!}
   </style>
 </head>
-<body x-data class="bg-bg-base text-fg-primary antialiased min-h-screen flex flex-col {{ $usesOnsusChrome ? 'store-home-page' : '' }} {{ $usesAlmadinaChrome ? 'is-almadina-home' : '' }} {{ $isAlmadinaContact ? 'is-almadina-contact' : '' }}">
+<body x-data class="bg-bg-base text-fg-primary antialiased min-h-screen flex flex-col {{ $usesOnsusChrome ? 'store-home-page' : '' }} {{ $usesAlmadinaChrome ? 'is-almadina-home' : '' }} {{ $isAlmadinaAbout ? 'is-almadina-about' : '' }} {{ $isAlmadinaShop ? 'is-almadina-shop' : '' }} {{ $isAlmadinaContact ? 'is-almadina-contact' : '' }}">
 
   {{-- Page loader --}}
   <div id="page-loader" x-data="pageLoader()"

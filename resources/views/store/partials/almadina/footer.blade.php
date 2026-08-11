@@ -1,5 +1,6 @@
 @php
   $footerCategoryLinks = collect($categories)->take(6);
+  $storeBranches = collect($storeBranches ?? []);
   $configuredAboutCopy = trim((string) ($s->footer_text ?? ''));
   $usesDemoFooterCopy = $configuredAboutCopy === '' || stripos($configuredAboutCopy, 'demo storefront') !== false;
   $aboutCopy = $usesDemoFooterCopy
