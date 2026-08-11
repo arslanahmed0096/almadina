@@ -2948,7 +2948,7 @@
                             <div>
                               <h5 class="mb-1">Login Device Management</h5>
                               <p class="text-muted mb-0">
-                                Active login sessions for your user (per device / browser).
+                                Active login sessions for your user (per device / browser). Activity history is retained for 48 hours.
                               </p>
                             </div>
                             <div class="d-flex">
@@ -2970,8 +2970,9 @@
                             :items="securitySessions"
                             :fields="securitySessionFields"
                             responsive="sm"
+                            sticky-header="420px"
                             small
-                            class="mt-3"
+                            class="mt-3 login-device-sessions-table"
                             show-empty
                             empty-text="No active sessions found."
                           >
@@ -5904,6 +5905,15 @@ export default {
 .system-actions-card h5 {
   color: #2c3e50;
   font-weight: 600;
+}
+
+.login-device-sessions-table {
+  border: 1px solid #dee2e6;
+  border-radius: 0.375rem;
+}
+
+.login-device-sessions-table thead th {
+  background: #f8f9fa;
 }
 
 .action-btn-system {

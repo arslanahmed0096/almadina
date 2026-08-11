@@ -600,31 +600,139 @@
 
      <!-- Modal Edit Shipment -->
     <validation-observer ref="shipment_ref">
-      <b-modal hide-footer size="md" id="modal_shipment" :title="$t('Edit')">
+      <b-modal hide-footer size="xl" dialog-class="shipment-modal-wide" id="modal_shipment" title="Edit Shipment">
         <b-form @submit.prevent="Submit_Shipment">
-          <b-row>
-            <!-- Status  -->
+          <div v-if="shipmentEligibilityLoading" class="text-center py-5">
+            <div class="spinner spinner-primary"></div>
+            <div class="mt-3 text-muted">Checking item payment and credit eligibility...</div>
+          </div>
+
+          <b-row v-else>
+            <b-col md="12" v-if="shipmentValidationError">
+              <b-alert show variant="danger" class="mb-3">
+                <lucide-icon name="alert-circle" class="mr-1" />
+                {{ shipmentValidationError }}
+              </b-alert>
+            </b-col>
+
             <b-col md="12">
-              <validation-provider name="Status" :rules="{ required: true}">
-                <b-form-group slot-scope="{ valid, errors }" :label="$t('Status') + ' ' + '*'">
-                  <v-select
-                    :class="{'is-invalid': !!errors.length}"
-                    :state="errors[0] ? false : (valid ? true : null)"
-                    v-model="shipment.status"
-                    :reduce="label => label.value"
-                    :placeholder="$t('Choose_Status')"
-                    :options="
-                                [
-                                  {label: 'Ordered', value: 'ordered'},
-                                  {label: 'Packed', value: 'packed'},
-                                  {label: 'Shipped', value: 'shipped'},
-                                  {label: 'Delivered', value: 'delivered'},
-                                  {label: 'Cancelled', value: 'cancelled'},
-                                ]"
-                  ></v-select>
-                  <b-form-invalid-feedback>{{ errors[0] }}</b-form-invalid-feedback>
-                </b-form-group>
-              </validation-provider>
+              <div class="shipment-credit-summary mb-3">
+                <div>
+                  <small>Sale Status</small>
+                  <strong>{{ shipmentEligibility.sale_status || 'Ordered' }}</strong>
+                </div>
+                <div>
+                  <small>Available Customer Credit</small>
+                  <strong>{{ shipmentCreditUnlimited ? 'Unlimited' : shipmentMoney(shipmentAvailableCredit) }}</strong>
+                </div>
+                <div>
+                  <small>Selected Credit</small>
+                  <strong>{{ shipmentMoney(selectedShipmentCredit) }}</strong>
+                </div>
+                <div>
+                  <small>Remaining Credit</small>
+                  <strong>{{ shipmentCreditUnlimited ? 'Unlimited' : shipmentMoney(remainingShipmentCredit) }}</strong>
+                </div>
+              </div>
+              <div v-if="shipmentHasZeroCreditLimit" class="shipment-credit-limit-action mb-3">
+                <div>
+                  <strong>This customer has no credit limit.</strong>
+                  <div class="small text-muted">
+                    Unpaid items cannot be shipped until an authorized user adds a credit limit.
+                  </div>
+                </div>
+                <div v-if="canUpdateCustomerCreditLimit" class="shipment-credit-limit-controls">
+                  <b-button
+                    v-if="!creditLimitEditorOpen"
+                    type="button"
+                    size="sm"
+                    variant="outline-primary"
+                    @click="openCreditLimitEditor"
+                  >
+                    Add Credit Limit
+                  </b-button>
+                  <template v-else>
+                    <b-input-group size="sm" :prepend="currentUser && currentUser.currency ? currentUser.currency : ''">
+                      <b-form-input
+                        v-model="creditLimitAmount"
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        placeholder="Enter credit limit"
+                        :disabled="creditLimitSaving"
+                      />
+                    </b-input-group>
+                    <b-button type="button" size="sm" variant="primary" :disabled="creditLimitSaving" @click="saveInitialCreditLimit">
+                      <span v-if="creditLimitSaving" class="spinner sm spinner-white mr-1"></span>
+                      Save
+                    </b-button>
+                    <b-button type="button" size="sm" variant="light" :disabled="creditLimitSaving" @click="closeCreditLimitEditor">Cancel</b-button>
+                  </template>
+                </div>
+                <small v-else class="text-muted">You do not have permission to add customer credit.</small>
+                <div v-if="creditLimitError" class="text-danger small w-100">{{ creditLimitError }}</div>
+              </div>
+            </b-col>
+
+            <b-col md="12">
+              <div class="table-responsive shipment-items-table mb-3">
+                <table class="table table-hover mb-0">
+                  <thead>
+                    <tr>
+                      <th class="text-center">Select</th>
+                      <th>Product</th>
+                      <th>Code</th>
+                      <th class="text-right">Qty</th>
+                      <th class="text-right">Item Total</th>
+                      <th class="text-right">Paid</th>
+                      <th class="text-right">Outstanding</th>
+                      <th>Eligibility</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="item in shipmentItems"
+                      :key="item.sale_detail_id"
+                      :class="{'shipment-item-eligible': item.eligible, 'shipment-item-disabled': shipmentItemDisabled(item)}"
+                    >
+                      <td class="text-center align-middle">
+                        <b-form-checkbox
+                          v-model="selectedShipmentItemIds"
+                          :value="item.sale_detail_id"
+                          :disabled="shipmentItemDisabled(item)"
+                          :aria-label="'Select ' + item.product_name"
+                        />
+                      </td>
+                      <td class="align-middle font-weight-bold">{{ item.product_name }}</td>
+                      <td class="align-middle">{{ item.product_code || '—' }}</td>
+                      <td class="text-right align-middle">{{ formatNumber(item.quantity, 2) }}</td>
+                      <td class="text-right align-middle">{{ shipmentMoney(item.item_total) }}</td>
+                      <td class="text-right align-middle text-success">{{ shipmentMoney(item.paid_amount) }}</td>
+                      <td class="text-right align-middle" :class="item.outstanding_amount > 0 ? 'text-danger' : 'text-success'">
+                        {{ shipmentMoney(item.outstanding_amount) }}
+                      </td>
+                      <td class="align-middle shipment-eligibility-cell">
+                        <b-badge :variant="shipmentItemDisabled(item) ? 'secondary' : 'success'">
+                          {{ shipmentItemDisabled(item) ? 'Unavailable' : 'Eligible for shipment' }}
+                        </b-badge>
+                        <button
+                          type="button"
+                          class="btn btn-link btn-sm p-0 ml-1"
+                          v-b-tooltip.hover
+                          :title="shipmentItemTooltip(item)"
+                          aria-label="Shipment eligibility details"
+                        >
+                          <lucide-icon name="info" />
+                        </button>
+                        <div class="small mt-1">{{ shipmentItemMessage(item) }}</div>
+                      </td>
+                    </tr>
+                    <tr v-if="!shipmentItems.length">
+                      <td colspan="8" class="text-center text-muted py-4">All sale items have already been shipped.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </b-col>
 
             <b-col md="12">
@@ -663,12 +771,15 @@
               <b-button
                 variant="primary"
                 type="submit"
-                :disabled="Submit_Processing_shipment"
+                :disabled="Submit_Processing_shipment || !canSubmitShipment"
               >
                 <span v-if="Submit_Processing_shipment" class="spinner sm spinner-white mr-2"></span>
                 <lucide-icon v-else class="me-2 font-weight-bold" name="check" />
                 {{ Submit_Processing_shipment ? ($t('Saving') || 'Saving...') : $t('submit') }}
               </b-button>
+              <small v-if="!selectedShipmentItemIds.length && shipmentItems.length" class="text-muted ml-2">
+                Select at least one eligible item.
+              </small>
               <div v-once class="typo__p" v-if="Submit_Processing_shipment">
                 <div class="spinner sm spinner-primary mt-3"></div>
               </div>
@@ -1615,6 +1726,14 @@ export default {
       pos_settings:{},
       paymentProcessing: false,
       Submit_Processing_shipment:false,
+      shipmentEligibilityLoading: false,
+      shipmentValidationError: "",
+      shipmentEligibility: {},
+      selectedShipmentItemIds: [],
+      creditLimitEditorOpen: false,
+      creditLimitAmount: "",
+      creditLimitSaving: false,
+      creditLimitError: "",
 
       
 
@@ -1714,6 +1833,54 @@ export default {
   },
   computed: {
     ...mapGetters(["currentUserPermissions", "currentUser"]),
+
+    shipmentItems() {
+      return Array.isArray(this.shipmentEligibility.items)
+        ? this.shipmentEligibility.items
+        : [];
+    },
+
+    shipmentCreditUnlimited() {
+      return !!(this.shipmentEligibility.credit && this.shipmentEligibility.credit.unlimited);
+    },
+
+    shipmentAvailableCredit() {
+      const credit = this.shipmentEligibility.credit || {};
+      return Number(credit.available_credit || 0);
+    },
+
+    shipmentCreditLimit() {
+      return Number((this.shipmentEligibility.credit || {}).credit_limit || 0);
+    },
+
+    shipmentHasZeroCreditLimit() {
+      return !!this.shipmentEligibility.customer && this.shipmentCreditLimit <= 0;
+    },
+
+    canUpdateCustomerCreditLimit() {
+      return Array.isArray(this.currentUserPermissions)
+        && this.currentUserPermissions.includes("customer_credit_limit_update");
+    },
+
+    selectedShipmentCredit() {
+      return this.shipmentItems.reduce((total, item) => {
+        return this.selectedShipmentItemIds.includes(item.sale_detail_id)
+          ? total + Number(item.outstanding_amount || 0)
+          : total;
+      }, 0);
+    },
+
+    remainingShipmentCredit() {
+      if (this.shipmentCreditUnlimited) return null;
+      return Math.max(this.shipmentAvailableCredit - this.selectedShipmentCredit, 0);
+    },
+
+    canSubmitShipment() {
+      return this.selectedShipmentItemIds.length > 0 && (
+        this.shipmentCreditUnlimited ||
+        this.selectedShipmentCredit <= this.shipmentAvailableCredit + 0.005
+      );
+    },
 
     // Sum of per-product VAT (total * tax_percent / 100)
     invoiceDetailsTaxTotal() {
@@ -2130,6 +2297,56 @@ export default {
       const safeSymbol = symbol || "";
       const value = this.formatPriceDisplay(number, dec);
       return safeSymbol ? `${safeSymbol} ${value}` : value;
+    },
+
+    shipmentMoney(amount) {
+      const symbol = this.currentUser && this.currentUser.currency
+        ? this.currentUser.currency
+        : "";
+      return this.formatPriceWithSymbol(symbol, Number(amount || 0), 2);
+    },
+
+    shipmentItemDisabled(item) {
+      if (!item || !item.eligible) return true;
+      if (this.selectedShipmentItemIds.includes(item.sale_detail_id)) return false;
+      if (Number(item.outstanding_amount || 0) <= 0 || this.shipmentCreditUnlimited) return false;
+      return Number(item.outstanding_amount || 0) > Number(this.remainingShipmentCredit || 0) + 0.005;
+    },
+
+    shipmentItemMessage(item) {
+      if (!item) return "";
+      if (item.eligible && this.shipmentItemDisabled(item)) {
+        return "Cannot select this item because the other selected items use the remaining available credit.";
+      }
+      if (item.eligibility_type === "credit") {
+        return "This item can be shipped within the customer’s available credit.";
+      }
+      return item.eligibility_message || "";
+    },
+
+    shipmentItemTooltip(item) {
+      const effectiveAvailable = item && item.eligible && this.shipmentItemDisabled(item)
+        ? Number(this.remainingShipmentCredit || 0)
+        : this.shipmentAvailableCredit;
+      const available = this.shipmentCreditUnlimited
+        ? "Unlimited"
+        : this.shipmentMoney(effectiveAvailable);
+      const additional = this.shipmentCreditUnlimited
+        ? 0
+        : Math.max(Number(item.outstanding_amount || 0) - effectiveAvailable, Number(item.additional_required || 0));
+      return `Outstanding amount: ${this.shipmentMoney(item.outstanding_amount)} | ` +
+        `Available credit: ${available} | ` +
+        `Additional payment or credit required: ${this.shipmentMoney(additional)}`;
+    },
+
+    shipmentErrorMessage(error) {
+      const response = error && error.response ? error.response.data : null;
+      if (response && response.errors) {
+        const first = Object.keys(response.errors)[0];
+        const messages = response.errors[first];
+        if (Array.isArray(messages) && messages.length) return messages[0];
+      }
+      return (response && response.message) || "Unable to update the shipment.";
     },
 
     //----------------------------------------- Format File Size -------------------------------\\
@@ -3173,20 +3390,26 @@ export default {
 
      //---------------------- Get_Data_Create  ------------------------------\\
 
-      Get_shipment_by_sale(sale_id) {
+    Get_shipment_by_sale(sale_id) {
+        this.shipmentEligibilityLoading = true;
+        this.shipmentValidationError = "";
+        this.selectedShipmentItemIds = [];
         axios
             .get("/shipments/" + sale_id)
             .then(response => {
                 this.shipment   = response.data.shipment;
+                this.shipmentEligibility = response.data.eligibility || {};
+                this.shipmentEligibilityLoading = false;
 
                  setTimeout(() => {
                     NProgress.done();
-                    this.$bvModal.show("modal_shipment");
-                }, 1000);
+                }, 100);
             })
             .catch(error => {
               NProgress.done();
-                
+              this.shipmentEligibilityLoading = false;
+              this.shipmentValidationError = this.shipmentErrorMessage(error);
+              this.makeToast("danger", this.shipmentValidationError, this.$t("Failed"));
             });
     },
 
@@ -3196,7 +3419,13 @@ export default {
         return;
       }
 
+      if (!this.canSubmitShipment) {
+        this.shipmentValidationError = "Select at least one eligible, unshipped item.";
+        return;
+      }
+
       this.Submit_Processing_shipment = true;
+      this.shipmentValidationError = "";
       this.$refs.shipment_ref.validate().then(success => {
         if (!success) {
           this.Submit_Processing_shipment = false;
@@ -3224,19 +3453,20 @@ export default {
           shipping_address: self.shipment.shipping_address,
           delivered_to: self.shipment.delivered_to,
           shipping_details: self.shipment.shipping_details,
-          status: self.shipment.status
+          sale_detail_ids: self.selectedShipmentItemIds
         })
         .then(response => {
           this.makeToast(
             "success",
-            this.$t("Updated_in_successfully"),
+            response.data.message || this.$t("Updated_in_successfully"),
             this.$t("Success")
           );
           Fire.$emit("event_update_shipment");
           self.Submit_Processing_shipment = false;
         })
         .catch(error => {
-          this.makeToast("danger", this.$t("InvalidData"), this.$t("Failed"));
+          this.shipmentValidationError = this.shipmentErrorMessage(error);
+          this.makeToast("danger", this.shipmentValidationError, this.$t("Failed"));
           self.Submit_Processing_shipment = false;
         });
     },
@@ -3247,7 +3477,49 @@ export default {
       NProgress.start();
       NProgress.set(0.1);
       this.reset_Form_shipment();
+      this.$bvModal.show("modal_shipment");
       this.Get_shipment_by_sale(sale_id);
+    },
+
+    openCreditLimitEditor() {
+      if (!this.canUpdateCustomerCreditLimit) return;
+      const credit = this.shipmentEligibility.credit || {};
+      const largestOutstanding = this.shipmentItems.reduce((maximum, item) => {
+        return Math.max(maximum, Number(item.outstanding_amount || 0));
+      }, 0);
+      this.creditLimitAmount = (Number(credit.current_usage || 0) + largestOutstanding).toFixed(2);
+      this.creditLimitError = "";
+      this.creditLimitEditorOpen = true;
+    },
+
+    closeCreditLimitEditor() {
+      this.creditLimitEditorOpen = false;
+      this.creditLimitAmount = "";
+      this.creditLimitError = "";
+    },
+
+    saveInitialCreditLimit() {
+      const customer = this.shipmentEligibility.customer || {};
+      const amount = Number(this.creditLimitAmount);
+      if (!customer.id || !Number.isFinite(amount) || amount <= 0) {
+        this.creditLimitError = "Enter a credit limit greater than zero.";
+        return;
+      }
+
+      this.creditLimitSaving = true;
+      this.creditLimitError = "";
+      axios.post(`/customers/${customer.id}/initial-credit-limit`, { credit_limit: amount })
+        .then(response => {
+          this.makeToast("success", response.data.message, this.$t("Success"));
+          this.closeCreditLimitEditor();
+          this.Get_shipment_by_sale(this.shipment.sale_id);
+        })
+        .catch(error => {
+          this.creditLimitError = this.shipmentErrorMessage(error);
+        })
+        .finally(() => {
+          this.creditLimitSaving = false;
+        });
     },
 
       //-------------------------------- Reset Form -------------------------------\\
@@ -3263,6 +3535,14 @@ export default {
         status: "",
         shipping_details: ""
       };
+      this.shipmentEligibility = {};
+      this.selectedShipmentItemIds = [];
+      this.creditLimitEditorOpen = false;
+      this.creditLimitAmount = "";
+      this.creditLimitSaving = false;
+      this.creditLimitError = "";
+      this.shipmentValidationError = "";
+      this.shipmentEligibilityLoading = false;
     },
 
     //------------------------------------------ Remove Sale ------------------------------\\
@@ -3401,6 +3681,73 @@ export default {
 </script>
 
 <style>
+  .shipment-credit-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #f8fafc;
+  }
+  .shipment-modal-wide {
+    width: 96vw !important;
+    max-width: 1500px !important;
+  }
+  .shipment-credit-summary > div {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .shipment-credit-summary small {
+    color: #6b7280;
+  }
+  .shipment-credit-summary strong {
+    color: #111827;
+  }
+  .shipment-credit-limit-action {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid #f6c86b;
+    border-radius: 8px;
+    background: #fffbeb;
+  }
+  .shipment-credit-limit-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .shipment-credit-limit-controls .input-group {
+    width: 240px;
+  }
+  .shipment-items-table {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+  }
+  .shipment-items-table thead th {
+    white-space: nowrap;
+    background: #f3f4f6;
+    border-top: 0;
+  }
+  .shipment-item-eligible {
+    box-shadow: inset 3px 0 0 #28a745;
+  }
+  .shipment-item-disabled {
+    background: #f8f9fa;
+  }
+  .shipment-eligibility-cell {
+    min-width: 260px;
+  }
+  @media (max-width: 767px) {
+    .shipment-credit-summary {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
   .total{
     font-weight: bold;
     font-size: 14px;

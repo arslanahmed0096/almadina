@@ -48,6 +48,7 @@ use App\Models\UserWarehouse;
 use App\Models\Warehouse;
 use App\Models\Staff;
 use App\Traits\CalculatesCogsAndAverageCost;
+use App\Services\ProductStockOverviewService;
 use App\utils\helpers;
 use ArPHP\I18N\Arabic;
 use Carbon\Carbon;
@@ -3593,6 +3594,10 @@ class ReportController extends BaseController
         $order = $request->SortField;
         $dir = $request->SortType;
         $data = [];
+        $requestedStockFilter = $request->input('stock_filter', 'all');
+        $stockFilter = in_array($requestedStockFilter, ['all', 'available'], true)
+            ? $requestedStockFilter
+            : 'all';
 
         // get warehouses assigned to user
         $user_auth = auth()->user();
@@ -3603,6 +3608,7 @@ class ReportController extends BaseController
             $warehouses_id = UserWarehouse::where('user_id', $user_auth->id)->pluck('warehouse_id')->toArray();
             $warehouses = Warehouse::where('deleted_at', '=', null)->whereIn('id', $warehouses_id)->get(['id', 'name']);
         }
+        $warehouses_id = array_map('intval', $warehouses_id);
 
         $products_data = Product::with('unit', 'category', 'brand')
             ->where('deleted_at', '=', null)
@@ -3619,6 +3625,19 @@ class ReportController extends BaseController
                         });
                 });
             });
+
+        if ($stockFilter === 'available') {
+            $stockWarehouseIds = $warehouses_id;
+
+            if ($request->filled('warehouse_id')) {
+                $selectedWarehouseId = (int) $request->warehouse_id;
+                $stockWarehouseIds = in_array($selectedWarehouseId, $warehouses_id, true)
+                    ? [$selectedWarehouseId]
+                    : [];
+            }
+
+            $products_data->withAvailableStock($stockWarehouseIds);
+        }
 
         $totalRows = $products_data->count();
         if ($perPage == '-1') {
@@ -3671,6 +3690,32 @@ class ReportController extends BaseController
             'warehouses' => $warehouses,
         ]);
 
+    }
+
+    // ----------------- Complete product stock overview -----------------------\\
+
+    public function product_stock_overview(
+        Request $request,
+        $id,
+        ProductStockOverviewService $overviewService
+    ) {
+        $this->authorizeForUser($request->user('api'), 'stock_report', Product::class);
+
+        $product = Product::with('unit')
+            ->where('deleted_at', '=', null)
+            ->findOrFail($id);
+        $user = $request->user('api');
+
+        $warehouseIds = $user->is_all_warehouses
+            ? Warehouse::where('deleted_at', '=', null)->pluck('id')->all()
+            : UserWarehouse::where('user_id', $user->id)->pluck('warehouse_id')->all();
+
+        // Users without record-view access see only transactions created by them.
+        $visibleUserId = $user->hasRecordView() ? null : (int) $user->id;
+
+        return response()->json(
+            $overviewService->build($product, $warehouseIds, $visibleUserId)
+        );
     }
 
     // -------------------- Get Sales By product -------------\\

@@ -112,6 +112,28 @@
                   </validation-provider>
                 </b-col>
 
+                <!-- Transaction Type -->
+                <b-col lg="4" md="4" sm="12" class="mb-3">
+                  <validation-provider name="Transaction Type" :rules="{ required: true }">
+                    <b-form-group slot-scope="{ valid, errors }" label="Transaction Type *">
+                      <v-select
+                        :class="{'is-invalid': !!errors.length}"
+                        :state="errors[0] ? false : (valid ? true : null)"
+                        :disabled="details.length > 0"
+                        v-model="sale.transaction_type"
+                        :reduce="option => option.value"
+                        :options="[
+                          { label: 'Sale', value: 'sale' },
+                          { label: 'Order', value: 'order' }
+                        ]"
+                        :clearable="false"
+                        @input="Selected_Transaction_Type"
+                      />
+                      <b-form-invalid-feedback>{{ errors[0] }}</b-form-invalid-feedback>
+                    </b-form-group>
+                  </validation-provider>
+                </b-col>
+
                    <!-- Product -->
                 <b-col md="12" class="mb-5">
                   <h6>{{$t('ProductName')}}</h6>
@@ -214,7 +236,7 @@
                                   class="form-control"
                                   @keyup="Verified_Qty(detail,detail.detail_id)"
                                   :min="0.00"
-                                  :max="detail.stock"
+                                  :max="sale.transaction_type === 'order' ? null : detail.stock"
                                   v-model.number="detail.quantity"
                                 >
                                 <b-input-group-append>
@@ -237,7 +259,7 @@
                         </tr>
 
                         <!-- Batch selection row for batch-tracked products -->
-                        <tr v-if="detail.is_batch_tracked" :key="'batches-' + detail.detail_id" style="background: transparent;">
+                        <tr v-if="detail.is_batch_tracked && sale.transaction_type === 'sale'" :key="'batches-' + detail.detail_id" style="background: transparent;">
                           <td colspan="10" style="padding: 0; border-top: 0;">
                             <div style="margin: 6px 8px 14px 8px; border: 1px solid #e0e7ff; border-radius: 10px; overflow: hidden; background: linear-gradient(180deg, #f8faff 0%, #ffffff 100%);">
                               <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color: #fff; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px;">
@@ -468,7 +490,7 @@
                   </validation-provider>
                 </b-col>
 
-                <b-col lg="3" md="6" sm="12" class="mb-3" v-if="clientIsEligible && currentUserPermissions && currentUserPermissions.includes('edit_tax_discount_shipping_sale')">
+                <b-col lg="3" md="6" sm="12" class="mb-3" v-if="sale.transaction_type === 'sale' && clientIsEligible && currentUserPermissions && currentUserPermissions.includes('edit_tax_discount_shipping_sale')">
                   <label>Points to convert</label>
                   <div class="field mb-2">
                     <b-form-input
@@ -541,6 +563,7 @@
                         :class="{'is-invalid': !!errors.length}"
                         :state="errors[0] ? false : (valid ? true : null)"
                         v-model="sale.statut"
+                        :disabled="sale.transaction_type === 'order'"
                         :reduce="label => label.value"
                         :placeholder="$t('Choose_Status')"
                         :options="
@@ -1075,6 +1098,7 @@ export default {
         client_id: "",
         warehouse_id: "",
         sales_agent_id: null,
+        transaction_type: "sale",
         tax_rate: 0,
         TaxNet: 0,
         shipping: 0,
@@ -1205,6 +1229,12 @@ export default {
     // (matches POS behavior). Default OFF preserves the strict check.
     isOversellingAllowed() {
       return !!(this.pos_settings && this.pos_settings.allow_overselling);
+    },
+
+    // Orders may contain unavailable products because inventory is only
+    // consumed when the order is later completed as a sale.
+    isStockCheckRequired() {
+      return this.sale.transaction_type !== 'order' && !this.isOversellingAllowed;
     },
 
     // Disable modal submit if the edited detail would violate min price
@@ -1454,6 +1484,12 @@ export default {
      //---------------------- Event Select Status ------------------------------\\
 
      Selected_Status(value){
+      if (this.sale.transaction_type === 'order') {
+        this.sale.statut = 'ordered';
+        this.payment.status = 'pending';
+        this.payment.amount = 0;
+        return;
+      }
       if (value != "completed") {
         this.payment.status = 'pending';
       }
@@ -1534,7 +1570,7 @@ export default {
           } else {
             // Credit Limit Validation (0 means no limit)
             // Only applies when this sale is adding new credit (paid amount < sale total)
-            if (this.selectedClientId && this.selectedClientCreditLimit > 0) {
+            if (this.sale.transaction_type === 'sale' && this.selectedClientId && this.selectedClientCreditLimit > 0) {
               const totalPaid = parseFloat(this.payment.amount || 0);
               const saleTotal = parseFloat(this.GrandTotal || 0);
 
@@ -1659,7 +1695,7 @@ export default {
 
             // When overselling is allowed, do not cap quantity to the
             // recalculated stock after a unit change — preserve user intent.
-            if (!this.isOversellingAllowed && this.details[i].stock < this.details[i].quantity) {
+            if (this.isStockCheckRequired && this.details[i].stock < this.details[i].quantity) {
               this.details[i].quantity = this.details[i].stock;
             } else if (this.details[i].stock < this.details[i].quantity) {
               // overselling allowed: keep user quantity as-is
@@ -1852,7 +1888,9 @@ export default {
              if (weight !== null) {
               this.product.quantity = weight; // Assign extracted weight
             } else {
-              this.product.quantity = result.qte_sale < 1 ? result.qte_sale : 1;
+              this.product.quantity = this.sale.transaction_type === 'order'
+                ? 1
+                : (result.qte_sale < 1 ? result.qte_sale : 1);
             }
 
           }
@@ -1880,6 +1918,34 @@ export default {
           }
         }
       }
+    },
+
+    //---------------------- Event Select Transaction Type ------------------------------\\
+    Selected_Transaction_Type(value) {
+      const transactionType = value === 'order' ? 'order' : 'sale';
+      this.sale.transaction_type = transactionType;
+      this.search_input = '';
+      this.product_filter = [];
+
+      if (transactionType === 'order') {
+        this.sale.statut = 'ordered';
+        this.payment.status = 'pending';
+        this.payment.amount = 0;
+        this.payment.received_amount = 0;
+        this.selectedClientPoints = Number(this.initialClientPoints) || Number(this.selectedClientPoints) || 0;
+        this.points_to_convert = 0;
+        this.discount_from_points = 0;
+        this.used_points = 0;
+        this.pointsConverted = false;
+      } else if (this.sale.statut === 'ordered') {
+        this.sale.statut = 'completed';
+      }
+
+      if (this.sale.warehouse_id) {
+        this.Get_Products_By_Warehouse(this.sale.warehouse_id);
+      }
+
+      this.CalculTotal();
     },
 
     // ---------------- Quick Add Customer (like POS) ---------------- \\
@@ -1972,8 +2038,12 @@ export default {
       // Start the progress bar.
         NProgress.start();
         NProgress.set(0.1);
+      const isOrder = this.sale.transaction_type === 'order';
+      const query = "?stock=" + (isOrder ? 0 : 1)
+        + "&include_out_of_stock=" + (isOrder ? 1 : 0)
+        + "&is_sale=1&product_service=1&product_combo=1";
       axios
-        .get("get_Products_by_warehouse/" + id + "?stock=" + 1 + "&is_sale=" + 1 + "&product_service=" + 1 + "&product_combo=" + 1)
+        .get("get_Products_by_warehouse/" + id + query)
          .then(response => {
             this.products = response.data;
              NProgress.done();
@@ -2151,7 +2221,7 @@ export default {
           }
 
           // Stock cap skipped when overselling is allowed.
-          if (!this.isOversellingAllowed && detail.quantity > detail.stock) {
+          if (this.isStockCheckRequired && detail.quantity > detail.stock) {
             this.makeToast("warning", this.$t("LowStock"), this.$t("Warning"));
             this.details[i].quantity = detail.stock;
           } else {
@@ -2169,7 +2239,7 @@ export default {
       for (var i = 0; i < this.details.length; i++) {
         if (this.details[i].detail_id == id) {
           // Stock guard skipped when overselling is allowed.
-          if (!this.isOversellingAllowed && detail.quantity + 1 > detail.stock) {
+          if (this.isStockCheckRequired && detail.quantity + 1 > detail.stock) {
             this.makeToast("warning", this.$t("LowStock"), this.$t("Warning"));
           } else {
             this.formatNumber(this.details[i].quantity++, 2);
@@ -2187,7 +2257,7 @@ export default {
         if (this.details[i].detail_id == id) {
           if (detail.quantity - 1 > 0) {
             // Stock guard skipped when overselling is allowed.
-            if (!this.isOversellingAllowed && detail.quantity - 1 > detail.stock) {
+            if (this.isStockCheckRequired && detail.quantity - 1 > detail.stock) {
               this.makeToast(
                 "warning",
                 this.$t("LowStock"),
@@ -2293,7 +2363,7 @@ export default {
         for (var i = 0; i < this.details.length; i++) {
           // Empty/zero quantity is always invalid; the stock-exceeded branch
           // is skipped when overselling is allowed.
-          const overStock = !this.isOversellingAllowed && this.details[i].quantity > this.details[i].stock;
+          const overStock = this.isStockCheckRequired && this.details[i].quantity > this.details[i].stock;
           if (
             this.details[i].quantity == "" ||
             this.details[i].quantity === 0 ||
@@ -2480,6 +2550,7 @@ export default {
               client_id: this.selectedClientId,
               warehouse_id: this.sale.warehouse_id,
               sales_agent_id: this.sale.sales_agent_id || null,
+              transaction_type: this.sale.transaction_type,
               statut: this.sale.statut,
               notes: this.sale.notes,
               tax_rate: this.sale.tax_rate?this.sale.tax_rate:0,

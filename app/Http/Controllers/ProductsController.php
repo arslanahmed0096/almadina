@@ -1968,6 +1968,13 @@ class ProductsController extends BaseController
                     })
 
                     ->where(function ($query) use ($request) {
+                        // Orders must be able to include products that are currently
+                        // unavailable. The caller explicitly opts into the complete
+                        // warehouse catalogue; normal sale searches remain stock-only.
+                        if ($request->boolean('include_out_of_stock')) {
+                            return $query;
+                        }
+
                         if ($request->stock == '1' && $request->product_service == '1') {
                             return $query->where('qte', '>', 0)->orWhere('manage_stock', false);
 

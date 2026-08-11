@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 class Product extends Model
@@ -57,6 +58,32 @@ class Product extends Model
         'prescription_required' => 'boolean',
         'shelf_life_days' => 'integer',
     ];
+
+    /**
+     * Limit products to those whose summed stock is positive in the supplied warehouses.
+     */
+    public function scopeWithAvailableStock(Builder $query, array $warehouseIds): Builder
+    {
+        $warehouseIds = collect($warehouseIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if (empty($warehouseIds)) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->whereIn('products.id', function ($stockQuery) use ($warehouseIds) {
+            $stockQuery->select('product_id')
+                ->from('product_warehouse')
+                ->whereNull('deleted_at')
+                ->whereIn('warehouse_id', $warehouseIds)
+                ->groupBy('product_id')
+                ->havingRaw('SUM(qte) > 0');
+        });
+    }
 
     public function variants()
     {

@@ -27,11 +27,20 @@ class SecuritySettingsController extends Controller
 
         $user = $request->user('api');
         $currentSessionKey = $this->resolveCurrentSessionKey($request, (int) $user->id, $user->token());
+        UserLoginSession::purgeExpiredHistory();
+        $historyCutoff = UserLoginSession::retentionCutoff();
 
         $tokens = OauthAccessToken::query()
             ->where('revoked', '=', 0)
             ->where(function ($q) {
                 $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
+            })
+            ->where(function ($query) use ($historyCutoff) {
+                $query->where('created_at', '>=', $historyCutoff)
+                    ->orWhereIn('id', UserLoginSession::query()
+                        ->withinHistoryRetention($historyCutoff)
+                        ->where('access_token_id', 'not like', 'cookie:%')
+                        ->select('access_token_id'));
             })
             ->orderByDesc('created_at')
             ->get(['id', 'user_id', 'created_at', 'expires_at']);
@@ -43,6 +52,7 @@ class SecuritySettingsController extends Controller
 
         $userIds = $tokens->pluck('user_id')
             ->merge(UserLoginSession::query()
+                ->withinHistoryRetention($historyCutoff)
                 ->whereNull('revoked_at')
                 ->where('access_token_id', 'like', 'cookie:%')
                 ->pluck('user_id'))
@@ -84,6 +94,7 @@ class SecuritySettingsController extends Controller
 
         // Cookie-auth sessions (Passport TransientToken): stored with key "cookie:<sha256(csrf)>"
         $cookieSessions = UserLoginSession::query()
+            ->withinHistoryRetention($historyCutoff)
             ->whereNull('revoked_at')
             ->where('access_token_id', 'like', 'cookie:%')
             ->orderByDesc('last_activity_at')
@@ -265,6 +276,8 @@ class SecuritySettingsController extends Controller
 
         $user = $request->user('api');
         $currentSessionKey = $this->resolveCurrentSessionKey($request, (int) $user->id, $user->token());
+        UserLoginSession::purgeExpiredHistory();
+        $historyCutoff = UserLoginSession::retentionCutoff();
 
         // Pagination parameters
         $perPage = $request->get('limit', 50);
@@ -273,11 +286,13 @@ class SecuritySettingsController extends Controller
         // Get total count first
         $totalRows = UserLoginSession::query()
             ->where('user_id', $user->id)
+            ->withinHistoryRetention($historyCutoff)
             ->count();
 
         // Build query
         $query = UserLoginSession::query()
             ->where('user_id', $user->id)
+            ->withinHistoryRetention($historyCutoff)
             ->orderByDesc('logged_in_at');
 
         // Handle "ALL" option (-1) - show all records without pagination
@@ -369,7 +384,6 @@ class SecuritySettingsController extends Controller
         return $browser.' on '.$platform;
     }
 }
-
 
 
 

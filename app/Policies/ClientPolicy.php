@@ -60,6 +60,17 @@ class ClientPolicy
     }
 
     /**
+     * Credit limits are financially sensitive and require a separate permission
+     * from the general customer edit permission.
+     */
+    public function updateCreditLimit(User $user)
+    {
+        $permission = Permission::where('name', 'customer_credit_limit_update')->first();
+
+        return $permission ? $user->hasRole($permission->roles) : false;
+    }
+
+    /**
      * Determine whether the user can delete the model.
      *
      * @param  \App\Models\Client  $client

@@ -2,6 +2,7 @@
 
 namespace App\Console;
 
+use App\Models\UserLoginSession;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 
@@ -30,6 +31,10 @@ class Kernel extends ConsoleKernel
         $schedule->command('database:backup');
 
         $schedule->command('assets:check-validation-due')->daily();
+
+        $schedule->call(function () {
+            UserLoginSession::purgeExpiredHistory();
+        })->hourly()->name('purge-expired-login-history')->withoutOverlapping();
 
         /**
          * Shared hosting friendly queue processing:

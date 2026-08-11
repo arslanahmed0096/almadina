@@ -26,15 +26,27 @@
         styleClass="tableOne table-hover vgt-table mt-3"
       >
 
-       <div slot="table-actions" class="mt-2 mb-3 quantity_alert_warehouse">
+       <div slot="table-actions" class="mt-2 mb-3 stock-report-filter-bar">
         <!-- warehouse -->
-        <b-form-group :label="$t('warehouse')">
+        <b-form-group :label="$t('warehouse')" class="stock-report-filter warehouse-stock-report-filter">
           <v-select
             @input="Selected_Warehouse"
             v-model="warehouse_id"
             :reduce="label => label.value"
             :placeholder="$t('Choose_Warehouse')"
-            :options="warehouses.map(warehouses => ({label: warehouses.name, value: warehouses.id}))"
+            :options="warehouses.map(warehouse => ({label: warehouse.name, value: warehouse.id}))"
+          />
+        </b-form-group>
+
+        <!-- stock availability -->
+        <b-form-group label="Stock Filter" class="stock-report-filter">
+          <v-select
+            @input="Selected_Stock_Filter"
+            v-model="stock_filter"
+            :reduce="option => option.value"
+            :clearable="false"
+            :searchable="false"
+            :options="stock_filter_options"
           />
         </b-form-group>
       </div>
@@ -97,7 +109,12 @@ export default {
       reports: [],
       report: {},
       warehouses: [],
-      warehouse_id: ""
+      warehouse_id: "",
+      stock_filter: "all",
+      stock_filter_options: [
+        { label: "All Stock", value: "all" },
+        { label: "Available Stock", value: "available" }
+      ]
     };
   },
 
@@ -385,6 +402,14 @@ export default {
       if (value === null) {
         this.warehouse_id = "";
       }
+      this.updateParams({ page: 1 });
+      this.Get_Stock_Report(1);
+    },
+
+    //---------------------- Event Select Stock Filter -------------------------\\
+    Selected_Stock_Filter(value) {
+      this.stock_filter = value || "all";
+      this.updateParams({ page: 1 });
       this.Get_Stock_Report(1);
     },
 
@@ -404,6 +429,8 @@ export default {
             this.serverParams.sort.type +
             "&warehouse_id=" +
             this.warehouse_id +
+            "&stock_filter=" +
+            this.stock_filter +
             "&search=" +
             this.search +
             "&limit=" +
@@ -434,3 +461,36 @@ export default {
   }
 };
 </script>
+
+<style scoped>
+.stock-report-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-width: 412px;
+}
+
+.stock-report-filter {
+  width: 200px;
+  margin-bottom: 0;
+}
+
+.warehouse-stock-report-filter {
+  width: 340px;
+}
+
+@media (max-width: 575.98px) {
+  .stock-report-filter-bar {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .stock-report-filter {
+    width: 100%;
+  }
+
+  .warehouse-stock-report-filter {
+    width: 100%;
+  }
+}
+</style>

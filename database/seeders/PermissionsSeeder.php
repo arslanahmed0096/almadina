@@ -14,6 +14,15 @@ class PermissionsSeeder extends Seeder
      */
     public function run()
     {
+        // Disable foreign key checks
+        DB::statement('SET FOREIGN_KEY_CHECKS=0');
+        
+        // Clear existing permissions
+        DB::table('permissions')->truncate();
+        
+        // Re-enable foreign key checks
+        DB::statement('SET FOREIGN_KEY_CHECKS=1');
+        
         // Insert some stuff
         DB::table('permissions')->insert(
             [[
@@ -905,12 +914,10 @@ class PermissionsSeeder extends Seeder
                 [
                     'id' => 210,
                     'name' => 'products_cost_view',
-                    'label' => 'View Product Cost',
                 ],
                 [
                     'id' => 211,
                     'name' => 'pricing_level',
-                    'label' => 'Pricing Level Access',
                 ],
 
             ]

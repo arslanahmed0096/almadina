@@ -38,6 +38,8 @@ class RecordLoginSession
                     'revoked_at' => null,
                 ]
             );
+
+            UserLoginSession::purgeExpiredHistory();
         } catch (\Throwable $e) {
             // swallow
         }

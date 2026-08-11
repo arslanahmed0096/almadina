@@ -21,6 +21,7 @@ use App\Models\SaleDetail;
 use App\Models\SaleReturn;
 use App\Models\Setting;
 use App\Models\Shipment;
+use App\Models\ShipmentItem;
 use App\Models\sms_gateway;
 use App\Models\SMSMessage;
 use App\Models\Unit;
@@ -37,7 +38,9 @@ use GuzzleHttp\Client as Client_termi;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Infobip\Api\SendSmsApi;
 use Infobip\Configuration;
 use Infobip\Model\SmsAdvancedTextualRequest;
@@ -211,9 +214,12 @@ class SalesController extends BaseController
         request()->validate([
             'client_id' => 'required',
             'warehouse_id' => 'required',
+            'transaction_type' => 'nullable|in:sale,order',
         ]);
 
-        $sale = \DB::transaction(function () use ($request) {
+        $transactionType = $request->input('transaction_type', 'sale') === 'order' ? 'order' : 'sale';
+
+        $sale = \DB::transaction(function () use ($request, $transactionType) {
             $helpers = new helpers;
             $order = new Sale;
 
@@ -230,7 +236,9 @@ class SalesController extends BaseController
             // Ensure order-level discount method is saved: '1' for percentage, '2' for fixed
             $order->discount_Method = $request->has('discount_Method') ? (string) $request->discount_Method : '2';
             $order->shipping = $request->shipping;
-            $order->statut = $request->statut;
+            // An order is intentionally non-final: it may contain unavailable
+            // products and must not consume stock or accept payment yet.
+            $order->statut = $transactionType === 'order' ? 'ordered' : $request->statut;
             $order->payment_statut = 'unpaid';
             $order->notes = $request->notes;
             $order->user_id = Auth::user()->id;
@@ -321,7 +329,7 @@ class SalesController extends BaseController
             // Backward compatibility: If record_view is null, fall back to role permission check
             $view_records = $user->hasRecordView();
 
-            if ($request->payment['status'] != 'pending') {
+            if ($order->statut === 'completed' && $request->payment['status'] != 'pending') {
                 $sale = Sale::findOrFail($order->id);
                 // Check If User Has Permission view All Records
                 if (! $view_records) {
@@ -383,7 +391,7 @@ class SalesController extends BaseController
             $discount_from_points = $request->discount_from_points ?? 0;
             $earned_points = 0;
 
-            if ($client && ($client->is_royalty_eligible == 1 || $client->is_royalty_eligible || $client->is_royalty_eligible === 1)) {
+            if ($order->statut === 'completed' && $client && ($client->is_royalty_eligible == 1 || $client->is_royalty_eligible || $client->is_royalty_eligible === 1)) {
 
                 // Deduct used points if valid
                 if ($used_points > 0 && $client->points >= $used_points) {
@@ -425,43 +433,45 @@ class SalesController extends BaseController
 
         // (at the very end of your store() method, after the transaction)
         $qboSync = 'skipped';
-        try {
-            $realmGuess = $sale->quickbooks_realm_id ?: env('QUICKBOOKS_REALM_ID'); // may be null
+        if ($sale->statut === 'completed') {
+            try {
+                $realmGuess = $sale->quickbooks_realm_id ?: env('QUICKBOOKS_REALM_ID'); // may be null
 
-            if (class_exists(\App\Jobs\SyncSaleToQuickBooks::class)) {
-                \App\Jobs\SyncSaleToQuickBooks::dispatch($sale->id, $realmGuess)->afterCommit();
-                $qboSync = 'queued';
-            } else {
-                $sale->load(['details.product', 'client']);
-                /** @var \App\Services\QuickBooksService $qb */
-                $qb = app(\App\Services\QuickBooksService::class);
-                $res = $qb->createInvoice($sale, $realmGuess); // realmGuess can be null
-
-                if ($res['ok'] ?? false) {
-                    $sale->update([
-                        'quickbooks_invoice_id' => $res['id'],
-                        'quickbooks_realm_id' => $res['realm'] ?? ($realmGuess ?: null),
-                        'quickbooks_synced_at' => now(),
-                        'quickbooks_sync_error' => null,
-                    ]);
-                    $qboSync = 'ok';
+                if (class_exists(\App\Jobs\SyncSaleToQuickBooks::class)) {
+                    \App\Jobs\SyncSaleToQuickBooks::dispatch($sale->id, $realmGuess)->afterCommit();
+                    $qboSync = 'queued';
                 } else {
-                    $sale->update([
-                        'quickbooks_realm_id' => $realmGuess ?: $sale->quickbooks_realm_id,
-                        'quickbooks_sync_error' => ($res['error'] ?? 'Unknown error')
-                            .(isset($res['http']) ? " (HTTP {$res['http']})" : '')
-                            .(isset($res['body']) ? " :: {$res['body']}" : ''),
-                    ]);
-                    $qboSync = 'failed';
+                    $sale->load(['details.product', 'client']);
+                    /** @var \App\Services\QuickBooksService $qb */
+                    $qb = app(\App\Services\QuickBooksService::class);
+                    $res = $qb->createInvoice($sale, $realmGuess); // realmGuess can be null
+
+                    if ($res['ok'] ?? false) {
+                        $sale->update([
+                            'quickbooks_invoice_id' => $res['id'],
+                            'quickbooks_realm_id' => $res['realm'] ?? ($realmGuess ?: null),
+                            'quickbooks_synced_at' => now(),
+                            'quickbooks_sync_error' => null,
+                        ]);
+                        $qboSync = 'ok';
+                    } else {
+                        $sale->update([
+                            'quickbooks_realm_id' => $realmGuess ?: $sale->quickbooks_realm_id,
+                            'quickbooks_sync_error' => ($res['error'] ?? 'Unknown error')
+                                .(isset($res['http']) ? " (HTTP {$res['http']})" : '')
+                                .(isset($res['body']) ? " :: {$res['body']}" : ''),
+                        ]);
+                        $qboSync = 'failed';
+                    }
                 }
+            } catch (\Throwable $e) {
+                \Log::warning('QuickBooks sync failed (non-blocking): '.$e->getMessage(), [
+                    'sale_id' => $sale->id,
+                    'trace' => $e->getTraceAsString(),
+                ]);
+                $sale->update(['quickbooks_sync_error' => $e->getMessage()]);
+                $qboSync = 'failed';
             }
-        } catch (\Throwable $e) {
-            \Log::warning('QuickBooks sync failed (non-blocking): '.$e->getMessage(), [
-                'sale_id' => $sale->id,
-                'trace' => $e->getTraceAsString(),
-            ]);
-            $sale->update(['quickbooks_sync_error' => $e->getMessage()]);
-            $qboSync = 'failed';
         }
 
         return response()->json([
@@ -522,6 +532,52 @@ class SalesController extends BaseController
                 }
                 $old_sale_details = SaleDetail::where('sale_id', $id)->get();
                 $new_sale_details = $request['details'];
+
+                // Once fulfillment has started, shipped commercial lines are immutable
+                // and status is derived from the item shipment ledger. This prevents the
+                // Edit Sale screen from completing a partially shipped sale or replaying
+                // inventory movements for lines that have already left the warehouse.
+                if (Schema::hasTable('shipment_items')) {
+                    $shippedDetailIds = ShipmentItem::whereIn('sale_detail_id', $old_sale_details->pluck('id'))
+                        ->pluck('sale_detail_id')
+                        ->map(fn ($detailId) => (int) $detailId)
+                        ->unique();
+
+                    if ($shippedDetailIds->isNotEmpty()) {
+                        $newDetailsById = collect($new_sale_details)
+                            ->filter(fn ($detail) => ! empty($detail['id']))
+                            ->keyBy(fn ($detail) => (int) $detail['id']);
+
+                        if ($newDetailsById->count() !== $old_sale_details->count()) {
+                            throw ValidationException::withMessages([
+                                'details' => ['Sale items cannot be added or removed after shipment has started.'],
+                            ]);
+                        }
+
+                        foreach ($old_sale_details as $oldDetail) {
+                            $newDetail = $newDetailsById->get((int) $oldDetail->id);
+                            $lineChanged = ! $newDetail
+                                || (int) ($newDetail['product_id'] ?? 0) !== (int) $oldDetail->product_id
+                                || (int) ($newDetail['product_variant_id'] ?? 0) !== (int) ($oldDetail->product_variant_id ?? 0)
+                                || (int) ($newDetail['sale_unit_id'] ?? 0) !== (int) ($oldDetail->sale_unit_id ?? 0)
+                                || abs((float) ($newDetail['quantity'] ?? 0) - (float) $oldDetail->quantity) > 0.0001
+                                || abs((float) ($newDetail['subtotal'] ?? 0) - (float) $oldDetail->total) > 0.01;
+
+                            if ($lineChanged) {
+                                throw ValidationException::withMessages([
+                                    'details' => ['Sale item quantities, products, and totals cannot change after shipment has started.'],
+                                ]);
+                            }
+                        }
+
+                        $allItemsShipped = $old_sale_details->isNotEmpty()
+                            && $shippedDetailIds->count() === $old_sale_details->count();
+                        $request->merge([
+                            'statut' => $allItemsShipped ? 'completed' : 'ordered',
+                        ]);
+                    }
+                }
+
                 $length = count($new_sale_details);
 
                 // Get Ids for new Details

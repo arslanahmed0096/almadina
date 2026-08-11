@@ -39,6 +39,16 @@ class SaleDetail extends Model
         return $this->belongsTo('App\Models\Product');
     }
 
+    public function productVariant()
+    {
+        return $this->belongsTo(ProductVariant::class, 'product_variant_id');
+    }
+
+    public function shipmentItem()
+    {
+        return $this->hasOne(ShipmentItem::class);
+    }
+
     /**
      * Compute warranty_date and guarantee_date from product warranty/guarantee duration and a base date.
      * Uses product's warranty_period + warranty_unit and (if has_guarantee) guarantee_period + guarantee_unit.

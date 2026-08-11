@@ -38,21 +38,22 @@ class EnforceAllowedIps
             return $next($request);
         }
 
-        if ($this->ipIsAllowed($request->ip(), (string) $settings->allowed_ips)) {
+        $clientIp = $this->normalizeIp($request->ip());
+
+        if ($this->ipIsAllowed($clientIp, (string) $settings->allowed_ips)) {
             return $next($request);
         }
 
         if ($request->expectsJson() || $request->is('api/*')) {
             return response()->json([
-                'message' => 'Access denied from this IP address.',
+                'message' => 'You are not authorized from this IP address.',
+                'ip_address' => $clientIp,
             ], 403);
         }
 
-        Auth::logout();
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
-
-        return redirect('/login')->with('erro_login', 'Access denied from this IP address.');
+        return response()->view('errors.ip_not_authorized', [
+            'ipAddress' => $clientIp,
+        ], 403);
     }
 
     private function decodeRoleIds($value): array
@@ -80,7 +81,7 @@ class EnforceAllowedIps
         $entries = preg_split('/[\r\n,]+/', $allowedIps) ?: [];
 
         foreach ($entries as $entry) {
-            $entry = trim($entry);
+            $entry = $this->normalizeAllowedEntry($entry);
             if ($entry === '') {
                 continue;
             }
@@ -91,6 +92,39 @@ class EnforceAllowedIps
         }
 
         return false;
+    }
+
+    private function normalizeAllowedEntry(string $entry): string
+    {
+        $entry = trim($entry);
+        if ($entry === '') {
+            return '';
+        }
+
+        if (strpos($entry, '/') === false) {
+            return $this->normalizeIp($entry) ?? $entry;
+        }
+
+        [$subnet, $bits] = explode('/', $entry, 2);
+
+        return ($this->normalizeIp($subnet) ?? trim($subnet)).'/'.trim($bits);
+    }
+
+    private function normalizeIp(?string $ip): ?string
+    {
+        if (! is_string($ip)) {
+            return null;
+        }
+
+        $ip = trim($ip);
+        if (stripos($ip, '::ffff:') === 0) {
+            $mappedIpv4 = substr($ip, 7);
+            if (filter_var($mappedIpv4, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                $ip = $mappedIpv4;
+            }
+        }
+
+        return filter_var($ip, FILTER_VALIDATE_IP) ? $ip : null;
     }
 
     private function cidrMatches(string $ip, string $cidr): bool
