@@ -217,6 +217,8 @@ class SalesController extends BaseController
             'transaction_type' => 'nullable|in:sale,order',
         ]);
 
+        $this->assertProductsSelectable($request->user('api'), $request->input('details', []));
+
         $transactionType = $request->input('transaction_type', 'sale') === 'order' ? 'order' : 'sale';
 
         $sale = \DB::transaction(function () use ($request, $transactionType) {

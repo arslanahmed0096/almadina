@@ -142,6 +142,8 @@ class TransferController extends BaseController
             'transfer.to_warehouse' => 'required',
         ]);
 
+        $this->assertProductsSelectable($request->user('api'), $request->input('details', []));
+
         \DB::transaction(function () use ($request) {
             $order = new Transfer;
 

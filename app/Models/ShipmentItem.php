@@ -10,6 +10,8 @@ class ShipmentItem extends Model
         'shipment_id',
         'sale_detail_id',
         'shipped_by',
+        'delivery_method',
+        'driver_name',
         'item_total',
         'paid_amount',
         'outstanding_amount',

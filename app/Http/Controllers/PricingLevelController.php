@@ -96,7 +96,7 @@ class PricingLevelController extends Controller
     {
         $this->authorizePricingLevel($request);
         $validated = $this->validateEntry($request);
-        $prepared = $this->prepareDetails($validated);
+        $prepared = $this->prepareDetails($validated, $request->user('api'));
 
         $entry = DB::transaction(function () use ($request, $validated, $prepared) {
             $entry = PricingLevel::create([
@@ -128,6 +128,7 @@ class PricingLevelController extends Controller
 
         $details = PricingLevelDetail::query()
             ->with(['product.brand', 'product.category', 'product.categories', 'variant'])
+            ->whereHas('product', fn ($productQuery) => $productQuery->visibleTo($request->user('api')))
             ->where('pricing_level_id', $entry->id)
             ->orderBy('id')
             ->get();
@@ -205,7 +206,7 @@ class PricingLevelController extends Controller
             ]);
         }
 
-        $prepared = $this->prepareDetails($validated);
+        $prepared = $this->prepareDetails($validated, $request->user('api'));
         $existingKeys = $entry->details()->get()->map(fn ($detail) => $this->detailKey(
             $detail->product_id,
             $detail->product_variant_id
@@ -260,10 +261,11 @@ class PricingLevelController extends Controller
         return $request->validate($rules);
     }
 
-    private function prepareDetails(array $validated): array
+    private function prepareDetails(array $validated, $user): array
     {
         $productIds = collect($validated['details'])->pluck('product_id')->unique()->values();
         $products = Product::query()
+            ->visibleTo($user)
             ->whereIn('id', $productIds)
             ->whereNull('deleted_at')
             ->get()

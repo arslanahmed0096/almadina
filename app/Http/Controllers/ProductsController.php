@@ -68,7 +68,7 @@ class ProductsController extends BaseController
             $dir = 'asc';
         }
 
-        $allowedSort = ['id', 'name', 'category_id', 'brand_id', 'code', 'sub_category_id', 'fix_price'];
+        $allowedSort = ['id', 'name', 'category_id', 'brand_id', 'code', 'sub_category_id', 'fix_price', 'is_active'];
         if (! in_array($order, $allowedSort, true)) {
             $order = 'name';
         }
@@ -95,6 +95,7 @@ class ProductsController extends BaseController
         $param = [0 => 'like', 1 => '=', 2 => '=', 3 => 'like', 4 => '='];
 
         $productsQuery = Product::with('unit', 'category', 'subCategory', 'brand', 'categories')
+            ->visibleTo($user)
             ->whereNull('deleted_at');
          
 
@@ -184,7 +185,7 @@ class ProductsController extends BaseController
             $item['pricing_updated_at'] = $product->updated_at ? $product->updated_at->toIso8601String() : null;
 
             $isActive = (int) ($product->is_active ?? 1) === 1;
-            $item['status'] = $isActive ? __('Active') : __('Inactif');
+            $item['status'] = $isActive ? __('Active') : __('Inactive');
             $item['is_active'] = $isActive;
 
             $firstimage = explode(',', (string) $product->image);
@@ -337,6 +338,7 @@ class ProductsController extends BaseController
             'brands' => $brands,
             'products' => $data,
             'totalRows' => $totalRows,
+            'can_view_inactive_products' => $user->isSuperAdmin(),
         ]);
     }
 
@@ -386,7 +388,7 @@ class ProductsController extends BaseController
     {
         $this->authorizePricingLevel($request);
 
-        $product = Product::whereNull('deleted_at')->findOrFail($id);
+        $product = Product::visibleTo($request->user('api'))->whereNull('deleted_at')->findOrFail($id);
 
         return response()->json([
             'pricing' => $this->pricingLevelPayload($product),
@@ -434,7 +436,7 @@ class ProductsController extends BaseController
     {
         $this->authorizePricingLevel($request);
 
-        $product = Product::whereNull('deleted_at')->findOrFail($id);
+        $product = Product::visibleTo($request->user('api'))->whereNull('deleted_at')->findOrFail($id);
         $priceRules = [
             'company_rb_price' => ['required', 'numeric', 'min:0'],
             'mrp_price' => ['required', 'numeric', 'min:0'],
@@ -1791,6 +1793,7 @@ class ProductsController extends BaseController
         $helpers = new helpers;
 
         $Product = Product::with(['category', 'categories', 'subCategory', 'subcategories', 'images'])
+            ->visibleTo($request->user('api'))
             ->where('deleted_at', '=', null)
             ->findOrFail($id);
         // get warehouses assigned to user
@@ -1943,14 +1946,14 @@ class ProductsController extends BaseController
     public function Products_by_Warehouse(request $request, $id)
     {
         $data = [];
+        $user = $request->user('api');
         $product_warehouse_data = product_warehouse::with('warehouse', 'product', 'productVariant')
-            ->where(function ($query) use ($request, $id) {
+            ->where(function ($query) use ($request, $id, $user) {
                 return $query->where('warehouse_id', $id)
                     ->where('deleted_at', '=', null)
-                    ->where(function ($query) use ($request) {
-                        return $query->whereHas('product', function ($q) use ($request) {
-                            // Only allow active products in all flows (sales, purchases, etc.)
-                            $q->where('is_active', 1);
+                    ->where(function ($query) use ($request, $user) {
+                        return $query->whereHas('product', function ($q) use ($request, $user) {
+                            $q->visibleTo($user);
                             if ($request->is_sale == '1') {
                                 $q->where('not_selling', '=', 0);
                             }
@@ -2144,13 +2147,13 @@ class ProductsController extends BaseController
     }
 
     // ------------ Get product By ID -----------------\\
-    public function show_product_data($id, $variant_id, $warehouse_id = null)
+    public function show_product_data(Request $request, $id, $variant_id, $warehouse_id = null)
     {
 
         $Product_data = Product::with('unit')
+            ->visibleTo($request->user('api'))
             ->where('id', $id)
             ->where('deleted_at', '=', null)
-            ->where('is_active', 1)
             ->firstOrFail();
 
         $data = [];
@@ -2454,6 +2457,7 @@ class ProductsController extends BaseController
 
         $product_warehouse_data = product_warehouse::with('warehouse', 'product', 'productVariant')
             ->join('products', 'product_warehouse.product_id', '=', 'products.id')
+            ->when(! $request->user('api')->isSuperAdmin(), fn ($query) => $query->where('products.is_active', 1))
             ->where('manage_stock', true)
             ->whereRaw('qte <= stock_alert')
             ->where(function ($query) use ($request) {
@@ -2599,7 +2603,7 @@ class ProductsController extends BaseController
 
         $this->authorizeForUser($request->user('api'), 'update', Product::class);
 
-        $Product = Product::where('deleted_at', '=', null)->findOrFail($id);
+        $Product = Product::visibleTo($request->user('api'))->where('deleted_at', '=', null)->findOrFail($id);
 
         $item['id'] = $Product->id;
         $item['type'] = $Product->type;
@@ -3734,6 +3738,7 @@ class ProductsController extends BaseController
 
         $products = product_warehouse::join('products', 'product_warehouse.product_id', '=', 'products.id')
             ->leftJoin('categories', 'products.category_id', '=', 'categories.id')
+            ->when(! $request->user('api')->isSuperAdmin(), fn ($query) => $query->where('products.is_active', 1))
             ->where('product_warehouse.deleted_at', '=', null)
             ->where('product_warehouse.warehouse_id', '=', $request->warehouse_id)
             ->when($request->filled('category_id'), function ($query) use ($request) {
@@ -3797,9 +3802,9 @@ class ProductsController extends BaseController
     public function get_products_materiels(request $request)
     {
 
-        $products = Product::where('products.deleted_at', '=', null)
+        $products = Product::visibleTo($request->user('api'))
+            ->where('products.deleted_at', '=', null)
             ->where('products.type', 'is_single')
-            ->where('products.is_active', 1)
             ->join('units', 'products.unit_sale_id', '=', 'units.id')
             ->select('products.id as product_id', 'products.name', 'products.cost', 'products.code', 'units.ShortName as unit_name')
             ->get();
@@ -3877,7 +3882,11 @@ class ProductsController extends BaseController
 
         // Validate existence of products
         $codes = array_values(array_unique(array_column($clean, 'code')));
-        $existing = Product::whereNull('deleted_at')->whereIn('code', $codes)->pluck('id', 'code')->toArray();
+        $existing = Product::visibleTo($request->user('api'))
+            ->whereNull('deleted_at')
+            ->whereIn('code', $codes)
+            ->pluck('id', 'code')
+            ->toArray();
         foreach ($codes as $code) {
             if ($code !== '' && ! isset($existing[$code])) {
                 // Provide detailed, row-by-row errors:
@@ -4005,7 +4014,11 @@ class ProductsController extends BaseController
 
         // Validate existence + relationships
         $productCodes = array_values(array_unique(array_column($clean, 'pcode')));
-        $products = Product::whereNull('deleted_at')->whereIn('code', $productCodes)->pluck('id', 'code')->toArray();
+        $products = Product::visibleTo($request->user('api'))
+            ->whereNull('deleted_at')
+            ->whereIn('code', $productCodes)
+            ->pluck('id', 'code')
+            ->toArray();
 
         // variant lookup
         $variantCodes = array_values(array_unique(array_column($clean, 'vcode')));
@@ -4128,8 +4141,9 @@ class ProductsController extends BaseController
 
         $newProductId = null;
 
-        DB::transaction(function () use ($id, &$newProductId) {
-            $original = Product::whereNull('deleted_at')
+        DB::transaction(function () use ($request, $id, &$newProductId) {
+            $original = Product::visibleTo($request->user('api'))
+                ->whereNull('deleted_at')
                 ->with(['variants' => function ($q) {
                     $q->whereNull('deleted_at');
                 }, 'images'])

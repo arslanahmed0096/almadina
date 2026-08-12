@@ -156,6 +156,11 @@
           <!-- multi-line text rendered safely -->
           <span v-else-if="props.column.field === 'name'" class="pre">{{ props.row.name }}</span>
           <span v-else-if="props.column.field === 'category'" class="pre">{{ props.row.categories_display || props.row.category }}</span>
+          <span v-else-if="props.column.field === 'is_active'">
+            <b-badge :variant="props.row.is_active ? 'success' : 'danger'">
+              {{ props.row.is_active ? ($t('Active') || 'Active') : ($t('Inactive') || 'Inactive') }}
+            </b-badge>
+          </span>
           <span
             v-else-if="props.column.field === 'cost'"
             :class="{'pre': props.row.type === 'Variable'}"
@@ -388,6 +393,16 @@
               </b-form-group>
             </b-col>
 
+            <b-col v-if="canViewInactiveProducts" md="12">
+              <b-form-group :label="$t('Status') || 'Status'">
+                <b-form-select v-model="Filter_status">
+                  <option value="">All statuses</option>
+                  <option value="1">{{ $t('Active') || 'Active' }}</option>
+                  <option value="0">{{ $t('Inactive') || 'Inactive' }}</option>
+                </b-form-select>
+              </b-form-group>
+            </b-col>
+
             <b-col md="12">
               <b-button @click="Get_Products(serverParams.page)" variant="primary m-1" size="sm" block>
                 <lucide-icon name="filter" /> {{ $t("Filter") }}
@@ -469,6 +484,8 @@ export default {
       Filter_name: "",
       Filter_category: "",
       Filter_warehouse: "",
+      Filter_status: "",
+      canViewInactiveProducts: false,
       categories: [],
       subcategories: [],
       brands: [],
@@ -521,6 +538,7 @@ export default {
         { label: this.$t("FixPrice"), field: "fix_price", tdClass: "text-left pre", thClass: "text-left" },
         { label: this.$t("Unit"), field: "unit", tdClass: "text-left", thClass: "text-left" },
         { label: this.$t("Quantity"), field: "quantity", tdClass: "text-left", thClass: "text-left" },
+        { label: this.$t("Status") || "Status", field: "is_active", tdClass: "text-center", thClass: "text-center" },
         { label: this.$t("Action"), field: "actions", tdClass: "text-left", thClass: "text-left", sortable: false }
       );
       return columns;
@@ -539,7 +557,8 @@ export default {
         { label: this.$t("Price"), field: "price" },
         { label: this.$t("FixPrice"), field: "fix_price" },
         { label: this.$t("Unit"), field: "unit" },
-        { label: this.$t("Quantity"), field: "quantity" }
+        { label: this.$t("Quantity"), field: "quantity" },
+        { label: this.$t("Status") || "Status", field: "status" }
       );
       return columns;
     }
@@ -703,7 +722,7 @@ export default {
         this.$t("Categorie")
       ];
       if (this.can("products_cost_view")) headers.push(this.$t("Cost"));
-      headers.push(this.$t("Price"), this.$t("FixPrice"), this.$t("Unit"), this.$t("Quantity"));
+      headers.push(this.$t("Price"), this.$t("FixPrice"), this.$t("Unit"), this.$t("Quantity"), this.$t("Status") || "Status");
 
       const products_pdf = JSON.parse(JSON.stringify(this.products));
       products_pdf.forEach(item => {
@@ -717,7 +736,7 @@ export default {
       const body = products_pdf.map(p => {
         const row = [p.type, p.name, p.code, p.categories_display || p.category];
         if (this.can("products_cost_view")) row.push(p.cost);
-        row.push(p.price, p.fix_price, p.unit, p.quantity);
+        row.push(p.price, p.fix_price, p.unit, p.quantity, p.status);
         return row;
       });
 
@@ -880,6 +899,7 @@ export default {
           category_id: this.Filter_category || '',
           brand_id: this.Filter_brand || '',
           warehouse_id: this.Filter_warehouse || '',
+          status: this.canViewInactiveProducts ? (this.Filter_status || '') : '',
           SortField: this.serverParams.sort.field || 'name',
           SortType: this.serverParams.sort.type || 'asc',
           search: this.search || ''
@@ -924,6 +944,7 @@ export default {
       this.Filter_name = "";
       this.Filter_category = "";
       this.Filter_warehouse = "";
+      this.Filter_status = "";
       this.Get_Products(this.serverParams.page);
     },
 
@@ -944,6 +965,7 @@ export default {
         "&category_id=" + encodeURIComponent(this.Filter_category || "") +
         "&brand_id=" + encodeURIComponent(this.Filter_brand || "") +
         "&warehouse_id=" + encodeURIComponent(this.Filter_warehouse || "") +
+        "&status=" + encodeURIComponent(this.canViewInactiveProducts ? (this.Filter_status || "") : "") +
         "&SortField=" + encodeURIComponent(this.serverParams.sort.field) +
         "&SortType=" + encodeURIComponent(this.serverParams.sort.type) +
         "&search=" + encodeURIComponent(this.search || "") +
@@ -955,6 +977,7 @@ export default {
         this.categories = response.data.categories;
         this.subcategories = response.data.subcategories || [];
         this.brands     = response.data.brands;
+        this.canViewInactiveProducts = !!response.data.can_view_inactive_products;
         this.totalRows  = response.data.totalRows;
         NProgress.done(); this.isLoading = false;
       })

@@ -71,7 +71,9 @@ class SubscriptionController extends BaseController
         $this->authorizeForUser($request->user('api'), 'create', Subscription::class);
 
         $clients = Client::where('deleted_at', '=', null)->get(['id', 'name']);
-        $products = Product::where('deleted_at', '=', null)->get(['id', 'name']);
+        $products = Product::where('deleted_at', '=', null)
+            ->visibleTo($request->user('api'))
+            ->get(['id', 'name']);
         $warehouses = Warehouse::where('deleted_at', '=', null)->get(['id', 'name']);
 
         return response()->json([
@@ -104,6 +106,10 @@ class SubscriptionController extends BaseController
         ]);
 
         $data = $validatedData['subscription'];
+
+        $this->assertProductsSelectable($request->user('api'), [
+            ['product_id' => $data['product_id']],
+        ]);
 
         // Calculate remaining cycles
         $remaining_cycles = $this->calculateRemainingCycles(

@@ -50,6 +50,7 @@ class ProductBatchController extends BaseController
 
         $q = ProductBatch::query()
             ->with(['product:id,name,code,generic_name,strength,dosage_form', 'variant:id,name,code', 'warehouse:id,name'])
+            ->whereHas('product', fn ($productQuery) => $productQuery->visibleTo($request->user('api')))
             ->whereNull('product_batches.deleted_at');
 
         if ($accessibleWarehouseIds !== null) {

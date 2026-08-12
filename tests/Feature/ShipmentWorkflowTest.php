@@ -112,6 +112,93 @@ class ShipmentWorkflowTest extends TestCase
         $this->assertSame(1000.0, $view['items'][0]['additional_required']);
     }
 
+    public function test_eligibility_view_keeps_shipped_items_visible_separately_from_remaining_items(): void
+    {
+        [$sale, $detailIds] = $this->seedSale([6000, 5000], 11000, 11000, 10000);
+        $service = app(ShipmentEligibilityService::class);
+
+        $service->shipSelectedItems($sale, [$detailIds[0]], [], 1);
+        $view = $service->forSale($sale->fresh());
+
+        $this->assertCount(2, $view['all_items']);
+        $this->assertCount(1, $view['items']);
+        $this->assertTrue($view['all_items'][0]['is_shipped']);
+        $this->assertFalse($view['all_items'][1]['is_shipped']);
+        $this->assertSame(1, $view['shipped_count']);
+        $this->assertSame(1, $view['unshipped_count']);
+    }
+
+    public function test_selected_item_uses_sale_payment_before_unshipped_items(): void
+    {
+        [$sale, $detailIds] = $this->seedSale([33000, 88000, 15500], 136500, 135000, 0);
+        $service = app(ShipmentEligibilityService::class);
+
+        $service->shipSelectedItems($sale, [$detailIds[2]], [], 1);
+
+        $shipped = ShipmentItem::where('sale_detail_id', $detailIds[2])->firstOrFail();
+        $this->assertSame('15500.00', $shipped->paid_amount);
+        $this->assertSame('0.00', $shipped->outstanding_amount);
+
+        $view = $service->forSale($sale->fresh());
+        $this->assertSame(119500.0, $view['available_paid_amount']);
+        $this->assertSame(1500.0, $view['sale_balance']);
+        $this->assertCount(2, $view['items']);
+        $this->assertTrue($view['items'][0]['eligible']);
+        $this->assertTrue($view['items'][1]['eligible']);
+
+        try {
+            $service->shipSelectedItems($sale->fresh(), [$detailIds[0], $detailIds[1]], [], 1);
+            $this->fail('The remaining items should require the final 1500 payment when selected together.');
+        } catch (ValidationException $e) {
+            $this->assertStringContainsString('unpaid', $e->getMessage());
+        }
+
+        $this->assertSame(1, ShipmentItem::count());
+    }
+
+    public function test_delivery_method_and_driver_name_are_saved_with_the_shipment(): void
+    {
+        [$sale, $detailIds] = $this->seedSale([6000, 5000], 11000, 11000, 0);
+        $service = app(ShipmentEligibilityService::class);
+
+        $service->shipSelectedItems($sale, [$detailIds[0]], [
+            'delivery_method' => 'almadina_driver',
+            'driver_name' => 'Muhammad Ali',
+        ], 1);
+
+        $this->assertDatabaseHas('shipments', [
+            'sale_id' => $sale->id,
+            'delivery_method' => 'almadina_driver',
+            'driver_name' => 'Muhammad Ali',
+        ]);
+        $this->assertDatabaseHas('shipment_items', [
+            'sale_detail_id' => $detailIds[0],
+            'delivery_method' => 'almadina_driver',
+            'driver_name' => 'Muhammad Ali',
+        ]);
+
+        $service->shipSelectedItems($sale->fresh(), [$detailIds[1]], [
+            'delivery_method' => 'self_delivery',
+            'driver_name' => 'Must be cleared',
+        ], 1);
+
+        $this->assertDatabaseHas('shipments', [
+            'sale_id' => $sale->id,
+            'delivery_method' => 'self_delivery',
+            'driver_name' => null,
+        ]);
+        $this->assertDatabaseHas('shipment_items', [
+            'sale_detail_id' => $detailIds[1],
+            'delivery_method' => 'self_delivery',
+            'driver_name' => null,
+        ]);
+        $this->assertDatabaseHas('shipment_items', [
+            'sale_detail_id' => $detailIds[0],
+            'delivery_method' => 'almadina_driver',
+            'driver_name' => 'Muhammad Ali',
+        ]);
+    }
+
     public function test_completed_sale_does_not_count_its_own_receivable_twice(): void
     {
         [$sale] = $this->seedSale([6000], 6000, 0, 6000);
@@ -298,6 +385,8 @@ class ShipmentWorkflowTest extends TestCase
             $table->text('shipping_address')->nullable();
             $table->string('status');
             $table->text('shipping_details')->nullable();
+            $table->string('delivery_method', 32)->default('self_delivery');
+            $table->string('driver_name', 192)->nullable();
             $table->timestamps();
             $table->softDeletes();
         });
@@ -306,6 +395,8 @@ class ShipmentWorkflowTest extends TestCase
             $table->unsignedInteger('shipment_id');
             $table->unsignedInteger('sale_detail_id')->unique();
             $table->unsignedInteger('shipped_by');
+            $table->string('delivery_method', 32)->default('self_delivery');
+            $table->string('driver_name', 192)->nullable();
             $table->decimal('item_total', 15, 2);
             $table->decimal('paid_amount', 15, 2);
             $table->decimal('outstanding_amount', 15, 2);

@@ -177,6 +177,8 @@ class ServiceJobController extends BaseController
 
         $validated = $this->validatePayload($request);
 
+        $this->assertProductsSelectable($request->user('api'), $validated['items'] ?? []);
+
         $validated['Ref'] = $this->getNumberOrder();
 
         $job = DB::transaction(function () use ($validated) {

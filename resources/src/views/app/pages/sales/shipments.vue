@@ -114,9 +114,46 @@
             <b-col md="12">
               <div class="shipment-credit-summary mb-3">
                 <div><small>Sale Status</small><strong>{{ shipmentEligibility.sale_status || 'Ordered' }}</strong></div>
+                <div><small>Shipment Progress</small><strong>{{ shipmentShippedCount }} shipped / {{ shipmentTotalCount }} items</strong></div>
+                <div><small>Sale Balance</small><strong :class="shipmentSaleBalance > 0 ? 'text-danger' : 'text-success'">{{ shipmentMoney(shipmentSaleBalance) }}</strong></div>
                 <div><small>Available Customer Credit</small><strong>{{ shipmentCreditUnlimited ? 'Unlimited' : shipmentMoney(shipmentAvailableCredit) }}</strong></div>
                 <div><small>Selected Credit</small><strong>{{ shipmentMoney(selectedShipmentCredit) }}</strong></div>
                 <div><small>Remaining Credit</small><strong>{{ shipmentCreditUnlimited ? 'Unlimited' : shipmentMoney(remainingShipmentCredit) }}</strong></div>
+              </div>
+              <div v-if="deliveredShipmentItems.length" class="shipment-section shipment-delivered-section mb-3">
+                <div class="shipment-section-heading">
+                  <div>
+                    <h5>Delivered Items</h5>
+                    <small>Items already handed over to the customer.</small>
+                  </div>
+                  <b-badge variant="success">{{ deliveredShipmentItems.length }} delivered</b-badge>
+                </div>
+                <div class="table-responsive">
+                  <table class="table mb-0">
+                    <thead>
+                      <tr>
+                        <th>Product</th>
+                        <th>Code</th>
+                        <th class="text-right">Qty</th>
+                        <th class="text-right">Item Total</th>
+                        <th class="text-right">Paid</th>
+                        <th>Delivered Via</th>
+                        <th>Delivered At</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="item in deliveredShipmentItems" :key="'delivered-' + item.sale_detail_id">
+                        <td class="font-weight-bold">{{ item.product_name }}</td>
+                        <td>{{ item.product_code || '—' }}</td>
+                        <td class="text-right">{{ formatNumber(item.quantity, 2) }}</td>
+                        <td class="text-right">{{ shipmentMoney(item.item_total) }}</td>
+                        <td class="text-right text-success">{{ shipmentMoney(item.paid_amount) }}</td>
+                        <td>{{ shipmentDeliveryLabel(item) }}</td>
+                        <td>{{ shipmentDate(item.shipped_at) }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
               </div>
               <div v-if="shipmentHasZeroCreditLimit" class="shipment-credit-limit-action mb-3">
                 <div>
@@ -141,7 +178,15 @@
             </b-col>
 
             <b-col md="12">
-              <div class="table-responsive shipment-items-table mb-3">
+              <div class="shipment-section mb-3">
+                <div class="shipment-section-heading">
+                  <div>
+                    <h5>Items to Deliver</h5>
+                    <small>Select the remaining items for this delivery.</small>
+                  </div>
+                  <b-badge variant="primary">{{ remainingShipmentItems.length }} remaining</b-badge>
+                </div>
+                <div class="table-responsive shipment-items-table">
                 <table class="table table-hover mb-0">
                   <thead>
                     <tr>
@@ -156,7 +201,7 @@
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="item in shipmentItems" :key="item.sale_detail_id" :class="{'shipment-item-eligible': item.eligible, 'shipment-item-disabled': shipmentItemDisabled(item)}">
+                    <tr v-for="item in remainingShipmentItems" :key="item.sale_detail_id" :class="{'shipment-item-eligible': item.eligible, 'shipment-item-disabled': shipmentItemDisabled(item)}">
                       <td class="text-center align-middle">
                         <b-form-checkbox v-model="selectedShipmentItemIds" :value="item.sale_detail_id" :disabled="shipmentItemDisabled(item)" :aria-label="'Select ' + item.product_name" />
                       </td>
@@ -167,17 +212,39 @@
                       <td class="text-right align-middle text-success">{{ shipmentMoney(item.paid_amount) }}</td>
                       <td class="text-right align-middle" :class="item.outstanding_amount > 0 ? 'text-danger' : 'text-success'">{{ shipmentMoney(item.outstanding_amount) }}</td>
                       <td class="align-middle shipment-eligibility-cell">
-                        <b-badge :variant="shipmentItemDisabled(item) ? 'secondary' : 'success'">{{ shipmentItemDisabled(item) ? 'Unavailable' : 'Eligible for shipment' }}</b-badge>
+                        <b-badge :variant="shipmentItemBadgeVariant(item)">{{ shipmentItemBadgeText(item) }}</b-badge>
                         <button type="button" class="btn btn-link btn-sm p-0 ml-1" v-b-tooltip.hover :title="shipmentItemTooltip(item)" aria-label="Shipment eligibility details">
                           <lucide-icon name="info" />
                         </button>
                         <div class="small mt-1">{{ shipmentItemMessage(item) }}</div>
                       </td>
                     </tr>
-                    <tr v-if="!shipmentItems.length"><td colspan="8" class="text-center text-muted py-4">All sale items have already been shipped.</td></tr>
+                    <tr v-if="!remainingShipmentItems.length"><td colspan="8" class="text-center text-muted py-4">All sale items have already been delivered.</td></tr>
                   </tbody>
                 </table>
+                </div>
               </div>
+            </b-col>
+
+            <b-col md="6">
+              <b-form-group label="Delivery Method *">
+                <b-form-radio-group
+                  v-model="shipment.delivery_method"
+                  :options="deliveryMethodOptions"
+                  name="shipment-delivery-method"
+                />
+              </b-form-group>
+            </b-col>
+
+            <b-col v-if="shipment.delivery_method === 'almadina_driver'" md="6">
+              <b-form-group label="Al Madina Driver Name *">
+                <b-form-input
+                  v-model.trim="shipment.driver_name"
+                  placeholder="Enter driver name"
+                  maxlength="192"
+                  required
+                />
+              </b-form-group>
             </b-col>
 
             <b-col md="12">
@@ -222,7 +289,7 @@
                 <lucide-icon v-else class="me-2 font-weight-bold" name="check" />
                 {{ SubmitProcessing ? ($t('Saving') || 'Saving...') : $t('submit') }}
               </b-button>
-              <small v-if="!selectedShipmentItemIds.length && shipmentItems.length" class="text-muted ml-2">Select at least one eligible item.</small>
+              <small v-if="!selectedShipmentItemIds.length && remainingShipmentItems.length" class="text-muted ml-2">Select at least one eligible item.</small>
               <div v-once class="typo__p" v-if="SubmitProcessing">
                 <div class="spinner sm spinner-primary mt-3"></div>
               </div>
@@ -257,6 +324,10 @@ export default {
       shipmentValidationError: "",
       shipmentEligibility: {},
       selectedShipmentItemIds: [],
+      deliveryMethodOptions: [
+        { text: "Self Delivery", value: "self_delivery" },
+        { text: "Al Madina Driver", value: "almadina_driver" }
+      ],
       creditLimitEditorOpen: false,
       creditLimitAmount: "",
       creditLimitSaving: false,
@@ -284,7 +355,30 @@ export default {
     ...mapGetters(["currentUserPermissions", "currentUser"]),
 
     shipmentItems() {
+      if (Array.isArray(this.shipmentEligibility.all_items)) {
+        return this.shipmentEligibility.all_items;
+      }
       return Array.isArray(this.shipmentEligibility.items) ? this.shipmentEligibility.items : [];
+    },
+
+    deliveredShipmentItems() {
+      return this.shipmentItems.filter(item => !!item.is_shipped);
+    },
+
+    remainingShipmentItems() {
+      return this.shipmentItems.filter(item => !item.is_shipped);
+    },
+
+    shipmentShippedCount() {
+      return Number(this.shipmentEligibility.shipped_count || 0);
+    },
+
+    shipmentTotalCount() {
+      return Number(this.shipmentEligibility.total_count || this.shipmentItems.length);
+    },
+
+    shipmentSaleBalance() {
+      return Number(this.shipmentEligibility.sale_balance || 0);
     },
 
     shipmentCreditUnlimited() {
@@ -293,6 +387,10 @@ export default {
 
     shipmentAvailableCredit() {
       return Number((this.shipmentEligibility.credit || {}).available_credit || 0);
+    },
+
+    shipmentAvailablePaidAmount() {
+      return Number(this.shipmentEligibility.available_paid_amount || 0);
     },
 
     shipmentCreditLimit() {
@@ -308,12 +406,16 @@ export default {
         && this.currentUserPermissions.includes("customer_credit_limit_update");
     },
 
-    selectedShipmentCredit() {
+    selectedShipmentItemTotal() {
       return this.shipmentItems.reduce((total, item) => {
         return this.selectedShipmentItemIds.includes(item.sale_detail_id)
-          ? total + Number(item.outstanding_amount || 0)
+          ? total + Number(item.item_total || 0)
           : total;
       }, 0);
+    },
+
+    selectedShipmentCredit() {
+      return Math.max(this.selectedShipmentItemTotal - this.shipmentAvailablePaidAmount, 0);
     },
 
     remainingShipmentCredit() {
@@ -322,7 +424,11 @@ export default {
     },
 
     canSubmitShipment() {
-      return this.selectedShipmentItemIds.length > 0 && (
+      const deliveryDetailsValid = this.shipment.delivery_method === "self_delivery" || (
+        this.shipment.delivery_method === "almadina_driver" &&
+        String(this.shipment.driver_name || "").trim().length > 0
+      );
+      return deliveryDetailsValid && this.selectedShipmentItemIds.length > 0 && (
         this.shipmentCreditUnlimited ||
         this.selectedShipmentCredit <= this.shipmentAvailableCredit + 0.005
       );
@@ -392,11 +498,28 @@ export default {
       return symbol ? `${symbol} ${value}` : value;
     },
 
+    shipmentDate(value) {
+      if (!value) return "—";
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+    },
+
+    shipmentDeliveryLabel(item) {
+      if (item && item.delivery_method === "almadina_driver") {
+        return item.driver_name ? `Al Madina Driver — ${item.driver_name}` : "Al Madina Driver";
+      }
+      return "Self Delivery";
+    },
+
     shipmentItemDisabled(item) {
-      if (!item || !item.eligible) return true;
+      if (!item || item.is_shipped || !item.eligible) return true;
       if (this.selectedShipmentItemIds.includes(item.sale_detail_id)) return false;
-      if (Number(item.outstanding_amount || 0) <= 0 || this.shipmentCreditUnlimited) return false;
-      return Number(item.outstanding_amount || 0) > Number(this.remainingShipmentCredit || 0) + 0.005;
+      if (this.shipmentCreditUnlimited) return false;
+      const requiredCredit = Math.max(
+        this.selectedShipmentItemTotal + Number(item.item_total || 0) - this.shipmentAvailablePaidAmount,
+        0
+      );
+      return requiredCredit > this.shipmentAvailableCredit + 0.005;
     },
 
     openCreditLimitEditor() {
@@ -450,6 +573,9 @@ export default {
 
     shipmentItemMessage(item) {
       if (!item) return "";
+      if (item.is_shipped) {
+        return "Already shipped. This item cannot be selected again.";
+      }
       if (item.eligible && this.shipmentItemDisabled(item)) {
         return "Cannot select this item because the other selected items use the remaining available credit.";
       }
@@ -459,7 +585,20 @@ export default {
       return item.eligibility_message || "";
     },
 
+    shipmentItemBadgeVariant(item) {
+      if (item && item.is_shipped) return "info";
+      return this.shipmentItemDisabled(item) ? "secondary" : "success";
+    },
+
+    shipmentItemBadgeText(item) {
+      if (item && item.is_shipped) return "Already shipped";
+      return this.shipmentItemDisabled(item) ? "Unavailable" : "Eligible for shipment";
+    },
+
     shipmentItemTooltip(item) {
+      if (item && item.is_shipped) {
+        return item.shipped_at ? `Shipped at: ${item.shipped_at}` : "This item has already been shipped.";
+      }
       const effectiveAvailable = item && item.eligible && this.shipmentItemDisabled(item)
         ? Number(this.remainingShipmentCredit || 0)
         : this.shipmentAvailableCredit;
@@ -716,6 +855,8 @@ export default {
           shipping_address: self.shipment.shipping_address,
           delivered_to: self.shipment.delivered_to,
           shipping_details: self.shipment.shipping_details,
+          delivery_method: self.shipment.delivery_method,
+          driver_name: self.shipment.delivery_method === "almadina_driver" ? self.shipment.driver_name : null,
           sale_detail_ids: self.selectedShipmentItemIds
         })
         .then(response => {
@@ -745,7 +886,9 @@ export default {
         delivered_to: "",
         shipping_address: "",
         status: "",
-        shipping_details: ""
+        shipping_details: "",
+        delivery_method: "self_delivery",
+        driver_name: ""
       };
       this.shipmentEligibility = {};
       this.selectedShipmentItemIds = [];
@@ -816,7 +959,7 @@ export default {
 <style>
 .shipment-credit-summary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 10px;
   padding: 12px;
   border: 1px solid #e5e7eb;
@@ -834,6 +977,33 @@ export default {
 }
 .shipment-credit-summary small { color: #6b7280; }
 .shipment-credit-summary strong { color: #111827; }
+.shipment-section {
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+}
+.shipment-delivered-section {
+  border-color: #b7dfc4;
+  background: #f7fcf8;
+}
+.shipment-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #e5e7eb;
+}
+.shipment-section-heading h5 {
+  margin: 0;
+  color: #111827;
+  font-size: 15px;
+  font-weight: 700;
+}
+.shipment-section-heading small { color: #6b7280; }
+.shipment-section .shipment-items-table { border: 0; border-radius: 0; }
+.shipment-delivered-section thead th { background: #edf8f0; white-space: nowrap; }
 .shipment-credit-limit-action {
   display: flex;
   align-items: center;
@@ -865,5 +1035,6 @@ export default {
 .shipment-eligibility-cell { min-width: 260px; }
 @media (max-width: 767px) {
   .shipment-credit-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .shipment-section-heading { align-items: flex-start; }
 }
 </style>

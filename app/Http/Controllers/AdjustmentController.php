@@ -172,6 +172,8 @@ class AdjustmentController extends BaseController
             'warehouse_id.required' => 'Warehouse is required',
         ]);
 
+        $this->assertProductsSelectable($request->user('api'), $request->input('details', []));
+
         \DB::transaction(function () use ($request) {
             $order = new Adjustment;
             $order->date = $request->date;

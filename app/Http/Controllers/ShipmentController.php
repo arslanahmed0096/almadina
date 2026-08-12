@@ -10,6 +10,7 @@ use App\utils\helpers;
 use DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class ShipmentController extends BaseController
@@ -102,6 +103,8 @@ class ShipmentController extends BaseController
             'delivered_to' => ['nullable', 'string', 'max:192'],
             'shipping_address' => ['nullable', 'string'],
             'shipping_details' => ['nullable', 'string'],
+            'delivery_method' => ['required', Rule::in(['self_delivery', 'almadina_driver'])],
+            'driver_name' => ['nullable', 'required_if:delivery_method,almadina_driver', 'string', 'max:192'],
         ]);
 
         $sale = Sale::findOrFail($validated['sale_id']);
@@ -141,6 +144,8 @@ class ShipmentController extends BaseController
             $shipment_data['shipping_address'] = $get_shipment->shipping_address;
             $shipment_data['status'] = $get_shipment->status;
             $shipment_data['shipping_details'] = $get_shipment->shipping_details;
+            $shipment_data['delivery_method'] = $get_shipment->delivery_method ?: 'self_delivery';
+            $shipment_data['driver_name'] = $get_shipment->driver_name ?: '';
 
         } else {
 
@@ -150,6 +155,8 @@ class ShipmentController extends BaseController
             $shipment_data['shipping_address'] = '';
             $shipment_data['status'] = '';
             $shipment_data['shipping_details'] = '';
+            $shipment_data['delivery_method'] = 'self_delivery';
+            $shipment_data['driver_name'] = '';
         }
 
         return response()->json([
@@ -172,6 +179,8 @@ class ShipmentController extends BaseController
             'delivered_to' => ['nullable', 'string', 'max:192'],
             'shipping_address' => ['nullable', 'string'],
             'shipping_details' => ['nullable', 'string'],
+            'delivery_method' => ['required', Rule::in(['self_delivery', 'almadina_driver'])],
+            'driver_name' => ['nullable', 'required_if:delivery_method,almadina_driver', 'string', 'max:192'],
         ]);
 
         $shipment = Shipment::findOrFail($id);

@@ -88,6 +88,18 @@ class ShipmentEligibilityServiceTest extends TestCase
         $this->assertSame(4000.0, $allocations[2]['outstanding_amount']);
     }
 
+    public function test_sale_level_payment_is_allocated_to_selected_priority_item_first(): void
+    {
+        $sale = $this->sale([33000, 88000, 15500], 136500, 135000);
+        $allocations = $this->service->allocateSalePayments($sale, [3]);
+
+        $this->assertSame(15500.0, $allocations[3]['paid_amount']);
+        $this->assertSame(0.0, $allocations[3]['outstanding_amount']);
+        $this->assertSame(33000.0, $allocations[1]['paid_amount']);
+        $this->assertSame(86500.0, $allocations[2]['paid_amount']);
+        $this->assertSame(1500.0, $allocations[2]['outstanding_amount']);
+    }
+
     public function test_sale_level_adjustments_are_reconciled_across_item_totals(): void
     {
         $allocations = $this->allocations([6000, 4000], 9000, 9000);

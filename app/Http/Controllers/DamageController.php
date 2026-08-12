@@ -118,6 +118,8 @@ class DamageController extends BaseController
             'warehouse_id.required' => 'Warehouse is required',
         ]);
 
+        $this->assertProductsSelectable($request->user('api'), $request->input('details', []));
+
         \DB::transaction(function () use ($request) {
             $order = new Damage;
             $order->date = $request->date;
@@ -806,7 +808,6 @@ class DamageController extends BaseController
         return $code;
     }
 }
-
 
 
 

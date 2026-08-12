@@ -123,6 +123,7 @@ class BookingController extends BaseController
             ->get(['id', 'name']);
 
         $products = Product::whereNull('deleted_at')
+            ->visibleTo($request->user('api'))
             ->where('type', 'is_service')
             ->orderBy('name', 'asc')
             ->get(['id', 'name', 'code', 'price']);
@@ -170,6 +171,10 @@ class BookingController extends BaseController
             'status' => 'required|string|in:pending,confirmed,cancelled,completed',
             'notes' => 'nullable|string',
         ])->validate();
+
+        $this->assertProductsSelectable($request->user('api'), [
+            ['product_id' => $validated['product_id'] ?? null],
+        ]);
 
         // Generate reference number
         $validated['Ref'] = $this->getNumberOrder();
@@ -220,6 +225,7 @@ class BookingController extends BaseController
             ->get(['id', 'name']);
 
         $products = Product::whereNull('deleted_at')
+            ->visibleTo($request->user('api'))
             ->where('type', 'is_service')
             ->orderBy('name', 'asc')
             ->get(['id', 'name', 'code', 'price']);
@@ -281,6 +287,10 @@ class BookingController extends BaseController
             'status' => 'required|string|in:pending,confirmed,cancelled,completed',
             'notes' => 'nullable|string',
         ])->validate();
+
+        $this->assertProductsSelectable($request->user('api'), [
+            ['product_id' => $validated['product_id'] ?? null],
+        ]);
 
         $booking->update($validated);
 
@@ -463,5 +473,4 @@ class BookingController extends BaseController
         return response()->json(['message' => 'Email sent successfully.'], 200);
     }
 }
-
 

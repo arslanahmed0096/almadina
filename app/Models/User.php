@@ -95,6 +95,16 @@ class User extends Authenticatable
         return (bool) $role->intersect($this->roles)->count();
     }
 
+    /**
+     * Super Admin is the only role allowed to browse inactive catalogue products.
+     * Keep the legacy role_id=1 check because older installations may not have the
+     * role_user pivot populated for the original administrator account.
+     */
+    public function isSuperAdmin(): bool
+    {
+        return (int) $this->role_id === 1 || $this->hasRole('Super Admin');
+    }
+
     public function effectivePermissionNames()
     {
         $this->loadMissing('roles.permissions', 'permissionOverrides');

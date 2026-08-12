@@ -2,11 +2,44 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Product;
 use Config;
 use DB;
+use Illuminate\Validation\ValidationException;
 
 class BaseController extends Controller
 {
+    /**
+     * Reject inactive catalogue products submitted outside the filtered UI. Existing
+     * transaction reads are unaffected; this protects creation endpoints only.
+     */
+    protected function assertProductsSelectable($user, $details): void
+    {
+        if (! $user || $user->isSuperAdmin()) {
+            return;
+        }
+
+        $ids = collect(is_array($details) ? $details : [])
+            ->map(fn ($detail) => (int) ($detail['product_id'] ?? 0))
+            ->filter()
+            ->unique()
+            ->values();
+        if ($ids->isEmpty()) {
+            return;
+        }
+
+        $visibleCount = Product::query()
+            ->visibleTo($user)
+            ->whereNull('deleted_at')
+            ->whereIn('id', $ids)
+            ->count();
+        if ($visibleCount !== $ids->count()) {
+            throw ValidationException::withMessages([
+                'details' => ['One or more selected products are inactive or unavailable. Refresh the product list and try again.'],
+            ]);
+        }
+    }
+
     public function sendResponse($result, $msg)
     {
         $response = [

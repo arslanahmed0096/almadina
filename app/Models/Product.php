@@ -85,6 +85,19 @@ class Product extends Model
         });
     }
 
+    /**
+     * Catalogue visibility for interactive product lists and selectors. Historical
+     * transaction relationships intentionally do not use this scope.
+     */
+    public function scopeVisibleTo(Builder $query, ?User $user): Builder
+    {
+        if ($user && $user->isSuperAdmin()) {
+            return $query;
+        }
+
+        return $query->where('products.is_active', 1);
+    }
+
     public function variants()
     {
         // table is "product_variants", FK is "product_id"

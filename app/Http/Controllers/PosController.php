@@ -61,6 +61,8 @@ class PosController extends BaseController
             'payments.*.payment_method_id' => 'required',
         ]);
 
+        $this->assertProductsSelectable($request->user('api'), $request->input('details', []));
+
         // Block overpayment if multiple methods used
         $totalPaid = collect($request->payments)->sum('amount');
         if (count($request->payments) > 1 && $totalPaid > $request->GrandTotal) {
@@ -843,6 +845,8 @@ class PosController extends BaseController
             'warehouse_id' => 'required',
         ]);
 
+        $this->assertProductsSelectable($request->user('api'), $request->input('details', []));
+
         \DB::transaction(function () use ($request) {
             $helpers = new helpers;
             $user = Auth::user();
@@ -973,6 +977,8 @@ class PosController extends BaseController
             'warehouse_id' => 'required',
             'payment.amount' => 'required',
         ]);
+
+        $this->assertProductsSelectable($request->user('api'), $request->input('details', []));
 
         $draft = DraftSale::findOrFail($request['draft_sale_id']);
         if ($draft) {
@@ -1517,12 +1523,14 @@ class PosController extends BaseController
         $this->authorizeForUser($request->user('api'), 'Sales_pos', Sale::class);
 
         $data = [];
+        $user = $request->user('api');
 
         $product_warehouse_query = product_warehouse::where('warehouse_id', $request->warehouse_id)
             ->with('product', 'product.unitSale')
             ->where('deleted_at', '=', null)
-            ->where(function ($query) use ($request) {
-                return $query->whereHas('product', function ($q) {
+            ->where(function ($query) use ($request, $user) {
+                return $query->whereHas('product', function ($q) use ($user) {
+                    $q->visibleTo($user);
                     $q->where('not_selling', '=', 0);
                 })
                     ->where(function ($query) use ($request) {
@@ -1784,6 +1792,7 @@ class PosController extends BaseController
 
         $query = product_warehouse::where('warehouse_id', $warehouseId)
             ->whereNull('deleted_at')
+            ->whereHas('product', fn ($productQuery) => $productQuery->visibleTo($request->user('api')))
             ->with('product.unitSale');
 
         if (!empty($since)) {

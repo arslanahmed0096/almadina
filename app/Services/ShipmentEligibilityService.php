@@ -33,9 +33,10 @@ class ShipmentEligibilityService
             'shipments.items',
         ]);
 
-        $allocations = $this->allocateSalePayments($sale);
-        $shippedIds = $sale->shipments
+        $shippedItems = $sale->shipments
             ->flatMap(fn ($shipment) => $shipment->items)
+            ->keyBy(fn ($item) => (int) $item->sale_detail_id);
+        $shippedIds = $shippedItems
             ->pluck('sale_detail_id')
             ->map(fn ($id) => (int) $id)
             ->unique();
@@ -49,6 +50,17 @@ class ShipmentEligibilityService
             $shippedIds = $sale->details->pluck('id')->map(fn ($id) => (int) $id);
         }
 
+        // Money paid against a sale follows the items that were physically shipped
+        // first. The remaining paid pool can fund any one unshipped item; it is not
+        // permanently tied to the earliest sale-detail row.
+        $allocations = $this->allocateSalePayments($sale, $shippedIds->all());
+        $availablePaidCents = max(
+            0,
+            $this->toCents($sale->paid_amount) - $shippedIds->sum(
+                fn ($detailId) => $this->toCents($allocations[(int) $detailId]['paid_amount'] ?? 0)
+            )
+        );
+
         $credit = $this->calculateCustomerAvailableCredit($sale->client, $sale);
         $saleIsShippable = ! $sale->deleted_at
             && ! in_array($sale->statut, ['cancelled', 'canceled'], true)
@@ -57,6 +69,15 @@ class ShipmentEligibilityService
         foreach ($sale->details as $detail) {
             $allocation = $allocations[(int) $detail->id];
             $isShipped = $shippedIds->contains((int) $detail->id);
+            $shippedItem = $shippedItems->get((int) $detail->id);
+            if (! $isShipped) {
+                // Evaluate every remaining line against the same uncommitted payment
+                // pool. Combined selections are checked separately on submit.
+                $itemTotalCents = $this->toCents($allocation['item_total']);
+                $itemPaidCents = min($itemTotalCents, $availablePaidCents);
+                $allocation['paid_amount'] = $this->fromCents($itemPaidCents);
+                $allocation['outstanding_amount'] = $this->fromCents($itemTotalCents - $itemPaidCents);
+            }
             $eligibility = $this->evaluateItemEligibility(
                 $allocation['outstanding_amount'],
                 $credit['available_credit'],
@@ -88,6 +109,12 @@ class ShipmentEligibilityService
                 'quantity' => (float) $detail->quantity,
                 'is_shipped' => $isShipped,
                 'shipped_at' => $this->shippedAt($sale, (int) $detail->id),
+                'delivery_method' => $isShipped
+                    ? (string) (optional($shippedItem)->delivery_method ?: 'self_delivery')
+                    : null,
+                'driver_name' => $isShipped
+                    ? (string) (optional($shippedItem)->driver_name ?: '')
+                    : null,
                 'available_credit' => $credit['available_credit'],
             ]);
         }
@@ -98,12 +125,20 @@ class ShipmentEligibilityService
             'sale_id' => (int) $sale->id,
             'sale_ref' => (string) $sale->Ref,
             'sale_status' => (string) $sale->statut,
+            'sale_total' => $this->fromCents(max(0, $this->toCents($sale->GrandTotal))),
+            'sale_paid_amount' => $this->fromCents(max(0, $this->toCents($sale->paid_amount))),
+            'sale_balance' => $this->fromCents(max(0, $this->toCents($sale->GrandTotal) - $this->toCents($sale->paid_amount))),
             'shipment_status' => (string) ($sale->shipping_status ?: 'ordered'),
             'customer' => [
                 'id' => (int) $sale->client_id,
                 'name' => (string) ($sale->client->name ?? ''),
             ],
             'credit' => $credit,
+            'available_paid_amount' => $this->fromCents($availablePaidCents),
+            // Keep every sale line available to edit-shipment screens so previously
+            // shipped lines remain visible and can be distinguished from remaining
+            // lines. `items` retains the existing unshipped-only API contract.
+            'all_items' => $items,
             'items' => $unshipped,
             'shipped_count' => count($items) - count($unshipped),
             'unshipped_count' => count($unshipped),
@@ -112,12 +147,14 @@ class ShipmentEligibilityService
     }
 
     /**
-     * Allocate the sale-level paid amount FIFO by stable sale-detail ID. Before the
+     * Allocate the sale-level paid amount to priority details first, then FIFO by stable
+     * sale-detail ID. Shipment callers prioritize already shipped and newly selected
+     * lines so payment follows the goods the customer actually receives. Before the
      * allocation, line totals are proportionally reconciled to GrandTotal so existing
      * order discounts, order tax, shipping, and point adjustments are represented once
      * and the effective item totals add up exactly to the sale payable amount.
      */
-    public function allocateSalePayments(Sale $sale): array
+    public function allocateSalePayments(Sale $sale, array $priorityDetailIds = []): array
     {
         $details = $sale->relationLoaded('details')
             ? $sale->details->sortBy('id')->values()
@@ -125,16 +162,31 @@ class ShipmentEligibilityService
 
         $rawTotals = $details->map(fn (SaleDetail $detail) => max(0, $this->toCents($detail->total)))->all();
         $effectiveTotals = $this->reconcileItemTotals($rawTotals, max(0, $this->toCents($sale->GrandTotal)));
-        $paidRemaining = min(array_sum($effectiveTotals), max(0, $this->toCents($sale->paid_amount)));
+        $itemTotals = [];
+        foreach ($details as $index => $detail) {
+            $itemTotals[(int) $detail->id] = $effectiveTotals[$index] ?? 0;
+        }
+
+        $detailIds = $details->pluck('id')->map(fn ($id) => (int) $id);
+        $priorityIds = collect($priorityDetailIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $detailIds->contains($id))
+            ->unique()
+            ->values();
+        $allocationOrder = $priorityIds
+            ->concat($detailIds->reject(fn ($id) => $priorityIds->contains($id)))
+            ->values();
+
+        $paidRemaining = min(array_sum($itemTotals), max(0, $this->toCents($sale->paid_amount)));
         $result = [];
 
-        foreach ($details as $index => $detail) {
-            $itemTotal = $effectiveTotals[$index] ?? 0;
+        foreach ($allocationOrder as $detailId) {
+            $itemTotal = $itemTotals[$detailId] ?? 0;
             $itemPaid = min($itemTotal, $paidRemaining);
             $paidRemaining -= $itemPaid;
             $outstanding = max($itemTotal - $itemPaid, 0);
 
-            $result[(int) $detail->id] = [
+            $result[$detailId] = [
                 'item_total' => $this->fromCents($itemTotal),
                 'paid_amount' => $this->fromCents($itemPaid),
                 'outstanding_amount' => $this->fromCents($outstanding),
@@ -282,7 +334,14 @@ class ShipmentEligibilityService
                 ]);
             }
 
-            $allocations = $this->allocateSalePayments($lockedSale);
+            $allocationPriority = $existingShipmentItems
+                ->pluck('sale_detail_id')
+                ->map(fn ($id) => (int) $id)
+                ->concat($selectedIds)
+                ->unique()
+                ->values()
+                ->all();
+            $allocations = $this->allocateSalePayments($lockedSale, $allocationPriority);
             $credit = $this->calculateCustomerAvailableCredit($client, $lockedSale);
             $creditRequiredCents = 0;
             $selectedOutstanding = [];
@@ -324,6 +383,10 @@ class ShipmentEligibilityService
             $shipment->delivered_to = $attributes['delivered_to'] ?? $shipment->delivered_to;
             $shipment->shipping_address = $attributes['shipping_address'] ?? $shipment->shipping_address;
             $shipment->shipping_details = $attributes['shipping_details'] ?? $shipment->shipping_details;
+            $shipment->delivery_method = $attributes['delivery_method'] ?? ($shipment->delivery_method ?: 'self_delivery');
+            $shipment->driver_name = $shipment->delivery_method === 'almadina_driver'
+                ? ($attributes['driver_name'] ?? $shipment->driver_name)
+                : null;
             $shipment->status = 'ordered';
             $shipment->save();
 
@@ -334,6 +397,10 @@ class ShipmentEligibilityService
                     'shipment_id' => $shipment->id,
                     'sale_detail_id' => $detail->id,
                     'shipped_by' => $userId,
+                    'delivery_method' => $attributes['delivery_method'] ?? 'self_delivery',
+                    'driver_name' => ($attributes['delivery_method'] ?? 'self_delivery') === 'almadina_driver'
+                        ? ($attributes['driver_name'] ?? null)
+                        : null,
                     'item_total' => $allocation['item_total'],
                     'paid_amount' => $allocation['paid_amount'],
                     'outstanding_amount' => $allocation['outstanding_amount'],
@@ -431,7 +498,7 @@ class ShipmentEligibilityService
                 ->pluck('shipment_items.sale_detail_id')
                 ->map(fn ($id) => (int) $id)
                 ->all();
-            $allocations = $this->allocateSalePayments($orderedSale);
+            $allocations = $this->allocateSalePayments($orderedSale, $shippedIds);
             foreach ($shippedIds as $detailId) {
                 if (isset($allocations[$detailId])) {
                     $reservedCents += $this->toCents($allocations[$detailId]['outstanding_amount']);

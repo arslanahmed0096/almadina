@@ -204,6 +204,8 @@ class PurchasesController extends BaseController
             'delivery_note_no' => 'nullable|string|max:100',
         ]);
 
+        $this->assertProductsSelectable($request->user('api'), $request->input('details', []));
+
         \DB::transaction(function () use ($request) {
             $order = new Purchase;
 

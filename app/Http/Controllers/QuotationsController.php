@@ -167,6 +167,8 @@ class QuotationsController extends BaseController
             'warehouse_id' => 'required',
         ]);
 
+        $this->assertProductsSelectable($request->user('api'), $request->input('details', []));
+
         \DB::transaction(function () use ($request) {
 
             $order = new Quotation;
