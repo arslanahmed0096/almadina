@@ -121,6 +121,18 @@
                   <strong> Loading...</strong>
                 </div>
               </template>
+              <template #cell(items)="{ item }">
+                <div v-if="item.items && item.items.length" class="sale-items">
+                  <div v-for="line in item.items" :key="line.sale_detail_id" class="sale-item-line">
+                    <div class="sale-item-name">{{ line.product_name }}</div>
+                    <div class="sale-item-meta">
+                      <span v-if="line.product_code">{{ line.product_code }} | </span>{{ quantityText(line.quantity) }}
+                      <b-badge class="ml-1" :variant="getShipmentStatusBadge(line.shipment_status)">{{ shipmentStatusLabel(line.shipment_status) }}</b-badge>
+                    </div>
+                  </div>
+                </div>
+                <span v-else class="text-muted">-</span>
+              </template>
               <template #cell(GrandTotal)="{ item }">
                 {{ formatPriceWithSymbol(currentUser.currency, item.GrandTotal, 2) }}
               </template>
@@ -136,6 +148,10 @@
                 <b-badge :variant="getPaymentStatusBadge(item.payment_status)">
                   {{ item.payment_status }}
                 </b-badge>
+              </template>
+              <template #cell(shipment_summary)="{ item }">
+                <b-badge :variant="getShipmentStatusBadge(item.shipment_summary)">{{ shipmentStatusLabel(item.shipment_summary) }}</b-badge>
+                <div class="small text-muted mt-1">{{ item.shipped_count || 0 }} / {{ item.total_item_count || 0 }} shipped</div>
               </template>
             </b-table>
             <b-pagination
@@ -544,12 +560,14 @@ export default {
       salesFields: [
         { key: "Ref", label: this.$t("Ref"), sortable: true },
         { key: "date", label: this.$t("date"), sortable: true },
+        { key: "items", label: this.$t("Items"), sortable: false },
         { key: "warehouse_name", label: this.$t("warehouse"), sortable: false },
         { key: "GrandTotal", label: this.$t("Grand_Total"), sortable: true },
         { key: "paid_amount", label: this.$t("Paid"), sortable: true },
         { key: "due", label: this.$t("Due"), sortable: true },
         { key: "payment_status", label: this.$t("Payment_Status"), sortable: true },
-        { key: "statut", label: this.$t("Status"), sortable: true }
+        { key: "statut", label: this.$t("Status"), sortable: true },
+        { key: "shipment_summary", label: this.$t("Shipping_Status"), sortable: false }
       ],
 
       // Payments
@@ -1006,6 +1024,30 @@ export default {
       return 'secondary';
     },
 
+    shipmentStatusLabel(status) {
+      const s = String(status || '').toLowerCase().trim();
+      if (s === 'partially_shipped') return 'Partially shipped';
+      if (s === 'not_shipped' || s === 'ordered' || !s) return 'Not shipped';
+      if (s === 'delivered') return 'Delivered';
+      if (s === 'shipped') return 'Shipped';
+      if (s === 'packed') return 'Packed';
+      if (s === 'cancelled' || s === 'canceled') return 'Cancelled';
+      return s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    },
+
+    getShipmentStatusBadge(status) {
+      const s = String(status || '').toLowerCase().trim();
+      if (s === 'delivered' || s === 'shipped') return 'success';
+      if (s === 'partially_shipped' || s === 'packed') return 'warning';
+      if (s === 'cancelled' || s === 'canceled') return 'danger';
+      return 'secondary';
+    },
+
+    quantityText(quantity) {
+      const value = Number(quantity || 0);
+      return `Qty ${Number.isInteger(value) ? value : value.toFixed(2)}`;
+    },
+
     // Get Validation State
     getValidationState({ dirty, validated, valid = null }) {
       return dirty || validated ? valid : null;
@@ -1106,6 +1148,30 @@ export default {
   font-weight: 500;
 }
 
+.sale-items {
+  min-width: 260px;
+}
+
+.sale-item-line {
+  padding: 5px 0;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.sale-item-line:last-child {
+  border-bottom: 0;
+}
+
+.sale-item-name {
+  color: #212529;
+  font-weight: 600;
+}
+
+.sale-item-meta {
+  color: #6c757d;
+  font-size: 12px;
+  margin-top: 2px;
+}
+
 /* Full Page Loading Overlay */
 .full-page-loading {
   position: fixed;
@@ -1137,4 +1203,3 @@ export default {
   border-width: 4px;
 }
 </style>
-

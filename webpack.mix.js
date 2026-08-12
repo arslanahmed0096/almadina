@@ -17,12 +17,11 @@ const { CleanWebpackPlugin } = require('clean-webpack-plugin');
 const tailwindcss = require('tailwindcss');
 const autoprefixer = require('autoprefixer');
 
-// The application bundle is large enough that Terser's default worker pool can
-// exhaust memory on Windows. A single worker is slower but deterministic and
-// keeps production builds within the available heap.
+// Keep Windows builds on one minifier worker to avoid the memory failures seen
+// locally. Use a bounded two-worker pool on Linux to shorten CI minification.
 mix.options({
     terser: {
-        parallel: false,
+        parallel: process.platform === 'win32' ? false : 2,
     },
 });
 

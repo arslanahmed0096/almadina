@@ -1152,7 +1152,15 @@ class ClientController extends BaseController
 
         $q = Sale::query()
             ->whereNull('deleted_at')
-            ->with(['client:id,name', 'warehouse:id,name'])
+            ->with([
+                'client:id,name',
+                'warehouse:id,name',
+                'details' => fn ($query) => $query->orderBy('id'),
+                'details.product:id,name,code,deleted_at',
+                'details.productVariant:id,name,code,deleted_at',
+                'shipments:id,sale_id,date,Ref,status,delivery_method,driver_name',
+                'shipments.items:id,shipment_id,sale_detail_id,delivery_method,driver_name,shipped_at',
+            ])
             ->where('client_id', $request->id)
 
             // Search (Ref, statut, payment_statut, warehouse.name, client.name)
@@ -1167,6 +1175,14 @@ class ClientController extends BaseController
                         })
                         ->orWhereHas('client', function ($cq) use ($s) {
                             $cq->where('name', 'LIKE', "%{$s}%");
+                        })
+                        ->orWhereHas('details.product', function ($pq) use ($s) {
+                            $pq->where('name', 'LIKE', "%{$s}%")
+                                ->orWhere('code', 'LIKE', "%{$s}%");
+                        })
+                        ->orWhereHas('details.productVariant', function ($vq) use ($s) {
+                            $vq->where('name', 'LIKE', "%{$s}%")
+                                ->orWhere('code', 'LIKE', "%{$s}%");
                         });
                 });
             });
@@ -1185,6 +1201,7 @@ class ClientController extends BaseController
 
         $data = [];
         foreach ($rows as $sale) {
+            $shipment = $this->saleShipmentPresentation($sale);
             $item = [
                 'id' => $sale->id,
                 'date' => $sale->date,
@@ -1197,6 +1214,10 @@ class ClientController extends BaseController
                 'due' => (float) $sale->GrandTotal - (float) $sale->paid_amount,
                 'payment_status' => $sale->payment_statut,
                 'shipping_status' => $sale->shipping_status,
+                'shipment_summary' => $shipment['status'],
+                'shipped_count' => $shipment['shipped_count'],
+                'total_item_count' => $shipment['total_count'],
+                'items' => $shipment['items'],
             ];
             $data[] = $item;
         }
@@ -1205,6 +1226,90 @@ class ClientController extends BaseController
             'totalRows' => $totalRows,
             'sales' => $data,
         ]);
+    }
+
+    /**
+     * Present purchased lines with their physical shipment state. The sale header can
+     * remain "ordered" during a partial shipment, so item records are authoritative.
+     */
+    private function saleShipmentPresentation(Sale $sale): array
+    {
+        $shipmentItems = collect();
+        foreach ($sale->shipments as $shipment) {
+            foreach ($shipment->items as $shipmentItem) {
+                $detailId = (int) $shipmentItem->sale_detail_id;
+                if (! $shipmentItems->has($detailId)) {
+                    $shipmentItems->put($detailId, [
+                        'item' => $shipmentItem,
+                        'shipment' => $shipment,
+                    ]);
+                }
+            }
+        }
+
+        // Legacy shipments created before per-line tracking represented every sale line.
+        $legacyShipment = null;
+        if ($shipmentItems->isEmpty()) {
+            $legacyShipment = $sale->shipments
+                ->filter(fn ($shipment) => in_array(strtolower((string) $shipment->status), ['shipped', 'delivered'], true))
+                ->sortByDesc('id')
+                ->first();
+        }
+
+        $items = [];
+        $shippedCount = 0;
+        $deliveredCount = 0;
+        foreach ($sale->details as $detail) {
+            $shipmentRecord = $shipmentItems->get((int) $detail->id);
+            $shipment = $shipmentRecord['shipment'] ?? $legacyShipment;
+            $shipmentItem = $shipmentRecord['item'] ?? null;
+            $isShipped = (bool) $shipment;
+            $status = $isShipped ? strtolower((string) ($shipment->status ?: 'shipped')) : 'not_shipped';
+            if ($isShipped && ! in_array($status, ['shipped', 'delivered'], true)) {
+                $status = 'shipped';
+            }
+            if ($isShipped) {
+                $shippedCount++;
+            }
+            if ($status === 'delivered') {
+                $deliveredCount++;
+            }
+
+            $product = $detail->product;
+            $variant = $detail->productVariant;
+            $items[] = [
+                'sale_detail_id' => (int) $detail->id,
+                'product_name' => trim(($product->name ?? 'Deleted product').($variant ? ' - '.$variant->name : '')),
+                'product_code' => (string) ($variant->code ?? $product->code ?? ''),
+                'quantity' => (float) $detail->quantity,
+                'shipment_status' => $status,
+                'shipment_ref' => (string) ($shipment->Ref ?? ''),
+                'shipped_at' => $shipmentItem && $shipmentItem->shipped_at
+                    ? $shipmentItem->shipped_at->toDateTimeString()
+                    : ($shipment->date ?? null),
+                'delivery_method' => (string) ($shipmentItem->delivery_method ?? $shipment->delivery_method ?? ''),
+                'driver_name' => (string) ($shipmentItem->driver_name ?? $shipment->driver_name ?? ''),
+            ];
+        }
+
+        $totalCount = count($items);
+        if ($totalCount > 0 && $shippedCount === $totalCount) {
+            $status = $deliveredCount === $totalCount ? 'delivered' : 'shipped';
+        } elseif ($shippedCount > 0) {
+            $status = 'partially_shipped';
+        } else {
+            $headerStatus = strtolower((string) $sale->shipping_status);
+            $status = in_array($headerStatus, ['packed', 'cancelled', 'canceled'], true)
+                ? $headerStatus
+                : 'not_shipped';
+        }
+
+        return [
+            'status' => $status,
+            'shipped_count' => $shippedCount,
+            'total_count' => $totalCount,
+            'items' => $items,
+        ];
     }
 
     /**
@@ -1231,6 +1336,7 @@ class ClientController extends BaseController
         $salesPaymentsQuery = DB::table('payment_sales')
             ->whereNull('payment_sales.deleted_at')
             ->join('sales', 'payment_sales.sale_id', '=', 'sales.id')
+            ->whereNull('sales.deleted_at')
             ->join('payment_methods', 'payment_sales.payment_method_id', '=', 'payment_methods.id')
             ->where('sales.client_id', $request->id)
             ->when($request->filled('search'), function ($query) use ($request) {
@@ -1323,13 +1429,13 @@ class ClientController extends BaseController
         // -------- SALES TOTALS --------
         $total_amount = DB::table('sales')
             ->whereNull('deleted_at')
-            ->where('statut', 'completed')
+            ->whereNotIn('statut', ['cancelled', 'canceled'])
             ->where('client_id', $client->id)
             ->sum('GrandTotal');
 
         $total_paid = DB::table('sales')
             ->whereNull('deleted_at')
-            ->where('statut', 'completed')
+            ->whereNotIn('statut', ['cancelled', 'canceled'])
             ->where('client_id', $client->id)
             ->sum('paid_amount');
 
@@ -1383,13 +1489,13 @@ class ClientController extends BaseController
         // ---------------- GLOBAL TOTALS ----------------
         $total_amount = DB::table('sales')
             ->whereNull('deleted_at')
-            ->where('statut', 'completed')
+            ->whereNotIn('statut', ['cancelled', 'canceled'])
             ->where('client_id', $client->id)
             ->sum('GrandTotal');
 
         $total_paid = DB::table('sales')
             ->whereNull('deleted_at')
-            ->where('statut', 'completed')
+            ->whereNotIn('statut', ['cancelled', 'canceled'])
             ->where('client_id', $client->id)
             ->sum('paid_amount');
 

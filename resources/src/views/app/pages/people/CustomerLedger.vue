@@ -116,11 +116,27 @@
 
             <div v-if="sales.loading" class="text-center p-3"><b-spinner /></div>
             <b-table v-else :items="sales.items" :fields="salesFields" striped hover responsive small head-variant="light" class="table-modern">
+              <template #cell(items)="{ item }">
+                <div v-if="item.items && item.items.length" class="sale-items">
+                  <div v-for="line in item.items" :key="line.sale_detail_id" class="sale-item-line">
+                    <div class="sale-item-name">{{ line.product_name }}</div>
+                    <div class="sale-item-meta">
+                      <span v-if="line.product_code">{{ line.product_code }} | </span>{{ quantityText(line.quantity) }}
+                      <b-badge class="ml-1" :variant="shipmentBadge(line.shipment_status)">{{ shipmentLabel(line.shipment_status) }}</b-badge>
+                    </div>
+                  </div>
+                </div>
+                <span v-else class="text-muted">-</span>
+              </template>
               <template #cell(GrandTotal)="{ item }">{{ money(item.GrandTotal) }}</template>
               <template #cell(paid_amount)="{ item }">{{ money(item.paid_amount) }}</template>
               <template #cell(due)="{ item }">{{ money(item.due) }}</template>
               <template #cell(payment_status)="{ item }"><b-badge :variant="paymentBadge(item.payment_status)">{{ item.payment_status }}</b-badge></template>
               <template #cell(statut)="{ item }"><b-badge :variant="docStatusBadge(item.statut)">{{ item.statut }}</b-badge></template>
+              <template #cell(shipment_summary)="{ item }">
+                <b-badge :variant="shipmentBadge(item.shipment_summary)">{{ shipmentLabel(item.shipment_summary) }}</b-badge>
+                <div class="small text-muted mt-1">{{ item.shipped_count || 0 }} / {{ item.total_item_count || 0 }} shipped</div>
+              </template>
             </b-table>
 
             <Pager
@@ -319,13 +335,14 @@ export default {
       salesFields: [
         { key:'date', label: this.$t('Date') },
         { key:'Ref', label: this.$t('Sale_Ref') },
+        { key:'items', label: this.$t('Items') },
         { key:'warehouse_name', label: this.$t('Warehouse') },
         { key:'statut', label: this.$t('Status') },
         { key:'GrandTotal', label: this.$t('Grand_Total'), class:'text-right' },
         { key:'paid_amount', label: this.$t('Paid'), class:'text-right' },
         { key:'due', label: this.$t('Due'), class:'text-right' },
         { key:'payment_status', label: this.$t('Payment_Status') },
-        { key:'shipping_status', label: this.$t('Shipping_Status') },
+        { key:'shipment_summary', label: this.$t('Shipping_Status') },
       ],
       paymentsFields: [
         { key:'date', label: this.$t('Date') },
@@ -427,6 +444,27 @@ export default {
       if (s.includes('sent')) return 'info'
       if (s.includes('canceled') || s.includes('cancelled') || s.includes('rejected')) return 'danger'
       return 'secondary'
+    },
+    shipmentLabel(status){
+      const s = String(status || '').toLowerCase().trim()
+      if (s === 'partially_shipped') return 'Partially shipped'
+      if (s === 'not_shipped' || s === 'ordered' || !s) return 'Not shipped'
+      if (s === 'delivered') return 'Delivered'
+      if (s === 'shipped') return 'Shipped'
+      if (s === 'packed') return 'Packed'
+      if (s === 'cancelled' || s === 'canceled') return 'Cancelled'
+      return s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+    },
+    shipmentBadge(status){
+      const s = String(status || '').toLowerCase().trim()
+      if (s === 'delivered' || s === 'shipped') return 'success'
+      if (s === 'partially_shipped' || s === 'packed') return 'warning'
+      if (s === 'cancelled' || s === 'canceled') return 'danger'
+      return 'secondary'
+    },
+    quantityText(quantity){
+      const value = Number(quantity || 0)
+      return `Qty ${Number.isInteger(value) ? value : value.toFixed(2)}`
     },
     _debounce(key, fn, delay=350){
       clearTimeout(this._timers[key]);
@@ -547,6 +585,11 @@ export default {
 ::v-deep .table-modern tbody tr:hover { background: #f9fbff; }
 ::v-deep .table-modern td, ::v-deep .table-modern th { vertical-align: middle; }
 ::v-deep .badge { font-weight: 600; letter-spacing: .2px; }
+.sale-items { min-width: 260px; }
+.sale-item-line { padding: 5px 0; border-bottom: 1px solid #eef2f7; }
+.sale-item-line:last-child { border-bottom: 0; }
+.sale-item-name { color: #1f2937; font-weight: 600; }
+.sale-item-meta { color: #6b7280; font-size: 12px; margin-top: 2px; }
 
 /* Full Page Loading Overlay */
 .full-page-loading {
