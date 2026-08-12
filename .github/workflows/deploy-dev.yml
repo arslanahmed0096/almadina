@@ -28,6 +28,10 @@ jobs:
             ${{ runner.os }}-node-
 
       - name: Build frontend
+        env:
+          # Keep the development deployment consistent with the production
+          # workflow for the large Mix/Webpack production build.
+          NODE_OPTIONS: --max-old-space-size=6144
         run: |
           npm ci
           npm install --no-save webpack@5.60.0 webpack-cli@4.9.1
