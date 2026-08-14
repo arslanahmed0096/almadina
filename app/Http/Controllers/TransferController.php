@@ -29,6 +29,7 @@ class TransferController extends BaseController
     public function index(request $request)
     {
         $this->authorizeForUser($request->user('api'), 'view', Transfer::class);
+        $canViewTransferPrice = $this->canViewTransferPrice($request);
         $user = Auth::user();
         // New way: Check user's record_view field (user-level boolean)
         // Backward compatibility: If record_view is null, fall back to role permission check
@@ -107,7 +108,9 @@ class TransferController extends BaseController
             $item['Ref'] = $transfer->Ref;
             $item['from_warehouse'] = $transfer['from_warehouse']->name;
             $item['to_warehouse'] = $transfer['to_warehouse']->name;
-            $item['GrandTotal'] = $transfer->GrandTotal;
+            if ($canViewTransferPrice) {
+                $item['GrandTotal'] = $transfer->GrandTotal;
+            }
             $item['items'] = $transfer->items;
             $item['statut'] = $transfer->statut;
             // NEW: explicit approval status (old NULL rows are treated as approved in the model accessor)
@@ -128,6 +131,7 @@ class TransferController extends BaseController
             'totalRows' => $totalRows,
             'warehouses' => $warehouses,
             'transfers' => $data,
+            'can_view_transfer_price' => $canViewTransferPrice,
         ]);
     }
 
@@ -1253,6 +1257,7 @@ class TransferController extends BaseController
     {
 
         $this->authorizeForUser($request->user('api'), 'view', Transfer::class);
+        $canViewTransferPrice = $this->canViewTransferPrice($request);
         $user = Auth::user();
         // New way: Check user's record_view field (user-level boolean)
         // Backward compatibility: If record_view is null, fall back to role permission check
@@ -1276,7 +1281,9 @@ class TransferController extends BaseController
         $transfer['items'] = $Transfer_data->items;
         $transfer['statut'] = $Transfer_data->statut;
         $transfer['approval_status'] = $Transfer_data->approval_status;
-        $transfer['GrandTotal'] = $Transfer_data->GrandTotal;
+        if ($canViewTransferPrice) {
+            $transfer['GrandTotal'] = $Transfer_data->GrandTotal;
+        }
 
         $batchesByDetail = app(BatchService::class)->batchesForTransferDetails($Transfer_data['details']);
 
@@ -1307,9 +1314,19 @@ class TransferController extends BaseController
 
             $data['quantity'] = $detail->quantity;
             $data['unit'] = $unit->ShortName;
-            $data['total'] = $detail->total;
+            if ($canViewTransferPrice) {
+                $data['total'] = $detail->total;
+            }
             $data['is_batch_tracked'] = (bool) ($detail['product']['is_batch_tracked'] ?? false);
-            $data['batches'] = $batchesByDetail[(int) $detail->id] ?? [];
+            $detailBatches = $batchesByDetail[(int) $detail->id] ?? [];
+            if (! $canViewTransferPrice) {
+                $detailBatches = array_map(function ($batch) {
+                    unset($batch['unit_cost'], $batch['cost'], $batch['total']);
+
+                    return $batch;
+                }, $detailBatches);
+            }
+            $data['batches'] = $detailBatches;
 
             $details[] = $data;
         }
@@ -1317,7 +1334,16 @@ class TransferController extends BaseController
         return response()->json([
             'details' => $details,
             'transfer' => $transfer,
+            'can_view_transfer_price' => $canViewTransferPrice,
         ]);
+    }
+
+    private function canViewTransferPrice(Request $request): bool
+    {
+        $user = $request->user('api');
+
+        return $user
+            && $user->effectivePermissionNames()->contains('transfer_price_view');
     }
 
     // ---------------- Show Form Create Transfer ---------------\\

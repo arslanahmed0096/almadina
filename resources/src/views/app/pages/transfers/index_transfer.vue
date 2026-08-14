@@ -284,8 +284,11 @@ export default {
   },
   computed: {
     ...mapGetters(["currentUserPermissions", "currentUser"]),
+    canViewTransferPrice() {
+      return this.currentUserPermissions && this.currentUserPermissions.includes("transfer_price_view");
+    },
     columns() {
-      return [
+      const columns = [
         {
           label: this.$t("date"),
           field: "date",
@@ -316,14 +319,20 @@ export default {
           type: "decimal",
           tdClass: "text-left",
           thClass: "text-left"
-        },
-        {
+        }
+      ];
+
+      if (this.canViewTransferPrice) {
+        columns.push({
           label: this.$t("Total"),
           field: "GrandTotal",
           type: "decimal",
           tdClass: "text-left",
           thClass: "text-left"
-        },
+        });
+      }
+
+      columns.push(
         {
           label: this.$t("Status"),
           field: "statut",
@@ -343,7 +352,9 @@ export default {
           thClass: "text-left",
           sortable: false
         }
-      ];
+      );
+
+      return columns;
     }
   },
 
@@ -539,30 +550,29 @@ export default {
         self.$t("FromWarehouse"),
         self.$t("ToWarehouse"),
         self.$t("Items"),
-        self.$t("Status"),
-        self.$t("Total")
+        self.$t("Status")
       ];
 
-      const body = (self.transfers || []).map(transfer => ([
-        transfer.Ref,
-        transfer.from_warehouse,
-        transfer.to_warehouse,
-        transfer.items,
-        transfer.statut,
-        transfer.GrandTotal
-      ]));
+      if (self.canViewTransferPrice) headers.push(self.$t("Total"));
+
+      const body = (self.transfers || []).map(transfer => {
+        const row = [
+          transfer.Ref,
+          transfer.from_warehouse,
+          transfer.to_warehouse,
+          transfer.items,
+          transfer.statut
+        ];
+        if (self.canViewTransferPrice) row.push(transfer.GrandTotal);
+        return row;
+      });
 
       // Calculate totals
       let totalGrandTotal = self.transfers.reduce((sum, transfer) => sum + parseFloat(transfer.GrandTotal || 0), 0);
      
-      const footer = [[
-        self.$t("Total"),
-        '',
-        '',
-        '',
-        '',
-        totalGrandTotal.toFixed(2)
-      ]];
+      const footer = self.canViewTransferPrice
+        ? [[self.$t("Total"), '', '', '', '', totalGrandTotal.toFixed(2)]]
+        : [];
 
       const marginX = 40;
       const rtl =

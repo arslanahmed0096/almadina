@@ -105,12 +105,12 @@
                         <tr>
                           <th scope="col">#</th>
                           <th scope="col">{{$t('ProductName')}}</th>
-                          <th scope="col">{{$t('Net_Unit_Cost')}}</th>
+                          <th v-if="canViewTransferPrice" scope="col">{{$t('Net_Unit_Cost')}}</th>
                           <th scope="col">{{$t('CurrentStock')}}</th>
                           <th scope="col">{{$t('Qty')}}</th>
-                          <th scope="col">{{$t('Discount')}}</th>
-                          <th scope="col">{{$t('Tax')}}</th>
-                          <th scope="col">{{$t('SubTotal')}}</th>
+                          <th v-if="canViewTransferPrice" scope="col">{{$t('Discount')}}</th>
+                          <th v-if="canViewTransferPrice" scope="col">{{$t('Tax')}}</th>
+                          <th v-if="canViewTransferPrice" scope="col">{{$t('SubTotal')}}</th>
                           <th scope="col" class="text-center">
                             <i class="fa fa-trash"></i>
                           </th>
@@ -118,7 +118,7 @@
                       </thead>
                       <tbody>
                         <tr v-if="details.length <=0">
-                          <td colspan="9">{{$t('NodataAvailable')}}</td>
+                          <td :colspan="canViewTransferPrice ? 9 : 5">{{$t('NodataAvailable')}}</td>
                         </tr>
                         <template v-for="detail in details">
                         <tr :key="'r-' + detail.detail_id">
@@ -135,7 +135,7 @@
                               </span>
                             </div>
                           </td>
-                          <td>{{currentUser.currency}} {{formatNumber(detail.Net_cost, 3)}}</td>
+                          <td v-if="canViewTransferPrice">{{currentUser.currency}} {{formatNumber(detail.Net_cost, 3)}}</td>
                           <td>
                             <span
                               class="badge badge-outline-warning"
@@ -164,18 +164,18 @@
                               </b-input-group>
                             </div>
                           </td>
-                          <td>{{currentUser.currency}} {{formatNumber(detail.DiscountNet * detail.quantity, 2)}}</td>
-                          <td>{{currentUser.currency}} {{formatNumber(detail.taxe * detail.quantity, 2)}}</td>
-                           <td>{{currentUser.currency}} {{detail.subtotal.toFixed(2)}}</td>
+                          <td v-if="canViewTransferPrice">{{currentUser.currency}} {{formatNumber(detail.DiscountNet * detail.quantity, 2)}}</td>
+                          <td v-if="canViewTransferPrice">{{currentUser.currency}} {{formatNumber(detail.taxe * detail.quantity, 2)}}</td>
+                          <td v-if="canViewTransferPrice">{{currentUser.currency}} {{detail.subtotal.toFixed(2)}}</td>
                           <td>
-                            <lucide-icon class="text-25 text-success cursor-pointer" name="pencil" @click="Modal_Updat_Detail(detail)" />
+                            <lucide-icon v-if="canViewTransferPrice" class="text-25 text-success cursor-pointer" name="pencil" @click="Modal_Updat_Detail(detail)" />
                             <lucide-icon class="text-25 text-danger cursor-pointer" name="x" @click="delete_Product_Detail(detail.detail_id)" />
                           </td>
                         </tr>
 
                         <!-- Batch picker row for batch-tracked products -->
                         <tr v-if="detail.is_batch_tracked" :key="'b-' + detail.detail_id" style="background: transparent;">
-                          <td colspan="9" style="padding: 0; border-top: 0;">
+                          <td :colspan="canViewTransferPrice ? 9 : 5" style="padding: 0; border-top: 0;">
                             <div style="margin: 6px 8px 14px 8px; border: 1px solid #e0e7ff; border-radius: 10px; overflow: visible; background: #f8faff;">
                               <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; background: #4f46e5; color: #fff; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; border-radius: 10px 10px 0 0;">
                                 <div style="display: flex; align-items: center; gap: 8px;">
@@ -294,7 +294,7 @@
                   </div>
                 </b-col>
 
-                <div class="offset-md-9 col-md-3 mt-4">
+                <div v-if="canViewTransferPrice" class="offset-md-9 col-md-3 mt-4">
                   <table class="table table-striped table-sm">
                     <tbody>
                       <tr>
@@ -326,7 +326,7 @@
                 </div>
 
                 <!-- Order Tax  -->
-                <b-col lg="4" md="4" sm="12" class="mb-3">
+                <b-col v-if="canViewTransferPrice" lg="4" md="4" sm="12" class="mb-3">
                   <validation-provider
                     name="Order Tax"
                     :rules="{ regex: /^\d*\.?\d*$/}"
@@ -350,7 +350,7 @@
                 </b-col>
 
                 <!-- Discount -->
-                <b-col lg="4" md="4" sm="12" class="mb-3">
+                <b-col v-if="canViewTransferPrice" lg="4" md="4" sm="12" class="mb-3">
                   <validation-provider
                     name="Discount"
                     :rules="{ regex: /^\d*\.?\d*$/}"
@@ -374,7 +374,7 @@
                 </b-col>
 
                 <!-- Shipping  -->
-                <b-col lg="4" md="4" sm="12" class="mb-3">
+                <b-col v-if="canViewTransferPrice" lg="4" md="4" sm="12" class="mb-3">
                   <validation-provider
                     name="Shipping"
                     :rules="{ regex: /^\d*\.?\d*$/}"
@@ -460,7 +460,7 @@
         <b-form @submit.prevent="submit_Update_Detail">
           <b-row>
             <!-- Unit Cost -->
-            <b-col lg="12" md="12" sm="12">
+            <b-col v-if="canViewTransferPrice" lg="12" md="12" sm="12">
               <validation-provider
                 name="Product Cost"
                 :rules="{ required: true , regex: /^\d*\.?\d*$/}"
@@ -479,7 +479,7 @@
             </b-col>
 
             <!-- Tax Method -->
-            <b-col lg="12" md="12" sm="12">
+            <b-col v-if="canViewTransferPrice" lg="12" md="12" sm="12">
               <validation-provider name="Tax Method" :rules="{ required: true}">
                 <b-form-group slot-scope="{ valid, errors }" :label="$t('TaxMethod') + ' ' + '*'">
                   <v-select
@@ -500,7 +500,7 @@
             </b-col>
 
             <!-- Tax Rate -->
-            <b-col lg="12" md="12" sm="12">
+            <b-col v-if="canViewTransferPrice" lg="12" md="12" sm="12">
               <validation-provider
                 name="Order Tax"
                 :rules="{ required: true , regex: /^\d*\.?\d*$/}"
@@ -521,7 +521,7 @@
             </b-col>
 
             <!-- Discount Method -->
-            <b-col lg="12" md="12" sm="12">
+            <b-col v-if="canViewTransferPrice" lg="12" md="12" sm="12">
               <validation-provider name="Discount Method" :rules="{ required: true}">
                 <b-form-group slot-scope="{ valid, errors }" :label="$t('Discount_Method') + ' ' + '*'">
                   <v-select
@@ -542,7 +542,7 @@
             </b-col>
 
             <!-- Discount Rate -->
-            <b-col lg="12" md="12" sm="12">
+            <b-col v-if="canViewTransferPrice" lg="12" md="12" sm="12">
               <validation-provider
                 name="Discount Rate"
                 :rules="{ required: true , regex: /^\d*\.?\d*$/}"
@@ -665,7 +665,11 @@ export default {
     };
   },
   computed: {
-    ...mapGetters(["currentUser"]),
+    ...mapGetters(["currentUser", "currentUserPermissions"]),
+
+    canViewTransferPrice() {
+      return this.currentUserPermissions && this.currentUserPermissions.includes("transfer_price_view");
+    },
 
     hasBatchValidationErrors() {
       if (!Array.isArray(this.details)) return false;

@@ -917,7 +917,27 @@ class PermissionsSeeder extends Seeder
                 ],
                 [
                     'id' => 211,
-                    'name' => 'pricing_level',
+                    'name' => 'pricing_level_view',
+                ],
+                [
+                    'id' => 212,
+                    'name' => 'pricing_level_add',
+                ],
+                [
+                    'id' => 213,
+                    'name' => 'pricing_level_edit',
+                ],
+                [
+                    'id' => 214,
+                    'name' => 'pricing_level_delete',
+                ],
+                [
+                    'id' => 215,
+                    'name' => 'pricing_level_approve',
+                ],
+                [
+                    'id' => 216,
+                    'name' => 'transfer_price_view',
                 ],
 
             ]

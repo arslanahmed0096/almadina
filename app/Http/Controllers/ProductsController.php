@@ -50,13 +50,13 @@ class ProductsController extends BaseController
         $isPricingRequest = $request->boolean('pricing_level');
 
         if ($isPricingRequest) {
-            abort_unless($effectivePermissions->contains('pricing_level'), 403, 'Permission denied: pricing_level');
+            abort_unless($effectivePermissions->contains('pricing_level_add'), 403, 'Permission denied: pricing_level_add');
         } else {
             $this->authorizeForUser($user, 'view', Product::class);
         }
 
         $canViewProductCost = $effectivePermissions->contains('products_cost_view');
-        $canViewPricing = $effectivePermissions->contains('pricing_level');
+        $canViewPricing = $effectivePermissions->contains('pricing_level_add');
         $exposeCost = $canViewProductCost || ($isPricingRequest && $canViewPricing);
 
         $perPage = $request->integer('limit', 10);
@@ -386,7 +386,7 @@ class ProductsController extends BaseController
 
     public function getPricingLevel(Request $request, $id)
     {
-        $this->authorizePricingLevel($request);
+        $this->authorizePricingLevel($request, ['pricing_level_view', 'pricing_level_add', 'pricing_level_edit']);
 
         $product = Product::visibleTo($request->user('api'))->whereNull('deleted_at')->findOrFail($id);
 
@@ -397,7 +397,7 @@ class ProductsController extends BaseController
 
     public function pricingLevelOptions(Request $request)
     {
-        $this->authorizePricingLevel($request);
+        $this->authorizePricingLevel($request, ['pricing_level_view', 'pricing_level_add', 'pricing_level_edit']);
 
         $brandId = $request->integer('brand_id');
         $brands = Brand::query()
@@ -434,7 +434,7 @@ class ProductsController extends BaseController
 
     public function updatePricingLevel(Request $request, $id)
     {
-        $this->authorizePricingLevel($request);
+        $this->authorizePricingLevel($request, 'pricing_level_edit');
 
         $product = Product::visibleTo($request->user('api'))->whereNull('deleted_at')->findOrFail($id);
         $priceRules = [
@@ -540,13 +540,17 @@ class ProductsController extends BaseController
         return $payload;
     }
 
-    private function authorizePricingLevel(Request $request): void
+    private function authorizePricingLevel(Request $request, array|string $requiredPermissions): void
     {
         $user = $request->user('api');
+        $requiredPermissions = (array) $requiredPermissions;
+        $hasPermission = $user
+            && $user->effectivePermissionNames()->intersect($requiredPermissions)->isNotEmpty();
+
         abort_unless(
-            $user && $user->effectivePermissionNames()->contains('pricing_level'),
+            $hasPermission,
             403,
-            'Permission denied: pricing_level'
+            'Permission denied: '.implode(' or ', $requiredPermissions)
         );
     }
 

@@ -16,7 +16,7 @@ import {
   // data / cloud
   Database, DatabaseBackup, DatabaseZap, Cloud, Archive, Download,
   // time
-  Clock, AlarmClock, Timer, Hourglass, CalendarDays, Calendar,
+  Clock, AlarmClock, Timer, Hourglass, CalendarDays, Calendar, History,
   // misc
   Bell, BellRing, Book, Bookmark, Library, LibraryBig, Lightbulb,
   Heart, HeartPulse, Trophy, Quote, MessageSquare, MapPin, Mail,
@@ -109,6 +109,7 @@ const REGISTRY = {
   'hourglass': Hourglass,
   'calendar': Calendar,
   'calendar-days': CalendarDays,
+  'history': History,
   // misc
   'bell': Bell,
   'bell-ring': BellRing,

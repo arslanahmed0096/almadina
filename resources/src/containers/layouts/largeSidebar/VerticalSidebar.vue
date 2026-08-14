@@ -329,7 +329,10 @@
 
           <!-- Pricing Levels -->
           <li
-            v-show="currentUserPermissions && currentUserPermissions.includes('pricing_level')"
+            v-show="currentUserPermissions && (
+              currentUserPermissions.includes('pricing_level_view') ||
+              currentUserPermissions.includes('pricing_level_add')
+            )"
             :class="{ active: isActiveRoute('pricing-levels'), 'has-submenu': true, open: openMenus.includes('pricing-levels') }"
             class="nav-item"
           >
@@ -339,13 +342,13 @@
               <lucide-icon class="submenu-arrow" name="chevron-down" v-if="!isCollapsed" />
             </a>
             <ul class="submenu" v-if="openMenus.includes('pricing-levels') && !isCollapsed">
-              <li class="submenu-item" v-if="currentUserPermissions && currentUserPermissions.includes('pricing_level')">
+              <li class="submenu-item" v-if="currentUserPermissions && currentUserPermissions.includes('pricing_level_view')">
                 <router-link to="/app/pricing-levels/list" class="submenu-link">
                   <lucide-icon class="submenu-icon" name="files" />
                   <span>All Pricing Levels</span>
                 </router-link>
               </li>
-              <li class="submenu-item" v-if="currentUserPermissions && currentUserPermissions.includes('pricing_level')">
+              <li class="submenu-item" v-if="currentUserPermissions && currentUserPermissions.includes('pricing_level_add')">
                 <router-link to="/app/pricing-levels/create" class="submenu-link">
                   <lucide-icon class="submenu-icon" name="file-plus" />
                   <span>Create Pricing Level</span>

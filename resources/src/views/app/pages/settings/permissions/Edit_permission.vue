@@ -432,19 +432,69 @@
                               </label>
                             </b-col>
 
-                            <!-- Pricing level access -->
+                          </b-row>
+                        </b-card-text>
+                      </b-card-body>
+                    </b-collapse>
+                  </b-card>
+                </b-col>
+
+                <!-- Price Level -->
+                <b-col md="4">
+                  <b-card no-body class="ul-card__border-radius">
+                    <b-card-header header-tag="header" class="p-1" role="tab">
+                      <b-button
+                        class="card-title mb-0"
+                        block
+                        href="#"
+                        v-b-toggle.panel-Price-Level
+                        variant="transparent"
+                      >Price Level</b-button>
+                    </b-card-header>
+                    <b-collapse
+                      id="panel-Price-Level"
+                      :visible="true"
+                      accordion="my-accordion-price-level"
+                      role="tabpanel"
+                    >
+                      <b-card-body>
+                        <b-card-text>
+                          <b-row>
                             <b-col md="6">
                               <label class="checkbox checkbox-outline-primary">
-                                <input
-                                  type="checkbox"
-                                  v-model="permissions"
-                                  value="pricing_level"
-                                >
-                                <span>Pricing Level Access</span>
+                                <input type="checkbox" checked v-model="permissions" value="pricing_level_view">
+                                <span>{{$t('View')}}</span>
                                 <span class="checkmark"></span>
                               </label>
                             </b-col>
-
+                            <b-col md="6">
+                              <label class="checkbox checkbox-outline-primary">
+                                <input type="checkbox" checked v-model="permissions" value="pricing_level_add">
+                                <span>Create</span>
+                                <span class="checkmark"></span>
+                              </label>
+                            </b-col>
+                            <b-col md="6">
+                              <label class="checkbox checkbox-outline-primary">
+                                <input type="checkbox" checked v-model="permissions" value="pricing_level_edit">
+                                <span>{{$t('Edit')}}</span>
+                                <span class="checkmark"></span>
+                              </label>
+                            </b-col>
+                            <b-col md="6">
+                              <label class="checkbox checkbox-outline-primary">
+                                <input type="checkbox" checked v-model="permissions" value="pricing_level_delete">
+                                <span>{{$t('Del')}}</span>
+                                <span class="checkmark"></span>
+                              </label>
+                            </b-col>
+                            <b-col md="6">
+                              <label class="checkbox checkbox-outline-primary">
+                                <input type="checkbox" checked v-model="permissions" value="pricing_level_approve">
+                                <span>Approval</span>
+                                <span class="checkmark"></span>
+                              </label>
+                            </b-col>
                           </b-row>
                         </b-card-text>
                       </b-card-body>
@@ -742,6 +792,19 @@
                                   value="transfer_delete"
                                 >
                                 <span>{{$t('Del')}}</span>
+                                <span class="checkmark"></span>
+                              </label>
+                            </b-col>
+                            <!--Transfer Product Price -->
+                            <b-col md="6">
+                              <label class="checkbox checkbox-outline-primary">
+                                <input
+                                  type="checkbox"
+                                  checked
+                                  v-model="permissions"
+                                  value="transfer_price_view"
+                                >
+                                <span>Show Product Price</span>
                                 <span class="checkmark"></span>
                               </label>
                             </b-col>

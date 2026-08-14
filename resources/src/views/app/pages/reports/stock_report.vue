@@ -26,35 +26,13 @@
         styleClass="tableOne table-hover vgt-table mt-3"
       >
 
-       <div slot="table-actions" class="mt-2 mb-3 stock-report-filter-bar">
-        <!-- warehouse -->
-        <b-form-group :label="$t('warehouse')" class="stock-report-filter warehouse-stock-report-filter">
-          <v-select
-            @input="Selected_Warehouse"
-            v-model="warehouse_id"
-            :reduce="label => label.value"
-            :placeholder="$t('Choose_Warehouse')"
-            :options="warehouses.map(warehouse => ({label: warehouse.name, value: warehouse.id}))"
-          />
-        </b-form-group>
-
-        <!-- stock availability -->
-        <b-form-group label="Stock Filter" class="stock-report-filter">
-          <v-select
-            @input="Selected_Stock_Filter"
-            v-model="stock_filter"
-            :reduce="option => option.value"
-            :clearable="false"
-            :searchable="false"
-            :options="stock_filter_options"
-          />
-        </b-form-group>
-      </div>
-
        <div slot="table-actions" class="mt-2 mb-3">
-        <b-button @click="printTableOnly()" size="sm" variant="outline-secondary ripple m-1">
-          <lucide-icon name="printer" /> {{ $t("print") }}
-        </b-button>
+          <b-button size="sm" variant="outline-info ripple m-1" v-b-toggle.stock-report-filter>
+            <lucide-icon name="filter" /> {{ $t("Filter") }}
+          </b-button>
+          <b-button @click="printTableOnly()" size="sm" variant="outline-secondary ripple m-1">
+            <lucide-icon name="printer" /> {{ $t("print") }}
+          </b-button>
           <b-button @click="stock_report_PDF()" size="sm" variant="outline-success ripple m-1">
             <lucide-icon name="copy" /> PDF
           </b-button>
@@ -78,6 +56,47 @@
           </span>
         </template>
       </vue-good-table>
+
+      <b-sidebar id="stock-report-filter" :title="$t('Filter')" bg-variant="white" right shadow>
+        <div class="px-3 py-2">
+          <b-row>
+            <b-col md="12">
+              <b-form-group :label="$t('warehouse')">
+                <v-select
+                  v-model="warehouse_id"
+                  :reduce="warehouse => warehouse.value"
+                  :placeholder="$t('Choose_Warehouse')"
+                  :options="warehouses.map(warehouse => ({ label: warehouse.name, value: warehouse.id }))"
+                />
+              </b-form-group>
+            </b-col>
+
+            <b-col md="12">
+              <b-form-group label="Stock Filter">
+                <v-select
+                  v-model="stock_filter"
+                  :reduce="option => option.value"
+                  :clearable="false"
+                  :searchable="false"
+                  :options="stock_filter_options"
+                />
+              </b-form-group>
+            </b-col>
+
+            <b-col md="12">
+              <b-button @click="Apply_Filter" variant="primary m-1" size="sm" block>
+                <lucide-icon name="filter" /> {{ $t("Filter") }}
+              </b-button>
+            </b-col>
+
+            <b-col md="6" sm="12">
+              <b-button @click="Reset_Filter" variant="danger m-1" size="sm" block>
+                <lucide-icon name="power" /> {{ $t("Reset") }}
+              </b-button>
+            </b-col>
+          </b-row>
+        </div>
+      </b-sidebar>
     </b-card>
   </div>
 </template>
@@ -397,18 +416,18 @@ export default {
       return `${value[0]}.${formated}`;
     },
 
-     //---------------------- Event Select Warehouse ------------------------------\\
-    Selected_Warehouse(value) {
-      if (value === null) {
-        this.warehouse_id = "";
-      }
+    //---------------------- Apply Stock Filters ------------------------------\\
+    Apply_Filter() {
+      if (this.warehouse_id === null) this.warehouse_id = "";
+      if (!this.stock_filter) this.stock_filter = "all";
       this.updateParams({ page: 1 });
       this.Get_Stock_Report(1);
     },
 
-    //---------------------- Event Select Stock Filter -------------------------\\
-    Selected_Stock_Filter(value) {
-      this.stock_filter = value || "all";
+    //---------------------- Reset Stock Filters ------------------------------\\
+    Reset_Filter() {
+      this.warehouse_id = "";
+      this.stock_filter = "all";
       this.updateParams({ page: 1 });
       this.Get_Stock_Report(1);
     },
@@ -461,36 +480,3 @@ export default {
   }
 };
 </script>
-
-<style scoped>
-.stock-report-filter-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  min-width: 412px;
-}
-
-.stock-report-filter {
-  width: 200px;
-  margin-bottom: 0;
-}
-
-.warehouse-stock-report-filter {
-  width: 340px;
-}
-
-@media (max-width: 575.98px) {
-  .stock-report-filter-bar {
-    min-width: 0;
-    width: 100%;
-  }
-
-  .stock-report-filter {
-    width: 100%;
-  }
-
-  .warehouse-stock-report-filter {
-    width: 100%;
-  }
-}
-</style>

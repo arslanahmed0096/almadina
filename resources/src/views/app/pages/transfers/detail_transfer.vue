@@ -133,7 +133,7 @@
                       <th scope="col" class="text-left">{{$t('ProductName')}}</th>
                       <th scope="col" class="text-center">{{$t('CodeProduct')}}</th>
                       <th scope="col" class="text-center">{{$t('Quantity')}}</th>
-                      <th scope="col" class="text-right">{{$t('SubTotal')}}</th>
+                      <th v-if="canViewTransferPrice" scope="col" class="text-right">{{$t('SubTotal')}}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -149,12 +149,12 @@
                         <td class="text-center">
                           <span class="badge badge-primary">{{formatNumber(detail.quantity, 2)}} {{detail.unit}}</span>
                         </td>
-                        <td class="text-right font-weight-bold">
+                        <td v-if="canViewTransferPrice" class="text-right font-weight-bold">
                           {{currentUser.currency}} {{formatNumber(detail.total, 2)}}
                         </td>
                       </tr>
                       <tr v-if="detail.is_batch_tracked && (detail.batches || []).length" :key="'b-' + index" style="background:#ffffff;">
-                        <td colspan="4" style="padding:0; border-top:0;">
+                        <td :colspan="canViewTransferPrice ? 4 : 3" style="padding:0; border-top:0;">
                           <div style="margin:6px 4px 12px 4px; border:1px solid #e0e7ff; border-radius:8px; overflow:hidden; background:#f8faff;">
                             <div style="display:flex; align-items:center; justify-content:space-between; padding:6px 12px; background:#4f46e5; color:#fff;">
                               <div style="display:flex; align-items:center; gap:8px;">
@@ -172,7 +172,7 @@
                                   <th style="padding:6px 10px; text-align:left; color:#3730a3; font-weight:700; text-transform:uppercase; font-size:10px; letter-spacing:0.3px;">{{ $t('Mfg_Date') || 'Mfg Date' }}</th>
                                   <th style="padding:6px 10px; text-align:left; color:#3730a3; font-weight:700; text-transform:uppercase; font-size:10px; letter-spacing:0.3px;">{{ $t('Expiry_Date') || 'Expiry Date' }}</th>
                                   <th style="padding:6px 10px; text-align:right; color:#3730a3; font-weight:700; text-transform:uppercase; font-size:10px; letter-spacing:0.3px;">{{ $t('Quantity') || 'Quantity' }}</th>
-                                  <th style="padding:6px 10px; text-align:right; color:#3730a3; font-weight:700; text-transform:uppercase; font-size:10px; letter-spacing:0.3px;">{{ $t('Cost') || 'Cost' }}</th>
+                                  <th v-if="canViewTransferPrice" style="padding:6px 10px; text-align:right; color:#3730a3; font-weight:700; text-transform:uppercase; font-size:10px; letter-spacing:0.3px;">{{ $t('Cost') || 'Cost' }}</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -192,7 +192,7 @@
                                   <td style="padding:6px 10px; text-align:right; color:#1f2937; font-weight:600;">
                                     {{ formatNumber(b.qty, 2) }} {{ detail.unit }}
                                   </td>
-                                  <td style="padding:6px 10px; text-align:right; color:#4f46e5; font-weight:600;">
+                                  <td v-if="canViewTransferPrice" style="padding:6px 10px; text-align:right; color:#4f46e5; font-weight:600;">
                                     <span v-if="b.unit_cost != null">{{ currentUser.currency }} {{ formatNumber(b.unit_cost, 2) }}</span>
                                     <span v-else style="color:#9ca3af;">—</span>
                                   </td>
@@ -218,7 +218,7 @@
                       <td class="font-weight-bold">{{$t('Items')}}:</td>
                       <td class="text-right">{{transfer.items}}</td>
                     </tr>
-                    <tr>
+                    <tr v-if="canViewTransferPrice">
                       <td class="font-weight-bold">{{$t('Total')}}:</td>
                       <td class="text-right">
                         <span class="font-weight-bold text-primary" style="font-size: 1.2em">
@@ -255,7 +255,12 @@ import NProgress from "nprogress";
 import Util from '../../../../utils';
 
 export default {
-  computed: mapGetters(["currentUserPermissions", "currentUser"]),
+  computed: {
+    ...mapGetters(["currentUserPermissions", "currentUser"]),
+    canViewTransferPrice() {
+      return this.currentUserPermissions && this.currentUserPermissions.includes("transfer_price_view");
+    }
+  },
   metaInfo: {
     title: "Transfer Detail"
   },
@@ -491,4 +496,3 @@ export default {
   box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important;
 }
 </style>
-

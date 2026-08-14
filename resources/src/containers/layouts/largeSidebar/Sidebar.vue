@@ -109,7 +109,10 @@
             <div class="triangle"></div>
           </li>
           <li
-            v-show="currentUserPermissions && currentUserPermissions.includes('pricing_level')"
+            v-show="currentUserPermissions && (
+              currentUserPermissions.includes('pricing_level_view') ||
+              currentUserPermissions.includes('pricing_level_add')
+            )"
             @mouseenter="toggleSubMenu"
             class="nav-item"
             :class="{ active: selectedParentMenu == 'pricing-levels' }"
@@ -814,7 +817,7 @@
         >
           <li
             class="nav-item"
-            v-if="currentUserPermissions && currentUserPermissions.includes('pricing_level')"
+            v-if="currentUserPermissions && currentUserPermissions.includes('pricing_level_view')"
           >
             <router-link tag="a" class to="/app/pricing-levels/list">
               <lucide-icon class="nav-icon" name="files" />
@@ -823,7 +826,7 @@
           </li>
           <li
             class="nav-item"
-            v-if="currentUserPermissions && currentUserPermissions.includes('pricing_level')"
+            v-if="currentUserPermissions && currentUserPermissions.includes('pricing_level_add')"
           >
             <router-link tag="a" class to="/app/pricing-levels/create">
               <lucide-icon class="nav-icon" name="file-plus" />

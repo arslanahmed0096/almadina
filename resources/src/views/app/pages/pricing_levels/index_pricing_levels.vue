@@ -35,7 +35,7 @@
           <lucide-icon name="file-spreadsheet" /> EXCEL
         </vue-excel-xlsx>
         <router-link
-          v-if="canManage"
+          v-if="canCreate"
           class="btn-sm btn btn-primary btn-icon m-1"
           to="/app/pricing-levels/create"
         >
@@ -48,7 +48,7 @@
         <span v-if="props.column.field === 'date'">{{ formatDate(props.row.date) }}</span>
         <span v-else-if="props.column.field === 'actions'">
           <router-link
-            v-if="canManage"
+            v-if="canEdit"
             v-b-tooltip.hover
             title="Edit"
             :to="{ name: 'pricing_levels_edit', params: { id: props.row.id } }"
@@ -56,7 +56,7 @@
             <lucide-icon class="text-25 text-success" name="pencil" />
           </router-link>
           <a
-            v-if="canManage"
+            v-if="canDelete"
             v-b-tooltip.hover
             title="Delete"
             class="cursor-pointer ml-2"
@@ -137,8 +137,14 @@ export default {
   },
   computed: {
     ...mapGetters(["currentUserPermissions"]),
-    canManage() {
-      return this.currentUserPermissions && this.currentUserPermissions.includes("pricing_level");
+    canCreate() {
+      return this.hasPermission("pricing_level_add");
+    },
+    canEdit() {
+      return this.hasPermission("pricing_level_edit");
+    },
+    canDelete() {
+      return this.hasPermission("pricing_level_delete");
     },
     columns() {
       return [
@@ -167,6 +173,9 @@ export default {
     }
   },
   methods: {
+    hasPermission(permission) {
+      return this.currentUserPermissions && this.currentUserPermissions.includes(permission);
+    },
     formatDate(value) {
       if (!value) return "-";
       const parts = String(value).split("-");

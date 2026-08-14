@@ -97,6 +97,15 @@ const baseRoutes = [
                                 /* webpackChunkName: "detail_product" */ "./views/app/pages/products/Detail_Product"
                             )
                     },
+                    {
+                        path: "history/:id",
+                        name: "product_history",
+                        component: () =>
+                            import(
+                                /* webpackChunkName: "product_history" */ "./views/app/pages/products/ProductHistory.vue"
+                            ),
+                        props: true
+                    },
 
                     {
                         path: "opening_stock_import",

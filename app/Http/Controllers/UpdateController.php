@@ -243,7 +243,12 @@ class UpdateController extends Controller
                     119 => 'webhooks_delete',
                     120 => 'sales_3d_dashboard',
                     121 => 'products_cost_view',
-                    122 => 'pricing_level',
+                    122 => 'pricing_level_view',
+                    123 => 'pricing_level_add',
+                    124 => 'pricing_level_edit',
+                    125 => 'pricing_level_delete',
+                    126 => 'pricing_level_approve',
+                    127 => 'transfer_price_view',
 
                 ];
 

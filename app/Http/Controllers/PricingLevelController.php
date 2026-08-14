@@ -24,7 +24,7 @@ class PricingLevelController extends Controller
 
     public function index(Request $request)
     {
-        $this->authorizePricingLevel($request);
+        $this->authorizePricingLevel($request, 'pricing_level_view');
 
         $user = $request->user('api');
         $requestedLimit = (int) $request->input('limit', 10);
@@ -94,7 +94,7 @@ class PricingLevelController extends Controller
 
     public function store(Request $request)
     {
-        $this->authorizePricingLevel($request);
+        $this->authorizePricingLevel($request, 'pricing_level_add');
         $validated = $this->validateEntry($request);
         $prepared = $this->prepareDetails($validated, $request->user('api'));
 
@@ -122,7 +122,7 @@ class PricingLevelController extends Controller
 
     public function show(Request $request, $id)
     {
-        $this->authorizePricingLevel($request);
+        $this->authorizePricingLevel($request, ['pricing_level_view', 'pricing_level_edit']);
         $entry = $this->findVisibleEntry($request, $id);
         $entry->load(['brand:id,name', 'category:id,name']);
 
@@ -195,7 +195,7 @@ class PricingLevelController extends Controller
 
     public function update(Request $request, $id)
     {
-        $this->authorizePricingLevel($request);
+        $this->authorizePricingLevel($request, 'pricing_level_edit');
         $entry = $this->findVisibleEntry($request, $id);
         $validated = $this->validateEntry($request);
 
@@ -238,7 +238,7 @@ class PricingLevelController extends Controller
 
     public function destroy(Request $request, $id)
     {
-        $this->authorizePricingLevel($request);
+        $this->authorizePricingLevel($request, 'pricing_level_delete');
         $entry = $this->findVisibleEntry($request, $id);
         $entry->delete();
 
@@ -356,13 +356,17 @@ class PricingLevelController extends Controller
         return $query->findOrFail($id);
     }
 
-    private function authorizePricingLevel(Request $request): void
+    private function authorizePricingLevel(Request $request, array|string $requiredPermissions): void
     {
         $user = $request->user('api');
+        $requiredPermissions = (array) $requiredPermissions;
+        $hasPermission = $user
+            && $user->effectivePermissionNames()->intersect($requiredPermissions)->isNotEmpty();
+
         abort_unless(
-            $user && $user->effectivePermissionNames()->contains('pricing_level'),
+            $hasPermission,
             403,
-            'Permission denied: pricing_level'
+            'Permission denied: '.implode(' or ', $requiredPermissions)
         );
     }
 

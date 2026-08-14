@@ -97,8 +97,20 @@
               <lucide-icon class="text-info" name="eye" />
             </router-link>
 
+            <router-link
+              v-if="can('products_view')"
+              v-b-tooltip.hover
+              title="History"
+              :to="{ name:'product_history', params: { id: props.row.id } }"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="btn btn-sm btn-outline-secondary action-btn"
+            >
+              <lucide-icon name="history" />
+            </router-link>
+
             <b-button
-              v-if="can('pricing_level')"
+              v-if="can('pricing_level_add')"
               v-b-tooltip.hover
               title="Pricing Level"
               class="btn btn-sm btn-outline-primary action-btn"
