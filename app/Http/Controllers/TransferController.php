@@ -1325,16 +1325,20 @@ class TransferController extends BaseController
         $this->authorizeForUser($request->user('api'), 'create', Transfer::class);
 
         $user = $request->user('api');
-        $sourceLocked = ! ((bool) $user->is_all_warehouses || $user->isSuperAdmin());
+        $hasGlobalWarehouseAccess = (bool) $user->is_all_warehouses || $user->isSuperAdmin();
+        $sourceLocked = false;
 
-        if ($sourceLocked) {
+        if (! $hasGlobalWarehouseAccess) {
             $assignedWarehouseIds = UserWarehouse::where('user_id', $user->id)
                 ->pluck('warehouse_id');
             $warehouses = Warehouse::whereNull('deleted_at')
                 ->whereIn('id', $assignedWarehouseIds)
                 ->orderBy('name')
                 ->get(['id', 'name']);
-            $assignedSourceWarehouseId = optional($warehouses->first())->id;
+            $sourceLocked = $warehouses->count() === 1;
+            $assignedSourceWarehouseId = $sourceLocked
+                ? optional($warehouses->first())->id
+                : null;
         } else {
             $warehouses = Warehouse::whereNull('deleted_at')
                 ->orderBy('name')
@@ -1458,7 +1462,7 @@ class TransferController extends BaseController
         return response()->json(['success' => true, 'transfer' => $result]);
     }
 
-    public function dispatch(TransferActionRequest $request, $id, StockTransferWorkflowService $workflow)
+    public function dispatchTransfer(TransferActionRequest $request, $id, StockTransferWorkflowService $workflow)
     {
         $this->authorizeForUser($request->user('api'), 'dispatch', Transfer::class);
         $validated = $request->validated();

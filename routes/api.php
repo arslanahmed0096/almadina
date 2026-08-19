@@ -849,7 +849,7 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
     Route::post('transfers/{id}/reject', 'TransferController@reject');
     Route::post('transfers/{id}/review', 'TransferController@review');
     Route::post('transfers/{id}/acknowledge', 'TransferController@acknowledge');
-    Route::post('transfers/{id}/dispatch', 'TransferController@dispatch');
+    Route::post('transfers/{id}/dispatch', 'TransferController@dispatchTransfer');
     Route::post('transfers/{id}/receive', 'TransferController@receive');
     Route::get('batches_for_transfer/{product_id}/{warehouse_id}/{variant_id?}', 'TransferController@batches_for_transfer');
 
