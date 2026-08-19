@@ -9,7 +9,7 @@ class TransferDetailBatch extends Model
     protected $table = 'transfer_detail_batches';
 
     protected $fillable = [
-        'transfer_detail_id', 'source_batch_id', 'dest_batch_id', 'qty', 'unit_cost',
+        'transfer_detail_id', 'source_batch_id', 'dest_batch_id', 'qty', 'received_qty', 'unit_cost',
     ];
 
     protected $casts = [
@@ -17,6 +17,7 @@ class TransferDetailBatch extends Model
         'source_batch_id' => 'integer',
         'dest_batch_id' => 'integer',
         'qty' => 'double',
+        'received_qty' => 'double',
         'unit_cost' => 'double',
     ];
 

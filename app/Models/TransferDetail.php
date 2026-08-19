@@ -11,6 +11,8 @@ class TransferDetail extends Model
     protected $fillable = [
         'id', 'transfer_id', 'quantity', 'purchase_unit_id', 'product_id', 'total', 'product_variant_id',
         'cost', 'TaxNet', 'discount', 'discount_method', 'tax_method',
+        'requested_quantity', 'approved_quantity', 'dispatched_quantity', 'received_quantity',
+        'decision_status', 'response_reason', 'requested_batches',
     ];
 
     protected $casts = [
@@ -23,6 +25,11 @@ class TransferDetail extends Model
         'purchase_unit_id' => 'integer',
         'product_id' => 'integer',
         'product_variant_id' => 'integer',
+        'requested_quantity' => 'double',
+        'approved_quantity' => 'double',
+        'dispatched_quantity' => 'double',
+        'received_quantity' => 'double',
+        'requested_batches' => 'array',
     ];
 
     public function transfer()
@@ -33,5 +40,10 @@ class TransferDetail extends Model
     public function product()
     {
         return $this->belongsTo('App\Models\Product');
+    }
+
+    public function batches()
+    {
+        return $this->hasMany(TransferDetailBatch::class, 'transfer_detail_id');
     }
 }

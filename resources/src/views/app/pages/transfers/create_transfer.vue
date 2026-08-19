@@ -39,6 +39,11 @@
                     </b-form-group>
                   </validation-provider>
                 </b-col>
+                <b-col lg="4" md="4" sm="12" class="mb-3">
+                  <b-form-group label="Required Date (optional)">
+                    <b-form-input type="date" v-model="transfer.required_date"></b-form-input>
+                  </b-form-group>
+                </b-col>
                 <!-- From warehouse -->
                 <b-col lg="4" md="4" sm="12" class="mb-3">
                   <validation-provider name="From Warehouse" :rules="{ required: true}">
@@ -46,7 +51,7 @@
                       <v-select
                         :class="{'is-invalid': !!errors.length}"
                         :state="errors[0] ? false : (valid ? true : null)"
-                        :disabled="details.length > 0"
+                        :disabled="source_locked"
                         @input="Selected_From_Warehouse"
                         v-model="transfer.from_warehouse"
                         :reduce="label => label.value"
@@ -68,7 +73,7 @@
                         v-model="transfer.to_warehouse"
                         :reduce="label => label.value"
                         :placeholder="$t('Choose_Warehouse')"
-                        :options="to_warehouses.map(to_warehouses => ({label: to_warehouses.name, value: to_warehouses.id}))"
+                        :options="destinationWarehouses.map(warehouse => ({label: warehouse.name, value: warehouse.id}))"
                       />
                       <b-form-invalid-feedback>{{ errors[0] }}</b-form-invalid-feedback>
                     </b-form-group>
@@ -398,7 +403,7 @@
                 </b-col>
 
                  <!-- Status  -->
-                <b-col lg="4" md="4" sm="12" class="mb-3">
+                <b-col v-if="false" lg="4" md="4" sm="12" class="mb-3">
                   <validation-provider name="Status" :rules="{ required: true}">
                     <b-form-group slot-scope="{ valid, errors }" :label="$t('Status') + ' ' + '*'">
                       <v-select
@@ -419,12 +424,12 @@
                 </b-col>
 
                 <b-col md="12">
-                  <b-form-group :label="$t('Note')">
+                  <b-form-group label="Stock Request Note *">
                     <textarea
                       v-model="transfer.notes"
                       rows="4"
                       class="form-control"
-                      :placeholder="$t('Afewwords')"
+                      placeholder="Explain why this stock is required"
                     ></textarea>
                   </b-form-group>
                 </b-col>
@@ -616,6 +621,7 @@ export default {
       },
       warehouses: [],
       to_warehouses: [],
+      source_locked: true,
       products: [],
       units: [],
       symbol: "",
@@ -623,8 +629,9 @@ export default {
         id: "",
         from_warehouse: "",
         to_warehouse: "",
-        statut: "completed",
+        statut: "pending",
         notes: "",
+        required_date: "",
         date: new Date().toISOString().slice(0, 10),
         items: 0,
         tax_rate: 0,
@@ -671,7 +678,16 @@ export default {
       return this.currentUserPermissions && this.currentUserPermissions.includes("transfer_price_view");
     },
 
+    destinationWarehouses() {
+      return (this.to_warehouses || []).filter(
+        warehouse => Number(warehouse.id) !== Number(this.transfer.from_warehouse)
+      );
+    },
+
     hasBatchValidationErrors() {
+      // A request reserves no physical batch. Batch allocation is revalidated
+      // and selected FEFO at dispatch time, when stock actually leaves source.
+      return false;
       if (!Array.isArray(this.details)) return false;
       for (const d of this.details) {
         if (!d || !d.is_batch_tracked) continue;
@@ -1152,7 +1168,10 @@ export default {
           .catch(error => {
             // Complete the animation of theprogress bar.
             NProgress.done();
-            this.makeToast("danger", this.$t("InvalidData"), this.$t("Failed"));
+          const message = error && error.response && error.response.data
+            ? (error.response.data.message || Object.values(error.response.data.errors || {}).flat()[0])
+            : this.$t("InvalidData");
+          this.makeToast("danger", message, this.$t("Failed"));
             this.SubmitProcessing = false;
           });
       } else {
@@ -1451,6 +1470,9 @@ export default {
     Selected_From_Warehouse(value) {
       this.search_input= '';
       this.product_filter = [];
+      if (Number(this.transfer.to_warehouse) === Number(value)) {
+        this.transfer.to_warehouse = "";
+      }
       this.Get_Products_By_Warehouse(value);
 
       // Pharmacy: source warehouse changed → refetch available batches per cart line.
@@ -1469,8 +1491,19 @@ export default {
       axios
         .get("transfers/create")
         .then(response => { 
-          this.warehouses = response.data.warehouses;
-          this.to_warehouses = response.data.to_warehouses;
+          this.warehouses = response.data.warehouses || [];
+          this.to_warehouses = response.data.to_warehouses || [];
+          this.source_locked = !!response.data.source_locked;
+          if (response.data.assigned_source_warehouse_id) {
+            this.transfer.from_warehouse = response.data.assigned_source_warehouse_id;
+            this.Selected_From_Warehouse(response.data.assigned_source_warehouse_id);
+          } else if (this.warehouses.length === 1) {
+            this.transfer.from_warehouse = this.warehouses[0].id;
+            this.Selected_From_Warehouse(this.warehouses[0].id);
+          }
+          if (this.destinationWarehouses.length === 1) {
+            this.transfer.to_warehouse = this.destinationWarehouses[0].id;
+          }
           this.isLoading = false;
         })
         .catch(response => {

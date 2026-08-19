@@ -28,9 +28,7 @@ class TransferPolicy
      */
     public function view(User $user)
     {
-        $permission = Permission::where('name', 'transfer_view')->first();
-
-        return $user->hasRole($permission->roles);
+        return $this->hasPermission($user, 'transfer_view');
     }
 
     /**
@@ -40,9 +38,8 @@ class TransferPolicy
      */
     public function create(User $user)
     {
-        $permission = Permission::where('name', 'transfer_add')->first();
-
-        return $user->hasRole($permission->roles);
+        return $this->hasPermission($user, 'transfer_request')
+            || $this->hasPermission($user, 'transfer_add');
     }
 
     /**
@@ -53,9 +50,7 @@ class TransferPolicy
      */
     public function update(User $user)
     {
-        $permission = Permission::where('name', 'transfer_edit')->first();
-
-        return $user->hasRole($permission->roles);
+        return $this->hasPermission($user, 'transfer_edit');
     }
 
     /**
@@ -66,9 +61,29 @@ class TransferPolicy
      */
     public function delete(User $user)
     {
-        $permission = Permission::where('name', 'transfer_delete')->first();
+        return $this->hasPermission($user, 'transfer_delete');
+    }
 
-        return $user->hasRole($permission->roles);
+    public function process(User $user)
+    {
+        return $this->hasPermission($user, 'transfer_approve')
+            || $this->hasPermission($user, 'transfer_partial_approve')
+            || $this->hasPermission($user, 'transfer_decline');
+    }
+
+    public function acknowledge(User $user)
+    {
+        return $this->hasPermission($user, 'transfer_acknowledge');
+    }
+
+    public function dispatch(User $user)
+    {
+        return $this->hasPermission($user, 'transfer_dispatch');
+    }
+
+    public function receive(User $user)
+    {
+        return $this->hasPermission($user, 'transfer_receive');
     }
 
     public function Stock_Transfer_Report(User $user)
@@ -76,6 +91,11 @@ class TransferPolicy
         $permission = Permission::where('name', 'Stock_Transfer_Report')->first();
 
         return $user->hasRole($permission->roles);
+    }
+
+    private function hasPermission(User $user, string $name): bool
+    {
+        return $user->isSuperAdmin() || $user->effectivePermissionNames()->contains($name);
     }
 
     public function check_record(User $user, $transfer)

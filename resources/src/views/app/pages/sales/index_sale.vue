@@ -2112,6 +2112,13 @@ export default {
           thClass: "text-left"
         },
         {
+          label: `${this.$t("Customer")} ${this.$t("Phone")}`,
+          field: "client_tele",
+          tdClass: "text-left",
+          thClass: "text-left",
+          sortable: false
+        },
+        {
           label: this.$t("warehouse"),
           field: "warehouse_name",
           tdClass: "text-left",
@@ -2538,6 +2545,7 @@ export default {
       const headers = [ 
         this.$t('Reference'), 
         this.$t('Customer'), 
+        `${this.$t('Customer')} ${this.$t('Phone')}`,
         this.$t('warehouse'), 
         this.$t('Status'), 
         this.$t('Total'), 
@@ -2549,6 +2557,7 @@ export default {
       const body = (this.sales||[]).map(r => [ 
         r.Ref, 
         r.client_name, 
+        r.client_tele || '-',
         r.warehouse_name, 
         r.statut, 
         r.GrandTotal, 
@@ -2568,6 +2577,7 @@ export default {
         '', 
         '', 
         '', 
+        '',
         totals.t.toFixed(2), 
         totals.p.toFixed(2), 
         totals.d.toFixed(2), 
@@ -2610,12 +2620,13 @@ export default {
         columnStyles: { 
           0: { halign: rtl ? 'right' : 'left' },  // Reference
           1: { halign: rtl ? 'right' : 'left' },  // Customer
-          2: { halign: rtl ? 'right' : 'left' },  // Warehouse
-          3: { halign: rtl ? 'right' : 'left' },  // Status
-          4: { halign: 'left' },                  // Total
-          5: { halign: 'left' },                  // Paid
-          6: { halign: 'left' },                  // Due
-          7: { halign: rtl ? 'right' : 'left' }   // Payment Status
+          2: { halign: rtl ? 'right' : 'left' },  // Customer phone
+          3: { halign: rtl ? 'right' : 'left' },  // Warehouse
+          4: { halign: rtl ? 'right' : 'left' },  // Status
+          5: { halign: 'left' },                  // Total
+          6: { halign: 'left' },                  // Paid
+          7: { halign: 'left' },                  // Due
+          8: { halign: rtl ? 'right' : 'left' }   // Payment Status
         },
         didDrawPage: (d) => {
           const pageW = pdf.internal.pageSize.getWidth();

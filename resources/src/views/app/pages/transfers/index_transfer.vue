@@ -54,7 +54,7 @@
           </vue-excel-xlsx>
           <router-link
             class="btn-sm btn btn-primary ripple btn-icon m-1"
-            v-if="currentUserPermissions && currentUserPermissions.includes('transfer_add')"
+            v-if="currentUserPermissions && (currentUserPermissions.includes('transfer_request') || currentUserPermissions.includes('transfer_add'))"
             to="/app/transfers/store"
           >
             <span class="ul-btn__icon">
@@ -111,15 +111,6 @@
                 </b-dropdown-item>
 
                 <b-dropdown-item
-                  v-if="props.row.approval_status === 'pending' && currentUserPermissions && currentUserPermissions.includes('transfer_edit')"
-                  title="Approve"
-                  @click="Approve_Transfer(props.row.id)"
-                >
-                  <lucide-icon class="nav-icon font-weight-bold mr-2" name="check" />
-                  {{$t('Approve')}}
-                </b-dropdown-item>
-
-                <b-dropdown-item
                   v-if="currentUserPermissions && currentUserPermissions.includes('transfer_delete')"
                   title="Delete"
                   @click="Remove_Transfer(props.row.id)"
@@ -130,16 +121,8 @@
               </b-dropdown>
             </div>
           </span>
-          <div v-else-if="props.column.field == 'statut'">
-            <span
-              v-if="props.row.statut == 'completed'"
-              class="badge badge-outline-success"
-            >{{$t('complete')}}</span>
-            <span
-              v-else-if="props.row.statut == 'sent'"
-              class="badge badge-outline-warning"
-            >{{$t('Sent')}}</span>
-            <span v-else class="badge badge-outline-danger">{{$t('Pending')}}</span>
+          <div v-else-if="props.column.field == 'workflow_status'">
+            <span :class="workflowBadgeClass(props.row.workflow_status)">{{ workflowLabel(props.row.workflow_status) }}</span>
           </div>
           <div v-else-if="props.column.field == 'approval_status'">
             <span
@@ -151,9 +134,13 @@
               class="badge badge-outline-warning"
             >{{ $t('Pending_Approval') }}</span>
             <span
-              v-else-if="props.row.approval_status === 'rejected'"
+              v-else-if="props.row.approval_status === 'declined' || props.row.approval_status === 'rejected'"
               class="badge badge-outline-danger"
-            >{{ $t('Rejected') }}</span>
+            >Declined</span>
+            <span
+              v-else-if="props.row.approval_status === 'partially_approved'"
+              class="badge badge-outline-info"
+            >Partially Approved</span>
           </div>
         </template>
       </vue-good-table>
@@ -167,6 +154,12 @@
           <b-col md="12">
             <b-form-group :label="$t('Reference')">
               <b-form-input label="Reference" :placeholder="$t('Reference')" v-model="Filter_Ref"></b-form-input>
+            </b-form-group>
+          </b-col>
+
+          <b-col md="12">
+            <b-form-group label="Created At">
+              <b-form-input type="date" v-model="Filter_date"></b-form-input>
             </b-form-group>
           </b-col>
 
@@ -203,9 +196,13 @@
                 :placeholder="$t('Choose_Status')"
                 :options="
                       [
+                        {label: 'Pending Approval', value: 'pending_approval'},
+                        {label: 'Pending Acknowledgement', value: 'pending_acknowledgement'},
+                        {label: 'Acknowledged', value: 'acknowledged'},
+                        {label: 'Dispatched', value: 'dispatched'},
+                        {label: 'Partially Received', value: 'partially_received'},
                         {label: 'Completed', value: 'completed'},
-                        {label: 'Sent', value: 'sent'},
-                        {label: 'Pending', value: 'pending'},
+                        {label: 'Cancelled', value: 'cancelled'},
                       ]"
               ></v-select>
             </b-form-group>
@@ -334,8 +331,8 @@ export default {
 
       columns.push(
         {
-          label: this.$t("Status"),
-          field: "statut",
+          label: "Workflow Status",
+          field: "workflow_status",
           tdClass: "text-left",
           thClass: "text-left"
         },
@@ -468,6 +465,15 @@ export default {
       while (formated.length < dec) formated += "0";
       return `${value[0]}.${formated}`;
     },
+    workflowLabel(status) {
+      return String(status || 'pending_approval').split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+    },
+    workflowBadgeClass(status) {
+      if (['completed', 'received'].includes(status)) return 'badge badge-outline-success';
+      if (['declined', 'cancelled'].includes(status)) return 'badge badge-outline-danger';
+      if (['pending_approval', 'pending_acknowledgement'].includes(status)) return 'badge badge-outline-warning';
+      return 'badge badge-outline-info';
+    },
     //----------------------------------------- Format Display Date (for tables) -------------------------------\\
     formatDisplayDate(value) {
       if (!value) return '';
@@ -499,7 +505,9 @@ export default {
             page +
             "&Ref=" +
             this.Filter_Ref +
-            "&statut=" +
+            "&created_at=" +
+            this.Filter_date +
+            "&workflow_status=" +
             this.Filter_status +
             "&from_warehouse_id=" +
             this.Filter_From +

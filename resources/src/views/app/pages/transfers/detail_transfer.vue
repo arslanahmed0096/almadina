@@ -14,7 +14,7 @@
             <span>{{$t('Back')}}</span>
           </router-link>
           <router-link
-            v-if="currentUserPermissions && currentUserPermissions.includes('transfer_edit')"
+            v-if="!transfer.workflow_status && currentUserPermissions && currentUserPermissions.includes('transfer_edit')"
             title="Edit"
             class="btn btn-success btn-icon ripple btn-sm mr-2"
             :to="{ name:'edit_transfer', params: { id: $route.params.id } }"
@@ -31,15 +31,24 @@
             {{$t('print')}}
           </button>
           <button
-            v-if="transfer.approval_status === 'pending' && currentUserPermissions && currentUserPermissions.includes('transfer_edit')"
-            @click="Approve_Transfer()"
+            v-if="actions.can_process"
+            @click="$bvModal.show('review-transfer')"
             class="btn btn-info btn-icon ripple btn-sm mr-2"
           >
             <lucide-icon name="check" />
-            {{$t('Approve')}}
+            Review Request
+          </button>
+          <button v-if="actions.can_acknowledge" @click="openAction('acknowledge')" class="btn btn-primary btn-icon ripple btn-sm mr-2">
+            <lucide-icon name="check-circle" /> Acknowledge
+          </button>
+          <button v-if="actions.can_dispatch" @click="openAction('dispatch')" class="btn btn-warning btn-icon ripple btn-sm mr-2">
+            <lucide-icon name="truck" /> Dispatch
+          </button>
+          <button v-if="actions.can_receive" @click="$bvModal.show('receive-transfer')" class="btn btn-success btn-icon ripple btn-sm mr-2">
+            <lucide-icon name="package-check" /> Receive Stock
           </button>
           <button
-            v-if="currentUserPermissions && currentUserPermissions.includes('transfer_delete')"
+            v-if="transfer.workflow_status === 'pending_approval' && currentUserPermissions && currentUserPermissions.includes('transfer_delete')"
             @click="Delete_Transfer()"
             class="btn btn-danger btn-icon ripple btn-sm"
           >
@@ -90,16 +99,8 @@
                     <strong>{{$t('date')}}:</strong> {{formatDisplayDate(transfer.date)}}
                   </p>
                   <p class="mb-2">
-                    <strong>{{$t('Status')}}:</strong>
-                    <span
-                      v-if="transfer.statut == 'completed'"
-                      class="badge badge-outline-success ml-2"
-                    >{{$t('complete')}}</span>
-                    <span
-                      v-else-if="transfer.statut == 'sent'"
-                      class="badge badge-outline-warning ml-2"
-                    >{{$t('Sent')}}</span>
-                    <span v-else class="badge badge-outline-danger ml-2">{{$t('Pending')}}</span>
+                    <strong>Workflow Status:</strong>
+                    <span :class="workflowBadgeClass(transfer.workflow_status)" class="ml-2">{{ workflowLabel(transfer.workflow_status) }}</span>
                   </p>
                   <p class="mb-2">
                     <strong>{{$t('Approval')}}:</strong>
@@ -112,12 +113,50 @@
                       class="badge badge-outline-warning ml-2"
                     >{{ $t('Pending_Approval') }}</span>
                     <span
-                      v-else-if="transfer.approval_status === 'rejected'"
+                      v-else-if="transfer.approval_status === 'declined' || transfer.approval_status === 'rejected'"
                       class="badge badge-outline-danger ml-2"
-                    >{{ $t('Rejected') }}</span>
+                    >Declined</span>
+                    <span v-else-if="transfer.approval_status === 'partially_approved'" class="badge badge-outline-info ml-2">Partially Approved</span>
                   </p>
+                  <p v-if="transfer.requested_by" class="mb-2"><strong>Requested By:</strong> {{ transfer.requested_by }}</p>
+                  <p v-if="transfer.processed_by" class="mb-2"><strong>Processed By:</strong> {{ transfer.processed_by }}</p>
+                  <p v-if="transfer.required_date" class="mb-2"><strong>Required Date:</strong> {{ transfer.required_date }}</p>
                 </div>
               </b-card>
+            </b-col>
+          </b-row>
+
+          <b-row class="mt-4">
+            <b-col md="12">
+              <h5 class="font-weight-bold mb-3"><lucide-icon class="mr-2" name="clipboard-list" />Stock Request Decision</h5>
+              <div class="table-responsive">
+                <table class="table table-bordered table-hover">
+                  <thead class="bg-light">
+                    <tr>
+                      <th>Product</th><th>SKU</th><th>Requested</th><th>On Hand</th><th>Reserved</th><th>Transferable</th>
+                      <th>Approved</th><th>Unapproved</th><th>Dispatched</th><th>Received</th><th>Decision / Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="detail in details" :key="'workflow-' + detail.detail_id">
+                      <td class="font-weight-bold">{{ detail.name }}</td>
+                      <td>{{ detail.code }}</td>
+                      <td>{{ formatNumber(detail.requested_quantity, 2) }} {{ detail.unit }}</td>
+                      <td>{{ formatNumber(detail.on_hand, 2) }}</td>
+                      <td>{{ formatNumber(detail.reserved, 2) }}</td>
+                      <td>{{ formatNumber(detail.transferable, 2) }}</td>
+                      <td class="text-success font-weight-bold">{{ formatNumber(detail.approved_quantity, 2) }}</td>
+                      <td class="text-danger">{{ formatNumber(detail.unapproved_quantity, 2) }}</td>
+                      <td>{{ formatNumber(detail.dispatched_quantity, 2) }}</td>
+                      <td>{{ formatNumber(detail.received_quantity, 2) }}</td>
+                      <td>
+                        <span :class="decisionBadgeClass(detail.decision_status)">{{ workflowLabel(detail.decision_status || 'pending') }}</span>
+                        <div v-if="detail.response_reason" class="small text-muted mt-1">{{ detail.response_reason }}</div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </b-col>
           </b-row>
 
@@ -243,8 +282,52 @@
               </div>
             </b-col>
           </b-row>
+          <b-row v-if="transfer.response_note" class="mt-4">
+            <b-col md="6"><div class="p-3 border rounded bg-light"><h6 class="font-weight-bold">Warehouse Response</h6><p class="mb-0">{{ transfer.response_note }}</p></div></b-col>
+            <b-col v-if="transfer.acknowledgement_note" md="6"><div class="p-3 border rounded bg-light"><h6 class="font-weight-bold">Branch Acknowledgement</h6><p class="mb-0">{{ transfer.acknowledgement_note }}</p></div></b-col>
+          </b-row>
+          <b-row v-if="history.length" class="mt-4">
+            <b-col md="12">
+              <h5 class="font-weight-bold mb-3">Status Timeline</h5>
+              <div v-for="event in history" :key="event.id" class="border-left border-primary pl-3 pb-3 mb-2">
+                <div class="font-weight-bold">{{ workflowLabel(event.action) }} <span class="text-muted font-weight-normal">— {{ event.performed_by || 'System' }}</span></div>
+                <div class="small text-muted">{{ event.created_at }} · {{ workflowLabel(event.previous_status) }} → {{ workflowLabel(event.new_status) }}</div>
+                <div v-if="event.note" class="mt-1">{{ event.note }}</div>
+              </div>
+            </b-col>
+          </b-row>
         </div>
       </div>
+
+      <b-modal id="review-transfer" title="Review Stock Request" size="xl" hide-footer>
+        <div class="table-responsive">
+          <table class="table table-bordered">
+            <thead><tr><th>Product</th><th>Requested</th><th>On Hand</th><th>Reserved</th><th>Transferable</th><th>Approved Qty</th><th>Decision</th><th>Reason</th></tr></thead>
+            <tbody>
+              <tr v-for="detail in details" :key="'review-' + detail.detail_id">
+                <td><strong>{{ detail.name }}</strong><div class="small text-muted">{{ detail.code }}</div></td>
+                <td>{{ formatNumber(detail.requested_quantity, 2) }}</td><td>{{ formatNumber(detail.on_hand, 2) }}</td><td>{{ formatNumber(detail.reserved, 2) }}</td><td>{{ formatNumber(detail.transferable, 2) }}</td>
+                <td><b-form-input type="number" min="0" :max="Math.min(detail.requested_quantity, detail.transferable)" step="0.01" v-model.number="detail.review_quantity"></b-form-input></td>
+                <td><span :class="decisionBadgeClass(reviewDecision(detail))">{{ workflowLabel(reviewDecision(detail)) }}</span></td>
+                <td><b-form-input v-model="detail.review_reason" :required="reviewDecision(detail) !== 'approved'" placeholder="Required for partial/declined"></b-form-input></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <b-form-group label="General Warehouse Response *"><b-form-textarea v-model="reviewNote" rows="3" placeholder="Give the exact reason for this decision"></b-form-textarea></b-form-group>
+        <div class="d-flex justify-content-between">
+          <b-button variant="outline-danger" @click="declineAll">Decline All</b-button>
+          <div><b-button variant="secondary" class="mr-2" @click="$bvModal.hide('review-transfer')">Cancel</b-button><b-button variant="primary" :disabled="actionProcessing" @click="submitReview">Submit Decision</b-button></div>
+        </div>
+      </b-modal>
+
+      <b-modal id="receive-transfer" title="Receive Dispatched Stock" size="lg" hide-footer>
+        <table class="table table-bordered"><thead><tr><th>Product</th><th>Dispatched</th><th>Already Received</th><th>Total Received Now</th></tr></thead>
+          <tbody><tr v-for="detail in receivableDetails" :key="'receive-' + detail.detail_id"><td>{{ detail.name }}</td><td>{{ detail.dispatched_quantity }}</td><td>{{ detail.received_quantity }}</td><td><b-form-input type="number" :min="detail.received_quantity" :max="detail.dispatched_quantity" step="0.01" v-model.number="detail.receive_quantity"></b-form-input></td></tr></tbody>
+        </table>
+        <b-form-group label="Receipt Note"><b-form-textarea v-model="actionNote" rows="2"></b-form-textarea></b-form-group>
+        <div class="text-right"><b-button variant="secondary" class="mr-2" @click="$bvModal.hide('receive-transfer')">Cancel</b-button><b-button variant="success" :disabled="actionProcessing" @click="submitReceive">Confirm Receipt</b-button></div>
+      </b-modal>
     </b-card>
   </div>
 </template>
@@ -259,6 +342,9 @@ export default {
     ...mapGetters(["currentUserPermissions", "currentUser"]),
     canViewTransferPrice() {
       return this.currentUserPermissions && this.currentUserPermissions.includes("transfer_price_view");
+    },
+    receivableDetails() {
+      return (this.details || []).filter(detail => Number(detail.dispatched_quantity) > 0);
     }
   },
   metaInfo: {
@@ -269,7 +355,12 @@ export default {
     return {
       isLoading: true,
       transfer: {},
-      details: []
+      details: [],
+      history: [],
+      actions: {},
+      reviewNote: "",
+      actionNote: "",
+      actionProcessing: false
     };
   },
 
@@ -313,6 +404,7 @@ export default {
 
     //------------------------------Formetted Numbers -------------------------\\
     formatNumber(number, dec) {
+      number = Number(number || 0);
       const value = (typeof number === "string"
         ? number
         : number.toString()
@@ -323,6 +415,41 @@ export default {
         return `${value[0]}.${formated.substr(0, dec)}`;
       while (formated.length < dec) formated += "0";
       return `${value[0]}.${formated}`;
+    },
+
+    workflowLabel(status) {
+      if (!status) return '—';
+      return String(status).split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+    },
+    workflowBadgeClass(status) {
+      if (['completed', 'received'].includes(status)) return 'badge badge-outline-success';
+      if (['declined', 'cancelled'].includes(status)) return 'badge badge-outline-danger';
+      if (['pending_approval', 'pending_acknowledgement'].includes(status)) return 'badge badge-outline-warning';
+      return 'badge badge-outline-info';
+    },
+    decisionBadgeClass(status) {
+      if (status === 'approved') return 'badge badge-outline-success';
+      if (status === 'declined') return 'badge badge-outline-danger';
+      if (status === 'partially_approved') return 'badge badge-outline-warning';
+      return 'badge badge-outline-secondary';
+    },
+    reviewDecision(detail) {
+      const approved = Number(detail.review_quantity || 0);
+      const requested = Number(detail.requested_quantity || 0);
+      if (approved <= 0) return 'declined';
+      if (approved + 0.000001 >= requested) return 'approved';
+      return 'partially_approved';
+    },
+    declineAll() {
+      (this.details || []).forEach(detail => this.$set(detail, 'review_quantity', 0));
+    },
+    workflowError(error) {
+      const data = error && error.response ? error.response.data : null;
+      if (data && data.errors) {
+        const values = Object.values(data.errors);
+        if (values.length) return Array.isArray(values[0]) ? values[0][0] : values[0];
+      }
+      return (data && data.message) || 'The transfer could not be updated.';
     },
 
     expiry_pill_style(dateStr) {
@@ -363,6 +490,15 @@ export default {
         .then(response => {
           this.transfer = response.data.transfer;
           this.details = response.data.details;
+          this.history = response.data.history || [];
+          this.actions = response.data.actions || {};
+          this.reviewNote = this.transfer.response_note || '';
+          this.actionNote = '';
+          this.details.forEach(detail => {
+            this.$set(detail, 'review_quantity', Math.min(Number(detail.requested_quantity || 0), Number(detail.transferable || 0)));
+            this.$set(detail, 'review_reason', detail.response_reason || '');
+            this.$set(detail, 'receive_quantity', Number(detail.dispatched_quantity || 0));
+          });
           // Complete the animation of theprogress bar.
           NProgress.done();
           this.isLoading = false;
@@ -377,6 +513,59 @@ export default {
             "warning"
           );
         });
+    },
+
+    submitReview() {
+      if (!String(this.reviewNote || '').trim()) {
+        this.makeToast('warning', 'A general warehouse response is required.', this.$t('Warning'));
+        return;
+      }
+      const invalid = this.details.find(detail => {
+        const qty = Number(detail.review_quantity || 0);
+        return qty < 0 || qty > Number(detail.requested_quantity) || qty > Number(detail.transferable)
+          || (this.reviewDecision(detail) !== 'approved' && !String(detail.review_reason || '').trim());
+      });
+      if (invalid) {
+        this.makeToast('warning', 'Check approved quantities and provide a reason for every partial or declined item.', this.$t('Warning'));
+        return;
+      }
+      this.actionProcessing = true;
+      axios.post(`transfers/${this.$route.params.id}/review`, {
+        response_note: this.reviewNote,
+        items: this.details.map(detail => ({ detail_id: detail.detail_id, approved_quantity: detail.review_quantity, response_reason: detail.review_reason }))
+      }).then(() => {
+        this.$bvModal.hide('review-transfer');
+        this.makeToast('success', 'Stock request decision saved.', this.$t('Success'));
+        this.Get_Transfer_Details();
+      }).catch(error => this.makeToast('danger', this.workflowError(error), this.$t('Failed')))
+        .finally(() => { this.actionProcessing = false; });
+    },
+
+    openAction(action) {
+      const title = action === 'dispatch' ? 'Dispatch Stock' : 'Acknowledge Warehouse Response';
+      this.$swal({ title, input: 'textarea', inputPlaceholder: 'Optional note', showCancelButton: true, confirmButtonText: action === 'dispatch' ? 'Dispatch' : 'Acknowledge' })
+        .then(result => {
+          if (!result.value && result.dismiss) return;
+          this.actionProcessing = true;
+          axios.post(`transfers/${this.$route.params.id}/${action}`, { note: result.value || '' })
+            .then(() => { this.makeToast('success', `${title} completed.`, this.$t('Success')); this.Get_Transfer_Details(); })
+            .catch(error => this.makeToast('danger', this.workflowError(error), this.$t('Failed')))
+            .finally(() => { this.actionProcessing = false; });
+        });
+    },
+
+    submitReceive() {
+      const items = this.receivableDetails.map(detail => ({ detail_id: detail.detail_id, received_quantity: Number(detail.receive_quantity || 0) }));
+      const hasNew = this.receivableDetails.some(detail => Number(detail.receive_quantity || 0) > Number(detail.received_quantity || 0));
+      if (!hasNew) {
+        this.makeToast('warning', 'Enter at least one newly received quantity.', this.$t('Warning'));
+        return;
+      }
+      this.actionProcessing = true;
+      axios.post(`transfers/${this.$route.params.id}/receive`, { note: this.actionNote, items })
+        .then(() => { this.$bvModal.hide('receive-transfer'); this.makeToast('success', 'Received stock saved.', this.$t('Success')); this.Get_Transfer_Details(); })
+        .catch(error => this.makeToast('danger', this.workflowError(error), this.$t('Failed')))
+        .finally(() => { this.actionProcessing = false; });
     },
 
     //---------------------------------- Approve Transfer ----------------------\\

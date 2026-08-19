@@ -808,6 +808,13 @@
                                 <span class="checkmark"></span>
                               </label>
                             </b-col>
+                            <b-col md="12"><hr><strong>Stock Request Workflow</strong></b-col>
+                            <b-col v-for="permission in transferWorkflowPermissions" :key="permission.value" md="6">
+                              <label class="checkbox checkbox-outline-primary">
+                                <input type="checkbox" v-model="permissions" :value="permission.value">
+                                <span>{{ permission.label }}</span><span class="checkmark"></span>
+                              </label>
+                            </b-col>
                           </b-row>
                         </b-card-text>
                       </b-card-body>
@@ -3771,6 +3778,15 @@ export default {
       isLoading: true,
       SubmitProcessing:false,
       permissions: [],
+      transferWorkflowPermissions: [
+        { value: 'transfer_request', label: 'Request Stock' },
+        { value: 'transfer_approve', label: 'Full Approval' },
+        { value: 'transfer_partial_approve', label: 'Partial Approval' },
+        { value: 'transfer_decline', label: 'Decline Request' },
+        { value: 'transfer_acknowledge', label: 'Acknowledge Response' },
+        { value: 'transfer_dispatch', label: 'Dispatch Stock' },
+        { value: 'transfer_receive', label: 'Receive Stock' }
+      ],
       role: {
         name: "",
         description: ""

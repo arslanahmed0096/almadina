@@ -120,7 +120,8 @@ class SalesController extends BaseController
                         ->orWhere('shipping_status', 'like', "%{$request->search}%")
                         ->orWhere(function ($query) use ($request) {
                             return $query->whereHas('client', function ($q) use ($request) {
-                                $q->where('name', 'LIKE', "%{$request->search}%");
+                                $q->where('name', 'LIKE', "%{$request->search}%")
+                                    ->orWhere('phone', 'LIKE', "%{$request->search}%");
                             });
                         })
                         ->orWhere(function ($query) use ($request) {

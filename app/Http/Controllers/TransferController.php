@@ -2,6 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\ProcessStockTransferRequest;
+use App\Http\Requests\ReceiveStockTransferRequest;
+use App\Http\Requests\StoreStockTransferRequest;
+use App\Http\Requests\TransferActionRequest;
 use App\Models\Product;
 use App\Models\product_warehouse;
 use App\Models\ProductVariant;
@@ -14,6 +18,7 @@ use App\Models\User;
 use App\Models\UserWarehouse;
 use App\Models\Warehouse;
 use App\Services\BatchService;
+use App\Services\StockTransferWorkflowService;
 use App\utils\helpers;
 use ArPHP\I18N\Arabic;
 use Carbon\Carbon;
@@ -31,9 +36,6 @@ class TransferController extends BaseController
         $this->authorizeForUser($request->user('api'), 'view', Transfer::class);
         $canViewTransferPrice = $this->canViewTransferPrice($request);
         $user = Auth::user();
-        // New way: Check user's record_view field (user-level boolean)
-        // Backward compatibility: If record_view is null, fall back to role permission check
-        $view_records = $user->hasRecordView();
         $is_all_warehouses = $user->is_all_warehouses;
 
         $warehouse_ids = [];
@@ -52,18 +54,14 @@ class TransferController extends BaseController
         $dir = $request->SortType;
         $helpers = new helpers;
         // Filter fields With Params to retrieve
-        $columns = [0 => 'Ref', 1 => 'from_warehouse_id', 2 => 'to_warehouse_id', 3 => 'statut'];
-        $param = [0 => 'like', 1 => '=', 2 => '=', 3 => 'like'];
+        $columns = [0 => 'Ref', 1 => 'from_warehouse_id', 2 => 'to_warehouse_id', 3 => 'statut', 4 => 'workflow_status'];
+        $param = [0 => 'like', 1 => '=', 2 => '=', 3 => 'like', 4 => '='];
         $data = [];
 
-        // Check If User Has Permission View  All Records
+        // Transfer visibility is warehouse-scoped. Source approvers must be able to
+        // see incoming requests even when they did not create them.
         $transfers = Transfer::with('from_warehouse', 'to_warehouse')
-            ->where('deleted_at', '=', null)
-            ->where(function ($query) use ($view_records) {
-                if (! $view_records) {
-                    return $query->where('user_id', '=', Auth::user()->id);
-                }
-            });
+            ->where('deleted_at', '=', null);
 
             // ✅ Restrict by warehouses (from OR to)
         if (! $is_all_warehouses) {
@@ -80,6 +78,7 @@ class TransferController extends BaseController
                 return $query->when($request->filled('search'), function ($query) use ($request) {
                     return $query->where('Ref', 'LIKE', "%{$request->search}%")
                         ->orWhere('statut', 'LIKE', "%{$request->search}%")
+                        ->orWhere('workflow_status', 'LIKE', "%{$request->search}%")
                         ->orWhere(function ($query) use ($request) {
                             return $query->whereHas('from_warehouse', function ($q) use ($request) {
                                 $q->where('name', 'LIKE', "%{$request->search}%");
@@ -92,6 +91,10 @@ class TransferController extends BaseController
                         });
                 });
             });
+
+        if ($request->filled('created_at')) {
+            $Filtred->whereDate('created_at', $request->created_at);
+        }
 
         $totalRows = $Filtred->count();
         if ($perPage == '-1') {
@@ -113,19 +116,16 @@ class TransferController extends BaseController
             }
             $item['items'] = $transfer->items;
             $item['statut'] = $transfer->statut;
-            // NEW: explicit approval status (old NULL rows are treated as approved in the model accessor)
             $item['approval_status'] = $transfer->approval_status;
+            $item['workflow_status'] = $transfer->workflow_status ?: $transfer->statut;
+            $item['response_note'] = $transfer->response_note;
+            $item['requested_by'] = $transfer->user_id;
             $data[] = $item;
         }
 
-        // get warehouses assigned to user
-        $user_auth = auth()->user();
-        if ($user_auth->is_all_warehouses) {
-            $warehouses = Warehouse::where('deleted_at', '=', null)->get(['id', 'name']);
-        } else {
-            $warehouses_id = UserWarehouse::where('user_id', $user_auth->id)->pluck('warehouse_id')->toArray();
-            $warehouses = Warehouse::where('deleted_at', '=', null)->whereIn('id', $warehouses_id)->get(['id', 'name']);
-        }
+        // The records remain warehouse-scoped above, while filter options include
+        // both sides of a request (central source and requesting destination).
+        $warehouses = Warehouse::where('deleted_at', '=', null)->get(['id', 'name']);
 
         return response()->json([
             'totalRows' => $totalRows,
@@ -137,184 +137,68 @@ class TransferController extends BaseController
 
     // ------------ Store New Transfer -----------\\
 
-    public function store(Request $request)
+    public function store(StoreStockTransferRequest $request)
     {
         $this->authorizeForUser($request->user('api'), 'create', Transfer::class);
 
-        request()->validate([
-            'transfer.from_warehouse' => 'required',
-            'transfer.to_warehouse' => 'required',
-        ]);
+        $validated = $request->validated();
 
         $this->assertProductsSelectable($request->user('api'), $request->input('details', []));
+        $workflow = app(StockTransferWorkflowService::class);
+        $workflow->assertWarehouseAccess($request->user('api'), (int) $validated['transfer']['from_warehouse'], 'request');
 
-        \DB::transaction(function () use ($request) {
+        $createdTransfer = \DB::transaction(function () use ($request, $validated) {
             $order = new Transfer;
 
-            $order->date = $request->transfer['date'];
+            $order->date = $validated['transfer']['date'];
+            $order->time = now()->format('H:i:s');
             $order->Ref = $this->getNumberOrder();
-            $order->from_warehouse_id = $request->transfer['from_warehouse'];
-            $order->to_warehouse_id = $request->transfer['to_warehouse'];
-            $order->items = count($request['details']);
-            $order->tax_rate = $request->transfer['tax_rate'] ? $request->transfer['tax_rate'] : 0;
-            $order->TaxNet = $request->transfer['TaxNet'] ? $request->transfer['TaxNet'] : 0;
-            $order->discount = $request->transfer['discount'] ? $request->transfer['discount'] : 0;
-            $order->shipping = $request->transfer['shipping'] ? $request->transfer['shipping'] : 0;
-            $order->statut = $request->transfer['statut'];
-            $order->notes = $request->transfer['notes'];
-            $order->GrandTotal = $request['GrandTotal'];
+            $order->from_warehouse_id = $validated['transfer']['from_warehouse'];
+            $order->to_warehouse_id = $validated['transfer']['to_warehouse'];
+            $order->required_date = $validated['transfer']['required_date'] ?? null;
+            $order->items = count($validated['details']);
+            $order->tax_rate = (float) $request->input('transfer.tax_rate', 0);
+            $order->TaxNet = (float) $request->input('transfer.TaxNet', 0);
+            $order->discount = (float) $request->input('transfer.discount', 0);
+            $order->shipping = (float) $request->input('transfer.shipping', 0);
+            $order->statut = 'pending';
+            $order->notes = $validated['transfer']['notes'];
+            $order->request_note = $validated['transfer']['notes'];
+            $order->GrandTotal = (float) ($validated['GrandTotal'] ?? 0);
             $order->user_id = Auth::user()->id;
-            // NEW APPROVAL LOGIC:
-            // All NEW transfers start as "pending" and do NOT move stock until explicitly approved.
             $order->approval_status = 'pending';
+            $order->workflow_status = Transfer::WORKFLOW_PENDING_APPROVAL;
+            $order->requested_at = now();
             $order->save();
 
-            $data = $request['details'];
-
-            // Stock movement is now gated behind approval:
-            // - For new transfers (approval_status = pending), we only create the header & details.
-            // - Actual stock movement happens later, when a manager approves the transfer.
-            $shouldAffectStock = $order->isApproved();
-            $persistedDetails = [];
-
-            foreach ($data as $key => $value) {
-
-                $unit = Unit::where('id', $value['purchase_unit_id'])->first();
-
-                if ($shouldAffectStock && $request->transfer['statut'] == 'completed') {
-                    if ($value['product_variant_id'] !== null) {
-
-                        // --------- eliminate the quantity ''from_warehouse''--------------\\
-                        $product_warehouse_from = product_warehouse::where('deleted_at', '=', null)
-                            ->where('warehouse_id', $request->transfer['from_warehouse'])
-                            ->where('product_id', $value['product_id'])
-                            ->where('product_variant_id', $value['product_variant_id'])
-                            ->first();
-
-                        if ($unit && $product_warehouse_from) {
-                            if ($unit->operator == '/') {
-                                $product_warehouse_from->qte -= $value['quantity'] / $unit->operator_value;
-                            } else {
-                                $product_warehouse_from->qte -= $value['quantity'] * $unit->operator_value;
-                            }
-                            $product_warehouse_from->save();
-                        }
-
-                        // --------- ADD the quantity ''TO_warehouse''------------------\\
-                        $product_warehouse_to = product_warehouse::where('deleted_at', '=', null)
-                            ->where('warehouse_id', $request->transfer['to_warehouse'])
-                            ->where('product_id', $value['product_id'])
-                            ->where('product_variant_id', $value['product_variant_id'])
-                            ->first();
-
-                        if ($unit && $product_warehouse_to) {
-                            if ($unit->operator == '/') {
-                                $product_warehouse_to->qte += $value['quantity'] / $unit->operator_value;
-                            } else {
-                                $product_warehouse_to->qte += $value['quantity'] * $unit->operator_value;
-                            }
-                            $product_warehouse_to->save();
-                        }
-
-                    } else {
-
-                        // --------- eliminate the quantity ''from_warehouse''--------------\\
-                        $product_warehouse_from = product_warehouse::where('deleted_at', '=', null)
-                            ->where('warehouse_id', $request->transfer['from_warehouse'])
-                            ->where('product_id', $value['product_id'])->first();
-
-                        if ($unit && $product_warehouse_from) {
-                            if ($unit->operator == '/') {
-                                $product_warehouse_from->qte -= $value['quantity'] / $unit->operator_value;
-                            } else {
-                                $product_warehouse_from->qte -= $value['quantity'] * $unit->operator_value;
-                            }
-                            $product_warehouse_from->save();
-                        }
-
-                        // --------- ADD the quantity ''TO_warehouse''------------------\\
-                        $product_warehouse_to = product_warehouse::where('deleted_at', '=', null)
-                            ->where('warehouse_id', $request->transfer['to_warehouse'])
-                            ->where('product_id', $value['product_id'])->first();
-
-                        if ($unit && $product_warehouse_to) {
-                            if ($unit->operator == '/') {
-                                $product_warehouse_to->qte += $value['quantity'] / $unit->operator_value;
-                            } else {
-                                $product_warehouse_to->qte += $value['quantity'] * $unit->operator_value;
-                            }
-                            $product_warehouse_to->save();
-                        }
-                    }
-
-                } elseif ($shouldAffectStock && $request->transfer['statut'] == 'sent') {
-
-                    if ($value['product_variant_id'] !== null) {
-
-                        $product_warehouse_from = product_warehouse::where('deleted_at', '=', null)
-                            ->where('warehouse_id', $request->transfer['from_warehouse'])
-                            ->where('product_id', $value['product_id'])
-                            ->where('product_variant_id', $value['product_variant_id'])
-                            ->first();
-
-                        if ($unit && $product_warehouse_from) {
-                            if ($unit->operator == '/') {
-                                $product_warehouse_from->qte -= $value['quantity'] / $unit->operator_value;
-                            } else {
-                                $product_warehouse_from->qte -= $value['quantity'] * $unit->operator_value;
-                            }
-                            $product_warehouse_from->save();
-                        }
-
-                    } else {
-
-                        $product_warehouse_from = product_warehouse::where('deleted_at', '=', null)
-                            ->where('warehouse_id', $request->transfer['from_warehouse'])
-                            ->where('product_id', $value['product_id'])->first();
-
-                        if ($unit && $product_warehouse_from) {
-                            if ($unit->operator == '/') {
-                                $product_warehouse_from->qte -= $value['quantity'] / $unit->operator_value;
-                            } else {
-                                $product_warehouse_from->qte -= $value['quantity'] * $unit->operator_value;
-                            }
-                            $product_warehouse_from->save();
-                        }
-                    }
-                }
-
-                $persistedDetails[$key] = TransferDetail::create([
+            foreach ($validated['details'] as $value) {
+                TransferDetail::create([
                     'transfer_id' => $order->id,
                     'quantity' => $value['quantity'],
-                    'purchase_unit_id' => $value['purchase_unit_id'],
+                    'requested_quantity' => $value['quantity'],
+                    'approved_quantity' => 0,
+                    'dispatched_quantity' => 0,
+                    'received_quantity' => 0,
+                    'purchase_unit_id' => $value['purchase_unit_id'] ?? null,
                     'product_id' => $value['product_id'],
-                    'product_variant_id' => $value['product_variant_id'],
-                    'cost' => $value['Unit_cost'],
-                    'TaxNet' => $value['tax_percent'],
-                    'tax_method' => $value['tax_method'],
-                    'discount' => $value['discount'],
-                    'discount_method' => $value['discount_Method'],
-                    'total' => $value['subtotal'],
+                    'product_variant_id' => $value['product_variant_id'] ?? null,
+                    'cost' => (float) ($value['Unit_cost'] ?? 0),
+                    'TaxNet' => (float) ($value['tax_percent'] ?? 0),
+                    'tax_method' => $value['tax_method'] ?? '1',
+                    'discount' => (float) ($value['discount'] ?? 0),
+                    'discount_method' => $value['discount_Method'] ?? '1',
+                    'total' => (float) ($value['subtotal'] ?? 0),
+                    'requested_batches' => $value['batches'] ?? null,
                 ]);
             }
 
-            // Pharmacy: apply per-batch movement only when warehouse stock is also being
-            // touched (i.e. the transfer was created already approved AND its statut is
-            // either "completed" or "sent"). Pending/draft transfers don't move batches yet.
-            if ($shouldAffectStock && in_array($request->transfer['statut'], ['completed', 'sent'], true)) {
-                $batchService = app(BatchService::class);
-                if ($batchService->isSupported()) {
-                    $batchService->applyForTransferWithAutoFallback(
-                        $order,
-                        array_values($data),
-                        $persistedDetails
-                    );
-                }
-            }
-
+            return $order;
         }, 10);
 
-        return response()->json(['success' => true]);
+        $workflow->record($createdTransfer, $request->user('api'), null, Transfer::WORKFLOW_PENDING_APPROVAL, 'request_submitted', $createdTransfer->request_note, [], (int) $createdTransfer->to_warehouse_id);
+        $workflow->notifyNewRequest($createdTransfer);
+
+        return response()->json(['success' => true, 'id' => $createdTransfer->id]);
     }
 
     // ------------- Update Transfer -----------\\
@@ -335,6 +219,9 @@ class TransferController extends BaseController
             // Backward compatibility: If record_view is null, fall back to role permission check
             $view_records = $user->hasRecordView();
             $current_Transfer = Transfer::findOrFail($id);
+            if ($current_Transfer->histories()->where('action', 'request_submitted')->exists()) {
+                abort(422, 'Submitted stock requests cannot be edited. Create a new request if quantities must change.');
+            }
 
             // Check If User Has Permission view All Records
             if (! $view_records) {
@@ -669,6 +556,14 @@ class TransferController extends BaseController
             // Backward compatibility: If record_view is null, fall back to role permission check
             $view_records = $user->hasRecordView();
             $current_Transfer = Transfer::findOrFail($id);
+            if ($current_Transfer->histories()->where('action', 'request_submitted')->exists()) {
+                if ($current_Transfer->workflow_status !== Transfer::WORKFLOW_PENDING_APPROVAL) {
+                    abort(422, 'A processed stock request cannot be deleted.');
+                }
+                if ((int) $current_Transfer->user_id !== (int) $user->id && ! $user->isSuperAdmin()) {
+                    abort(403, 'Only the requesting user can delete an unprocessed stock request.');
+                }
+            }
             $Old_Details = TransferDetail::where('transfer_id', $id)->get();
 
             // Check If User Has Permission view All Records
@@ -822,6 +717,10 @@ class TransferController extends BaseController
             $selectedIds = $request->selectedIds;
             foreach ($selectedIds as $Transfer_id) {
                 $current_Transfer = Transfer::findOrFail($Transfer_id);
+                if ($current_Transfer->histories()->where('action', 'request_submitted')->exists()
+                    && $current_Transfer->workflow_status !== Transfer::WORKFLOW_PENDING_APPROVAL) {
+                    abort(422, 'One or more selected stock requests have already been processed and cannot be deleted.');
+                }
                 $Old_Details = TransferDetail::where('transfer_id', $Transfer_id)->get();
 
                 // Check If User Has Permission view All Records
@@ -1259,19 +1158,17 @@ class TransferController extends BaseController
         $this->authorizeForUser($request->user('api'), 'view', Transfer::class);
         $canViewTransferPrice = $this->canViewTransferPrice($request);
         $user = Auth::user();
-        // New way: Check user's record_view field (user-level boolean)
-        // Backward compatibility: If record_view is null, fall back to role permission check
-        $view_records = $user->hasRecordView();
-        $Transfer_data = Transfer::with('details.product.unit')
+        $Transfer_data = Transfer::with([
+            'details.product.unit', 'from_warehouse', 'to_warehouse', 'requester', 'processor',
+            'acknowledger', 'histories.performer',
+        ])
             ->where('deleted_at', '=', null)
             ->findOrFail($id);
 
         $details = [];
-        // Check If User Has Permission view All Records
-        if (! $view_records) {
-            // Check If User->id === Transfer->id
-            $this->authorizeForUser($request->user('api'), 'check_record', $Transfer_data);
-        }
+        $this->assertTransferAccessible($user, $Transfer_data);
+        $workflow = app(StockTransferWorkflowService::class);
+        $availability = $workflow->availabilityFor($Transfer_data);
 
         $transfer['date'] = $Transfer_data->date.' '.$Transfer_data->time;
         $transfer['note'] = $Transfer_data->notes;
@@ -1281,6 +1178,18 @@ class TransferController extends BaseController
         $transfer['items'] = $Transfer_data->items;
         $transfer['statut'] = $Transfer_data->statut;
         $transfer['approval_status'] = $Transfer_data->approval_status;
+        $transfer['workflow_status'] = $Transfer_data->workflow_status ?: $Transfer_data->statut;
+        $transfer['request_note'] = $Transfer_data->request_note ?: $Transfer_data->notes;
+        $transfer['response_note'] = $Transfer_data->response_note;
+        $transfer['acknowledgement_note'] = $Transfer_data->acknowledgement_note;
+        $transfer['required_date'] = optional($Transfer_data->required_date)->format('Y-m-d');
+        $transfer['requested_by'] = optional($Transfer_data->requester)->username;
+        $transfer['processed_by'] = optional($Transfer_data->processor)->username;
+        $transfer['processed_at'] = optional($Transfer_data->processed_at)->toDateTimeString();
+        $transfer['acknowledged_by'] = optional($Transfer_data->acknowledger)->username;
+        $transfer['acknowledged_at'] = optional($Transfer_data->acknowledged_at)->toDateTimeString();
+        $transfer['dispatched_at'] = optional($Transfer_data->dispatched_at)->toDateTimeString();
+        $transfer['received_at'] = optional($Transfer_data->received_at)->toDateTimeString();
         if ($canViewTransferPrice) {
             $transfer['GrandTotal'] = $Transfer_data->GrandTotal;
         }
@@ -1313,6 +1222,18 @@ class TransferController extends BaseController
             }
 
             $data['quantity'] = $detail->quantity;
+            $data['detail_id'] = (int) $detail->id;
+            $data['requested_quantity'] = (float) ($detail->requested_quantity ?? $detail->quantity);
+            $data['approved_quantity'] = (float) $detail->approved_quantity;
+            $data['unapproved_quantity'] = max(0, $data['requested_quantity'] - $data['approved_quantity']);
+            $data['dispatched_quantity'] = (float) $detail->dispatched_quantity;
+            $data['received_quantity'] = (float) $detail->received_quantity;
+            $data['decision_status'] = $detail->decision_status;
+            $data['response_reason'] = $detail->response_reason;
+            $stock = $availability[(int) $detail->id] ?? ['on_hand' => 0, 'reserved' => 0, 'transferable' => 0];
+            $data['on_hand'] = $stock['on_hand'];
+            $data['reserved'] = $stock['reserved'];
+            $data['transferable'] = $stock['transferable'];
             $data['unit'] = $unit->ShortName;
             if ($canViewTransferPrice) {
                 $data['total'] = $detail->total;
@@ -1334,6 +1255,34 @@ class TransferController extends BaseController
         return response()->json([
             'details' => $details,
             'transfer' => $transfer,
+            'history' => $Transfer_data->histories->map(function ($history) {
+                return [
+                    'id' => $history->id,
+                    'action' => $history->action,
+                    'previous_status' => $history->previous_status,
+                    'new_status' => $history->new_status,
+                    'note' => $history->note,
+                    'metadata' => $history->metadata,
+                    'performed_by' => optional($history->performer)->username,
+                    'created_at' => optional($history->created_at)->toDateTimeString(),
+                ];
+            })->values(),
+            'actions' => [
+                'can_process' => $this->userHasAnyPermission($user, ['transfer_approve', 'transfer_partial_approve', 'transfer_decline'])
+                    && $Transfer_data->workflow_status === Transfer::WORKFLOW_PENDING_APPROVAL
+                    && $this->userHasWarehouse($user, (int) $Transfer_data->from_warehouse_id)
+                    && ((int) $Transfer_data->user_id !== (int) $user->id || $user->isSuperAdmin()),
+                'can_acknowledge' => $this->userHasAnyPermission($user, ['transfer_acknowledge'])
+                    && $Transfer_data->workflow_status === Transfer::WORKFLOW_PENDING_ACKNOWLEDGEMENT
+                    && $this->userHasWarehouse($user, (int) $Transfer_data->to_warehouse_id),
+                'can_dispatch' => $this->userHasAnyPermission($user, ['transfer_dispatch'])
+                    && in_array($Transfer_data->workflow_status, [Transfer::WORKFLOW_ACKNOWLEDGED, Transfer::WORKFLOW_READY_FOR_DISPATCH], true)
+                    && in_array($Transfer_data->approval_status, ['approved', 'partially_approved'], true)
+                    && $this->userHasWarehouse($user, (int) $Transfer_data->from_warehouse_id),
+                'can_receive' => $this->userHasAnyPermission($user, ['transfer_receive'])
+                    && in_array($Transfer_data->workflow_status, [Transfer::WORKFLOW_DISPATCHED, Transfer::WORKFLOW_PARTIALLY_RECEIVED], true)
+                    && $this->userHasWarehouse($user, (int) $Transfer_data->to_warehouse_id),
+            ],
             'can_view_transfer_price' => $canViewTransferPrice,
         ]);
     }
@@ -1346,35 +1295,77 @@ class TransferController extends BaseController
             && $user->effectivePermissionNames()->contains('transfer_price_view');
     }
 
+    private function assertTransferAccessible(User $user, Transfer $transfer): void
+    {
+        if ($this->userHasWarehouse($user, (int) $transfer->from_warehouse_id)
+            || $this->userHasWarehouse($user, (int) $transfer->to_warehouse_id)) {
+            return;
+        }
+
+        abort(403, 'You are not allowed to access this stock transfer request.');
+    }
+
+    private function userHasWarehouse(User $user, int $warehouseId): bool
+    {
+        return $user->isSuperAdmin()
+            || (bool) $user->is_all_warehouses
+            || UserWarehouse::where('user_id', $user->id)->where('warehouse_id', $warehouseId)->exists();
+    }
+
+    private function userHasAnyPermission(User $user, array $permissions): bool
+    {
+        return $user->isSuperAdmin()
+            || $user->effectivePermissionNames()->intersect($permissions)->isNotEmpty();
+    }
+
     // ---------------- Show Form Create Transfer ---------------\\
 
     public function create(Request $request)
     {
         $this->authorizeForUser($request->user('api'), 'create', Transfer::class);
 
-        // get warehouses assigned to user
-        $user_auth = auth()->user();
-        if ($user_auth->is_all_warehouses) {
-            $warehouses = Warehouse::where('deleted_at', '=', null)->get(['id', 'name']);
+        $user = $request->user('api');
+        $sourceLocked = ! ((bool) $user->is_all_warehouses || $user->isSuperAdmin());
+
+        if ($sourceLocked) {
+            $assignedWarehouseIds = UserWarehouse::where('user_id', $user->id)
+                ->pluck('warehouse_id');
+            $warehouses = Warehouse::whereNull('deleted_at')
+                ->whereIn('id', $assignedWarehouseIds)
+                ->orderBy('name')
+                ->get(['id', 'name']);
+            $assignedSourceWarehouseId = optional($warehouses->first())->id;
         } else {
-            $warehouses_id = UserWarehouse::where('user_id', $user_auth->id)->pluck('warehouse_id')->toArray();
-            $warehouses = Warehouse::where('deleted_at', '=', null)->whereIn('id', $warehouses_id)->get(['id', 'name']);
+            $warehouses = Warehouse::whereNull('deleted_at')
+                ->orderBy('name')
+                ->get(['id', 'name']);
+            $assignedSourceWarehouseId = null;
         }
 
-        $to_warehouses = Warehouse::where('deleted_at', '=', null)->get(['id', 'name']);
+        $to_warehouses = Warehouse::whereNull('deleted_at')
+            ->when($assignedSourceWarehouseId, fn ($query) => $query->where('id', '!=', $assignedSourceWarehouseId))
+            ->orderBy('name')
+            ->get(['id', 'name']);
 
-        return response()->json(['warehouses' => $warehouses, 'to_warehouses' => $to_warehouses]);
+        return response()->json([
+            'warehouses' => $warehouses,
+            'to_warehouses' => $to_warehouses,
+            'assigned_source_warehouse_id' => $assignedSourceWarehouseId,
+            'source_locked' => $sourceLocked,
+        ]);
     }
 
     // -------------- transfer_pdf -----------\\
 
     public function transfer_pdf(Request $request, $id)
     {
+        $this->authorizeForUser($request->user('api'), 'view', Transfer::class);
         $details = [];
         $helpers = new helpers;
         $transfer_data = Transfer::with('details.product.unitPurchase')
             ->where('deleted_at', '=', null)
             ->findOrFail($id);
+        $this->assertTransferAccessible($request->user('api'), $transfer_data);
 
         $batchesByDetail = app(BatchService::class)->batchesForTransferDetails($transfer_data['details']);
 
@@ -1442,44 +1433,68 @@ class TransferController extends BaseController
 
     }
 
-    // -------------- Approval Workflow (NEW) -----------\\
+    // -------------- Stock request workflow -----------\\
+
+    public function review(ProcessStockTransferRequest $request, $id, StockTransferWorkflowService $workflow)
+    {
+        $this->authorizeForUser($request->user('api'), 'process', Transfer::class);
+        $validated = $request->validated();
+
+        $transfer = Transfer::whereNull('deleted_at')->findOrFail($id);
+        $this->assertTransferAccessible($request->user('api'), $transfer);
+        $result = $workflow->process($transfer, $request->user('api'), $validated['items'], $validated['response_note']);
+
+        return response()->json(['success' => true, 'transfer' => $result]);
+    }
+
+    public function acknowledge(TransferActionRequest $request, $id, StockTransferWorkflowService $workflow)
+    {
+        $this->authorizeForUser($request->user('api'), 'acknowledge', Transfer::class);
+        $validated = $request->validated();
+        $transfer = Transfer::whereNull('deleted_at')->findOrFail($id);
+        $this->assertTransferAccessible($request->user('api'), $transfer);
+        $result = $workflow->acknowledge($transfer, $request->user('api'), $validated['note'] ?? null);
+
+        return response()->json(['success' => true, 'transfer' => $result]);
+    }
+
+    public function dispatch(TransferActionRequest $request, $id, StockTransferWorkflowService $workflow)
+    {
+        $this->authorizeForUser($request->user('api'), 'dispatch', Transfer::class);
+        $validated = $request->validated();
+        $transfer = Transfer::whereNull('deleted_at')->findOrFail($id);
+        $this->assertTransferAccessible($request->user('api'), $transfer);
+        $result = $workflow->dispatch($transfer, $request->user('api'), $validated['note'] ?? null);
+
+        return response()->json(['success' => true, 'transfer' => $result]);
+    }
+
+    public function receive(ReceiveStockTransferRequest $request, $id, StockTransferWorkflowService $workflow)
+    {
+        $this->authorizeForUser($request->user('api'), 'receive', Transfer::class);
+        $validated = $request->validated();
+        $transfer = Transfer::whereNull('deleted_at')->findOrFail($id);
+        $this->assertTransferAccessible($request->user('api'), $transfer);
+        $result = $workflow->receive($transfer, $request->user('api'), $validated['items'], $validated['note'] ?? null);
+
+        return response()->json(['success' => true, 'transfer' => $result]);
+    }
 
     /**
-     * Approve a pending stock transfer and apply its stock movement once.
+     * Backward-compatible full approval endpoint. New screens use review().
      */
-    public function approve(Request $request, $id)
+    public function approve(Request $request, $id, StockTransferWorkflowService $workflow)
     {
-        $this->authorizeForUser($request->user('api'), 'update', Transfer::class);
-
-        \DB::transaction(function () use ($request, $id) {
-            $user = Auth::user();
-            // New way: Check user's record_view field (user-level boolean)
-            // Backward compatibility: If record_view is null, fall back to role permission check
-            $view_records = $user->hasRecordView();
-            $transfer = Transfer::with('details')
-                ->where('deleted_at', '=', null)
-                ->findOrFail($id);
-
-            if (! $view_records) {
-                $this->authorizeForUser($request->user('api'), 'check_record', $transfer);
-            }
-
-            // OLD TRANSFERS SAFETY: never double-apply stock for already approved transfers.
-            if ($transfer->isApproved()) {
-                // No-op; return gracefully.
-                return;
-            }
-
-            if ($transfer->approval_status === 'rejected') {
-                abort(422, 'Rejected transfers cannot be approved without editing.');
-            }
-
-            // Apply initial stock movement based on the stored header + details.
-            $this->applyInitialStockMovement($transfer);
-
-            $transfer->approval_status = 'approved';
-            $transfer->save();
-        }, 10);
+        $this->authorizeForUser($request->user('api'), 'process', Transfer::class);
+        $validated = $request->validate(['response_note' => 'required|string|max:5000']);
+        $transfer = Transfer::with('details')->whereNull('deleted_at')->findOrFail($id);
+        $this->assertTransferAccessible($request->user('api'), $transfer);
+        $items = $transfer->details->map(fn ($detail) => [
+            'detail_id' => $detail->id,
+            'approved_quantity' => $detail->requested_quantity ?? $detail->quantity,
+            'response_reason' => null,
+        ])->all();
+        $workflow->process($transfer, $request->user('api'), $items, $validated['response_note']);
 
         return response()->json(['success' => true]);
     }
@@ -1487,29 +1502,21 @@ class TransferController extends BaseController
     /**
      * Mark a pending transfer as rejected – no stock movement is ever applied.
      */
-    public function reject(Request $request, $id)
+    public function reject(Request $request, $id, StockTransferWorkflowService $workflow)
     {
-        $this->authorizeForUser($request->user('api'), 'update', Transfer::class);
-
-        \DB::transaction(function () use ($request, $id) {
-            $user = Auth::user();
-            // New way: Check user's record_view field (user-level boolean)
-            // Backward compatibility: If record_view is null, fall back to role permission check
-            $view_records = $user->hasRecordView();
-            $transfer = Transfer::where('deleted_at', '=', null)->findOrFail($id);
-
-            if (! $view_records) {
-                $this->authorizeForUser($request->user('api'), 'check_record', $transfer);
-            }
-
-            // If it was already approved, we don't silently roll back stock here.
-            if ($transfer->isApproved()) {
-                abort(422, 'Approved transfers cannot be rejected via this action.');
-            }
-
-            $transfer->approval_status = 'rejected';
-            $transfer->save();
-        }, 10);
+        $this->authorizeForUser($request->user('api'), 'process', Transfer::class);
+        $validated = $request->validate([
+            'response_note' => 'required|string|max:5000',
+            'reason' => 'required|string|max:2000',
+        ]);
+        $transfer = Transfer::with('details')->whereNull('deleted_at')->findOrFail($id);
+        $this->assertTransferAccessible($request->user('api'), $transfer);
+        $items = $transfer->details->map(fn ($detail) => [
+            'detail_id' => $detail->id,
+            'approved_quantity' => 0,
+            'response_reason' => $validated['reason'],
+        ])->all();
+        $workflow->process($transfer, $request->user('api'), $items, $validated['response_note']);
 
         return response()->json(['success' => true]);
     }
