@@ -424,14 +424,25 @@
                 </b-col>
 
                 <b-col md="12">
-                  <b-form-group label="Stock Request Note *">
-                    <textarea
-                      v-model="transfer.notes"
-                      rows="4"
-                      class="form-control"
-                      placeholder="Explain why this stock is required"
-                    ></textarea>
-                  </b-form-group>
+                  <validation-provider
+                    name="Stock Request Note"
+                    rules="required|max:5000"
+                    v-slot="validationContext"
+                  >
+                    <b-form-group label="Stock Request Note *">
+                      <b-form-textarea
+                        v-model.trim="transfer.notes"
+                        rows="4"
+                        maxlength="5000"
+                        :state="getValidationState(validationContext)"
+                        aria-describedby="stock-request-note-feedback"
+                        placeholder="Explain why this stock is required"
+                      ></b-form-textarea>
+                      <b-form-invalid-feedback id="stock-request-note-feedback">
+                        {{ validationContext.errors[0] }}
+                      </b-form-invalid-feedback>
+                    </b-form-group>
+                  </validation-provider>
                 </b-col>
                 <b-col md="12" v-if="hasBatchValidationErrors">
                   <div style="padding: 10px 14px; background: #fef3c7; color: #92400e; border: 1px solid #fde68a; border-radius: 10px; font-size: 13px; font-weight: 600; display: flex; align-items: center; margin-bottom: 14px;">
@@ -1168,10 +1179,15 @@ export default {
           .catch(error => {
             // Complete the animation of theprogress bar.
             NProgress.done();
-          const message = error && error.response && error.response.data
-            ? (error.response.data.message || Object.values(error.response.data.errors || {}).flat()[0])
-            : this.$t("InvalidData");
-          this.makeToast("danger", message, this.$t("Failed"));
+            const data = error && error.response ? error.response.data : null;
+            const fieldErrors = data && data.errors
+              ? Object.values(data.errors).reduce((all, messages) => all.concat(messages), [])
+              : [];
+            const message = fieldErrors[0]
+              || (data && data.message)
+              || (error && error.message)
+              || this.$t("InvalidData");
+            this.makeToast("danger", message, this.$t("Failed"));
             this.SubmitProcessing = false;
           });
       } else {

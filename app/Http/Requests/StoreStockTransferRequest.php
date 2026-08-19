@@ -28,4 +28,13 @@ class StoreStockTransferRequest extends FormRequest
             'GrandTotal' => 'nullable|numeric',
         ];
     }
+
+    public function messages(): array
+    {
+        return [
+            'transfer.notes.required' => 'Please enter a stock request note.',
+            'transfer.from_warehouse.required' => 'Please select the source warehouse.',
+            'transfer.to_warehouse.required' => 'Please select the destination warehouse.',
+        ];
+    }
 }
