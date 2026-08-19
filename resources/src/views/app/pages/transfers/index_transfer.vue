@@ -68,6 +68,12 @@
           <span v-if="props.column.field == 'date'">
             {{ formatDisplayDate(props.row.date) }}
           </span>
+          <router-link
+            v-else-if="props.column.field == 'Ref'"
+            :to="{ name: 'detail_transfer', params: { id: props.row.id } }"
+          >
+            {{ props.row.Ref }}
+          </router-link>
           <span v-else-if="props.column.field == 'actions'">
             <div>
               <b-dropdown
