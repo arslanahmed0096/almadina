@@ -7,9 +7,11 @@ use App\Models\Permission;
 use App\Models\Role;
 use App\Models\role_user;
 use App\Models\Setting;
+use App\Models\Transfer;
 use App\Models\User;
 use App\Models\UserWarehouse;
 use App\Models\Warehouse;
+use App\Notifications\TransferWorkflowNotification;
 use App\utils\helpers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -72,6 +74,11 @@ class UserController extends BaseController
             ->get();
 
         $roles = Role::where('deleted_at', null)->get(['id', 'name']);
+        $roleNames = $roles->pluck('name', 'id');
+        foreach ($users as $listedUser) {
+            $listedUser->setAttribute('role_name', $roleNames->get($listedUser->role_id, ''));
+        }
+
         $warehouses = Warehouse::where('deleted_at', '=', null)->get(['id', 'name']);
         $permissions = Permission::where('deleted_at', null)
             ->orderBy('name')
@@ -141,6 +148,97 @@ class UserController extends BaseController
             'data' => Auth::user()->effectivePermissionNames(),
         ]);
 
+    }
+
+    // ------------- GET UNREAD STOCK TRANSFER NOTIFICATIONS ---------\\
+
+    public function GetTransferNotifications(Request $request)
+    {
+        $user = $request->user('api');
+        $query = $user->unreadNotifications()
+            ->where('type', TransferWorkflowNotification::class);
+
+        $notifications = (clone $query)
+            ->latest()
+            ->limit(25)
+            ->get()
+            ->map(function ($notification) {
+                return [
+                    'id' => $notification->id,
+                    'transfer_id' => (int) ($notification->data['transfer_id'] ?? 0),
+                    'persisted' => true,
+                    'message' => $notification->data['message'] ?? 'Stock transfer update',
+                    'url' => $notification->data['url'] ?? '/app/transfers/list',
+                    'reference' => $notification->data['reference'] ?? null,
+                    'action' => $notification->data['action'] ?? null,
+                    'created_at' => optional($notification->created_at)->toIso8601String(),
+                ];
+            })
+            ->values();
+
+        // Incoming transfers are actionable until receipt. Including them here also
+        // recovers transfers dispatched before a user's database notification existed.
+        $incomingQuery = Transfer::with('from_warehouse:id,name')
+            ->whereNull('deleted_at')
+            ->whereIn('workflow_status', [
+                Transfer::WORKFLOW_DISPATCHED,
+                Transfer::WORKFLOW_IN_TRANSIT,
+                Transfer::WORKFLOW_PARTIALLY_RECEIVED,
+            ]);
+
+        if (! $user->isSuperAdmin() && ! (bool) $user->is_all_warehouses) {
+            $warehouseIds = UserWarehouse::where('user_id', $user->id)->pluck('warehouse_id');
+            $incomingQuery->whereIn('to_warehouse_id', $warehouseIds);
+        }
+
+        if (! $user->isSuperAdmin() && ! $user->effectivePermissionNames()->contains('transfer_view')) {
+            $incomingQuery->whereRaw('1 = 0');
+        }
+
+        $notifiedTransferIds = $notifications->pluck('transfer_id')->filter();
+        $incoming = $incomingQuery
+            ->whereNotIn('id', $notifiedTransferIds)
+            ->latest('dispatched_at')
+            ->limit(25)
+            ->get()
+            ->map(function (Transfer $transfer) {
+                $source = optional($transfer->from_warehouse)->name ?: 'the source warehouse';
+
+                return [
+                    'id' => 'incoming-'.$transfer->id,
+                    'transfer_id' => (int) $transfer->id,
+                    'persisted' => false,
+                    'message' => "Incoming stock transfer {$transfer->Ref} from {$source} is awaiting receipt.",
+                    'url' => '/app/transfers/detail/'.$transfer->id,
+                    'reference' => $transfer->Ref,
+                    'action' => 'incoming',
+                    'created_at' => optional($transfer->dispatched_at ?: $transfer->updated_at)->toIso8601String(),
+                ];
+            });
+
+        $items = $notifications
+            ->concat($incoming)
+            ->sortByDesc('created_at')
+            ->values();
+
+        return response()->json([
+            'notifications' => $items->take(10)->values(),
+            'unread_count' => $items->count(),
+        ]);
+    }
+
+    // ------------- MARK STOCK TRANSFER NOTIFICATION AS READ ---------\\
+
+    public function MarkTransferNotificationRead(Request $request, $id)
+    {
+        $notification = $request->user('api')
+            ->notifications()
+            ->where('type', TransferWorkflowNotification::class)
+            ->findOrFail($id);
+
+        $notification->markAsRead();
+
+        return response()->json(['success' => true]);
     }
 
     // ------------- STORE NEW USER ---------\\

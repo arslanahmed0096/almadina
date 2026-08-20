@@ -83,7 +83,7 @@
           no-caret
         >
           <template slot="button-content">
-            <span class="badge badge-primary" v-if="notifs_alert > 0">1</span>
+            <span class="badge badge-primary" v-if="notificationCount > 0">{{ notificationCount }}</span>
             <lucide-icon name="bell" />
           </template>
           <vue-perfect-scrollbar
@@ -98,6 +98,20 @@
                 <router-link tag="a" to="/app/reports/quantity_alerts">
                   <p>{{ notifs_alert }} {{ $t('ProductQuantityAlerts') }}</p>
                 </router-link>
+              </div>
+            </div>
+            <div
+              class="notification-item"
+              v-for="notification in transfer_notifications"
+              :key="notification.id"
+            >
+              <div class="notif-icon">
+                <lucide-icon class="text-warning" name="truck" />
+              </div>
+              <div class="notif-content">
+                <a href="#" @click.prevent="openTransferNotification(notification)">
+                  <p>{{ notification.message }}</p>
+                </a>
               </div>
             </div>
           </vue-perfect-scrollbar>
@@ -170,6 +184,7 @@ export default {
       isMouseOnMegaMenu: true,
       isMegaMenuOpen: false,
       is_Load:false,
+      notificationRefreshTimer: null,
      
     };
   },
@@ -181,10 +196,15 @@ export default {
       "getSideBarToggleProperties",
       "currentUserPermissions",
       "notifs_alert",
+      "transfer_notifications",
+      "unread_transfer_notifications",
       "show_language",
       "getAvailableLanguages"
     ]),
     ...mapGetters("config", ["getThemeMode"]),
+    notificationCount() {
+      return (this.notifs_alert > 0 ? 1 : 0) + this.unread_transfer_notifications;
+    },
 
   },
 
@@ -194,6 +214,8 @@ export default {
       "changeSecondarySidebarProperties",
       "changeSidebarProperties",
       "logout",
+      "refreshTransferNotifications",
+      "markTransferNotificationRead",
     ]),
     ...mapActions("config", ["changeThemeMode"]),
 
@@ -220,6 +242,13 @@ export default {
 
     logoutUser() {
       this.logout();
+    },
+
+    openTransferNotification(notification) {
+      if (notification.persisted) {
+        this.markTransferNotificationRead(notification.id).catch(() => {});
+      }
+      this.$router.push(notification.url).catch(() => {});
     },
 
     closeMegaMenu() {
@@ -265,11 +294,22 @@ export default {
   },
 
   mounted() {
+    this.refreshTransferNotifications();
+    this.notificationRefreshTimer = window.setInterval(() => {
+      this.refreshTransferNotifications();
+    }, 60000);
+
     // Apply dark theme class on mount if dark mode is enabled
     if (this.getThemeMode.dark) {
       document.body.classList.add('dark-theme');
     } else {
       document.body.classList.remove('dark-theme');
+    }
+  },
+
+  beforeDestroy() {
+    if (this.notificationRefreshTimer) {
+      window.clearInterval(this.notificationRefreshTimer);
     }
   }
 };

@@ -10,6 +10,8 @@ const state = {
     loading: false,
     error: null,
     notifs: 0,
+    transferNotifications: [],
+    unreadTransferNotifications: 0,
     Default_Language: 'en',
     show_language: 1,
     availableLanguages: [],
@@ -24,6 +26,8 @@ const getters = {
     currentUserPermissions: state => state.Permissions,
     loading: state => state.loading,
     notifs_alert: state => state.notifs,
+    transfer_notifications: state => state.transferNotifications,
+    unread_transfer_notifications: state => state.unreadTransferNotifications,
     DefaultLanguage: state => state.Default_Language,
     show_language: state => state.show_language,
     error: state => state.error,
@@ -63,6 +67,16 @@ const mutations = {
 
     Notifs_alert(state, notifs) {
         state.notifs = notifs;
+    },
+    setTransferNotifications(state, payload) {
+        state.transferNotifications = payload.notifications || [];
+        state.unreadTransferNotifications = Number(payload.unread_count || 0);
+    },
+    removeTransferNotification(state, notificationId) {
+        state.transferNotifications = state.transferNotifications.filter(
+            notification => notification.id !== notificationId
+        );
+        state.unreadTransferNotifications = Math.max(0, state.unreadTransferNotifications - 1);
     },
     show_language(state, show_language) {
         state.show_language = show_language;
@@ -126,6 +140,20 @@ const actions = {
             // Don't touch config/themeMode.dark — it's a per-browser
             // preference owned by localStorage, not the auth flow.
         }
+    },
+
+    async refreshTransferNotifications({ commit }) {
+        try {
+            const response = await axios.get("transfer_notifications");
+            commit('setTransferNotifications', response.data || {});
+        } catch (error) {
+            commit('setTransferNotifications', {});
+        }
+    },
+
+    async markTransferNotificationRead({ commit }, notificationId) {
+        await axios.put(`transfer_notifications/${notificationId}/read`);
+        commit('removeTransferNotification', notificationId);
     },
 
      async loadAvailableLanguages({ commit }) {

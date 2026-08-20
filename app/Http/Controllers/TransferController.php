@@ -4,15 +4,18 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\ProcessStockTransferRequest;
 use App\Http\Requests\ReceiveStockTransferRequest;
+use App\Http\Requests\ReceiveTransferReturnRequest;
 use App\Http\Requests\StoreStockTransferRequest;
 use App\Http\Requests\TransferActionRequest;
 use App\Models\Product;
+use App\Models\Employee;
 use App\Models\product_warehouse;
 use App\Models\ProductVariant;
 use App\Models\Role;
 use App\Models\Setting;
 use App\Models\Transfer;
 use App\Models\TransferDetail;
+use App\Models\TransferReturn;
 use App\Models\Unit;
 use App\Models\User;
 use App\Models\UserWarehouse;
@@ -60,7 +63,8 @@ class TransferController extends BaseController
 
         // Transfer visibility is warehouse-scoped. Source approvers must be able to
         // see incoming requests even when they did not create them.
-        $transfers = Transfer::with('from_warehouse', 'to_warehouse')
+        $transfers = Transfer::with('from_warehouse', 'to_warehouse', 'driver')
+            ->withSum('details as total_quantity', 'quantity')
             ->where('deleted_at', '=', null);
 
             // ✅ Restrict by warehouses (from OR to)
@@ -117,9 +121,13 @@ class TransferController extends BaseController
             $item['items'] = $transfer->items;
             $item['statut'] = $transfer->statut;
             $item['approval_status'] = $transfer->approval_status;
+            $item['transfer_type'] = $transfer->transfer_type ?: 'direct_transfer';
             $item['workflow_status'] = $transfer->workflow_status ?: $transfer->statut;
             $item['response_note'] = $transfer->response_note;
             $item['requested_by'] = $transfer->user_id;
+            $item['driver'] = $transfer->driver ? trim($transfer->driver->firstname . ' ' . $transfer->driver->lastname) : null;
+            $item['dispatched_at'] = optional($transfer->dispatched_at)->toDateTimeString();
+            $item['total_quantity'] = (float) ($transfer->total_quantity ?? 0);
             $data[] = $item;
         }
 
@@ -142,10 +150,40 @@ class TransferController extends BaseController
         $this->authorizeForUser($request->user('api'), 'create', Transfer::class);
 
         $validated = $request->validated();
+        $action = $validated['transfer']['action'] ?? 'draft';
+        $transferType = $validated['transfer']['transfer_type'];
+        if ($action === 'dispatch' && $transferType !== 'direct_transfer') {
+            throw \Illuminate\Validation\ValidationException::withMessages(['transfer.action' => ['A destination request must be submitted for approval, not dispatched directly.']]);
+        }
+        if ($action === 'request' && $transferType !== 'destination_request') {
+            throw \Illuminate\Validation\ValidationException::withMessages(['transfer.action' => ['A direct transfer does not require a stock request approval.']]);
+        }
+        if ($action === 'dispatch') {
+            $this->authorizeForUser($request->user('api'), 'dispatch', Transfer::class);
+        }
 
         $this->assertProductsSelectable($request->user('api'), $request->input('details', []));
+        $serializedProducts = Product::whereIn('id', collect($validated['details'])->pluck('product_id'))->pluck('is_imei', 'id');
+        $allIdentifiers = [];
+        foreach ($validated['details'] as $index => $detail) {
+            if (! $serializedProducts->get((int) $detail['product_id'])) continue;
+            $quantity = (float) $detail['quantity'];
+            $identifiers = array_values(array_filter(array_map('trim', $detail['identifiers'] ?? [])));
+            if (floor($quantity) !== $quantity || count($identifiers) !== (int) $quantity) {
+                throw \Illuminate\Validation\ValidationException::withMessages(["details.{$index}.identifiers" => ['Enter one unique serial/IMEI number for each unit.']]);
+            }
+            foreach ($identifiers as $identifier) {
+                $key = mb_strtolower($identifier);
+                if (isset($allIdentifiers[$key])) throw \Illuminate\Validation\ValidationException::withMessages(["details.{$index}.identifiers" => ["Duplicate serial/IMEI number: {$identifier}"]]);
+                $allIdentifiers[$key] = true;
+            }
+            $validated['details'][$index]['identifiers'] = $identifiers;
+        }
         $workflow = app(StockTransferWorkflowService::class);
-        $workflow->assertWarehouseAccess($request->user('api'), (int) $validated['transfer']['from_warehouse'], 'request');
+        $accessWarehouseId = $transferType === 'destination_request'
+            ? (int) $validated['transfer']['to_warehouse']
+            : (int) $validated['transfer']['from_warehouse'];
+        $workflow->assertWarehouseAccess($request->user('api'), $accessWarehouseId, $transferType === 'destination_request' ? 'request stock' : 'transfer stock');
 
         $createdTransfer = \DB::transaction(function () use ($request, $validated) {
             $order = new Transfer;
@@ -156,18 +194,25 @@ class TransferController extends BaseController
             $order->from_warehouse_id = $validated['transfer']['from_warehouse'];
             $order->to_warehouse_id = $validated['transfer']['to_warehouse'];
             $order->required_date = $validated['transfer']['required_date'] ?? null;
+            $order->transfer_type = $validated['transfer']['transfer_type'];
             $order->items = count($validated['details']);
             $order->tax_rate = (float) $request->input('transfer.tax_rate', 0);
             $order->TaxNet = (float) $request->input('transfer.TaxNet', 0);
             $order->discount = (float) $request->input('transfer.discount', 0);
             $order->shipping = (float) $request->input('transfer.shipping', 0);
             $order->statut = 'pending';
-            $order->notes = $validated['transfer']['notes'];
-            $order->request_note = $validated['transfer']['notes'];
+            $order->notes = $validated['transfer']['notes'] ?? null;
+            $order->request_note = $validated['transfer']['notes'] ?? null;
             $order->GrandTotal = (float) ($validated['GrandTotal'] ?? 0);
             $order->user_id = Auth::user()->id;
-            $order->approval_status = 'pending';
-            $order->workflow_status = Transfer::WORKFLOW_PENDING_APPROVAL;
+            $order->driver_id = $validated['transfer']['driver_id'] ?? null;
+            $order->vehicle_details = $validated['transfer']['vehicle_details'] ?? null;
+            $order->approval_status = ($validated['transfer']['action'] ?? 'draft') === 'request'
+                ? 'pending'
+                : ($validated['transfer']['transfer_type'] === 'destination_request' ? 'draft' : 'not_required');
+            $order->workflow_status = ($validated['transfer']['action'] ?? 'draft') === 'request'
+                ? Transfer::WORKFLOW_PENDING_APPROVAL
+                : Transfer::WORKFLOW_DRAFT;
             $order->requested_at = now();
             $order->save();
 
@@ -189,14 +234,29 @@ class TransferController extends BaseController
                     'discount_method' => $value['discount_Method'] ?? '1',
                     'total' => (float) ($value['subtotal'] ?? 0),
                     'requested_batches' => $value['batches'] ?? null,
+                    'identifiers' => $value['identifiers'] ?? null,
                 ]);
             }
 
             return $order;
         }, 10);
 
-        $workflow->record($createdTransfer, $request->user('api'), null, Transfer::WORKFLOW_PENDING_APPROVAL, 'request_submitted', $createdTransfer->request_note, [], (int) $createdTransfer->to_warehouse_id);
-        $workflow->notifyNewRequest($createdTransfer);
+        if ($action === 'request') {
+            $workflow->record($createdTransfer, $request->user('api'), null, Transfer::WORKFLOW_PENDING_APPROVAL, 'request_submitted', $createdTransfer->request_note, ['transfer_type' => $transferType], (int) $createdTransfer->to_warehouse_id);
+            $workflow->notifyNewRequest($createdTransfer);
+        } else {
+            $workflow->record($createdTransfer, $request->user('api'), null, Transfer::WORKFLOW_DRAFT, 'transfer_created', $createdTransfer->request_note, ['transfer_type' => $transferType], (int) $createdTransfer->from_warehouse_id);
+        }
+
+        if ($action === 'dispatch') {
+            $createdTransfer = $workflow->dispatchOutbound(
+                $createdTransfer,
+                $request->user('api'),
+                (int) $validated['transfer']['driver_id'],
+                $createdTransfer->request_note,
+                $validated['transfer']['vehicle_details'] ?? null
+            );
+        }
 
         return response()->json(['success' => true, 'id' => $createdTransfer->id]);
     }
@@ -211,7 +271,50 @@ class TransferController extends BaseController
         request()->validate([
             'transfer.to_warehouse' => 'required',
             'transfer.from_warehouse' => 'required',
+            'transfer.transfer_type' => 'required|in:direct_transfer,destination_request',
+            'transfer.notes' => 'nullable|required_if:transfer.transfer_type,destination_request|string|max:5000',
+            'transfer.action' => 'nullable|in:draft,dispatch,request',
+            'transfer.driver_id' => 'nullable|integer|exists:employees,id',
+            'transfer.vehicle_details' => 'nullable|string|max:191',
+            'details' => 'required|array|min:1',
+            'details.*.product_id' => 'required|integer|exists:products,id',
+            'details.*.quantity' => 'required|numeric|gt:0',
+            'details.*.identifiers' => 'nullable|array',
+            'details.*.identifiers.*' => 'string|max:191',
         ]);
+
+        $requestedAction = $request->input('transfer.action', 'draft');
+        $requestedType = $request->input('transfer.transfer_type');
+        if ($requestedAction === 'dispatch') {
+            $this->authorizeForUser($request->user('api'), 'dispatch', Transfer::class);
+            if ($requestedType !== 'direct_transfer') throw \Illuminate\Validation\ValidationException::withMessages(['transfer.action' => ['A destination request cannot be dispatched before approval.']]);
+            if (! $request->input('transfer.driver_id')) throw \Illuminate\Validation\ValidationException::withMessages(['transfer.driver_id' => ['Select an active driver before dispatch.']]);
+        } elseif ($requestedAction === 'request' && $requestedType !== 'destination_request') {
+            throw \Illuminate\Validation\ValidationException::withMessages(['transfer.action' => ['Only a destination request can be submitted for approval.']]);
+        } elseif ($requestedAction === 'request') {
+            $this->authorizeForUser($request->user('api'), 'create', Transfer::class);
+        }
+        app(StockTransferWorkflowService::class)->assertWarehouseAccess(
+            $request->user('api'),
+            (int) $request->input($requestedType === 'destination_request' ? 'transfer.to_warehouse' : 'transfer.from_warehouse'),
+            $requestedType === 'destination_request' ? 'edit this destination request' : 'edit this direct transfer'
+        );
+
+        $serializedProducts = Product::whereIn('id', collect($request->input('details', []))->pluck('product_id'))->pluck('is_imei', 'id');
+        $seenIdentifiers = [];
+        foreach ($request->input('details', []) as $index => $detail) {
+            if (! $serializedProducts->get((int) $detail['product_id'])) continue;
+            $quantity = (float) $detail['quantity'];
+            $identifiers = array_values(array_filter(array_map('trim', $detail['identifiers'] ?? [])));
+            if (floor($quantity) !== $quantity || count($identifiers) !== (int) $quantity) {
+                throw \Illuminate\Validation\ValidationException::withMessages(["details.{$index}.identifiers" => ['Enter one unique serial/IMEI number for each unit.']]);
+            }
+            foreach ($identifiers as $identifier) {
+                $key = mb_strtolower($identifier);
+                if (isset($seenIdentifiers[$key])) throw \Illuminate\Validation\ValidationException::withMessages(["details.{$index}.identifiers" => ["Duplicate serial/IMEI number: {$identifier}"]]);
+                $seenIdentifiers[$key] = true;
+            }
+        }
 
         \DB::transaction(function () use ($request, $id) {
             $user = Auth::user();
@@ -219,6 +322,10 @@ class TransferController extends BaseController
             // Backward compatibility: If record_view is null, fall back to role permission check
             $view_records = $user->hasRecordView();
             $current_Transfer = Transfer::findOrFail($id);
+            if ($current_Transfer->histories()->where('action', 'transfer_created')->exists()
+                && $current_Transfer->workflow_status !== Transfer::WORKFLOW_DRAFT) {
+                abort(422, 'Only draft transfers can be edited.');
+            }
             if ($current_Transfer->histories()->where('action', 'request_submitted')->exists()) {
                 abort(422, 'Submitted stock requests cannot be edited. Create a new request if quantities must change.');
             }
@@ -484,6 +591,10 @@ class TransferController extends BaseController
 
                     $TransDetail['transfer_id'] = $id;
                     $TransDetail['quantity'] = $product_detail['quantity'];
+                    $TransDetail['requested_quantity'] = $product_detail['quantity'];
+                    $TransDetail['approved_quantity'] = 0;
+                    $TransDetail['dispatched_quantity'] = 0;
+                    $TransDetail['received_quantity'] = 0;
                     $TransDetail['purchase_unit_id'] = $product_detail['purchase_unit_id'];
                     $TransDetail['product_id'] = $product_detail['product_id'];
                     $TransDetail['product_variant_id'] = $product_detail['product_variant_id'];
@@ -493,6 +604,8 @@ class TransferController extends BaseController
                     $TransDetail['discount'] = $product_detail['discount'];
                     $TransDetail['discount_method'] = $product_detail['discount_Method'];
                     $TransDetail['total'] = $product_detail['subtotal'];
+                    $TransDetail['requested_batches'] = $product_detail['batches'] ?? null;
+                    $TransDetail['identifiers'] = $product_detail['identifiers'] ?? null;
 
                     if (! in_array($product_detail['id'], $old_products_id)) {
                         $persistedDetail = TransferDetail::Create($TransDetail);
@@ -508,7 +621,15 @@ class TransferController extends BaseController
                 'to_warehouse_id' => $Trans['to_warehouse'],
                 'from_warehouse_id' => $Trans['from_warehouse'],
                 'date' => $Trans['date'],
-                'notes' => $Trans['notes'],
+                'notes' => $Trans['notes'] ?? null,
+                'request_note' => $Trans['notes'] ?? null,
+                'transfer_type' => $Trans['transfer_type'],
+                'required_date' => $Trans['required_date'] ?? null,
+                'driver_id' => $Trans['driver_id'] ?? null,
+                'vehicle_details' => $Trans['vehicle_details'] ?? null,
+                'approval_status' => ($Trans['action'] ?? 'draft') === 'draft'
+                    ? ($Trans['transfer_type'] === 'destination_request' ? 'draft' : 'not_required')
+                    : $current_Transfer->approval_status,
                 'statut' => $Trans['statut'],
                 'items' => count($request['details']),
                 'tax_rate' => $Trans['tax_rate'] ? $Trans['tax_rate'] : 0,
@@ -541,7 +662,14 @@ class TransferController extends BaseController
 
         }, 10);
 
-        return response()->json(['success' => true]);
+        $updated = Transfer::whereNull('deleted_at')->findOrFail($id);
+        if ($requestedAction === 'dispatch') {
+            $updated = app(StockTransferWorkflowService::class)->dispatchOutbound($updated, $request->user('api'), (int) $updated->driver_id, $updated->request_note, $updated->vehicle_details);
+        } elseif ($requestedAction === 'request') {
+            $updated = app(StockTransferWorkflowService::class)->submitDestinationRequest($updated, $request->user('api'));
+        }
+
+        return response()->json(['success' => true, 'transfer' => $updated]);
     }
 
     // ------------ Delete Transfer -----------\\
@@ -992,8 +1120,12 @@ class TransferController extends BaseController
         }
 
         $transfer['statut'] = $Transfer_data->statut;
+        $transfer['transfer_type'] = $Transfer_data->transfer_type ?: 'direct_transfer';
         $transfer['notes'] = $Transfer_data->notes;
         $transfer['date'] = $Transfer_data->date;
+        $transfer['required_date'] = optional($Transfer_data->required_date)->format('Y-m-d');
+        $transfer['driver_id'] = $Transfer_data->driver_id;
+        $transfer['vehicle_details'] = $Transfer_data->vehicle_details;
         $transfer['tax_rate'] = $Transfer_data->tax_rate;
         $transfer['TaxNet'] = $Transfer_data->TaxNet;
         $transfer['discount'] = $Transfer_data->discount;
@@ -1091,6 +1223,8 @@ class TransferController extends BaseController
             }
 
             $data['is_batch_tracked'] = (bool) ($detail['product']['is_batch_tracked'] ?? false);
+            $data['is_imei'] = (bool) ($detail['product']['is_imei'] ?? false);
+            $data['identifiers_text'] = implode("\n", $detail->identifiers ?: []);
             // The picker stores selected source batches under product_batch_id; we map
             // the saved pivot rows to that shape so the picker UI re-hydrates correctly.
             $existingBatches = $batchesByDetail[(int) $detail->id] ?? [];
@@ -1141,12 +1275,19 @@ class TransferController extends BaseController
         }
 
         $to_warehouses = Warehouse::where('deleted_at', '=', null)->get(['id', 'name']);
+        $editAssignedWarehouseIds = UserWarehouse::where('user_id', $user_auth->id)->pluck('warehouse_id');
+        $editAssignedWarehouseId = ! $user_auth->is_all_warehouses && $editAssignedWarehouseIds->count() === 1
+            ? (int) $editAssignedWarehouseIds->first()
+            : null;
 
         return response()->json([
             'details' => $details,
             'transfer' => $transfer,
             'warehouses' => $warehouses,
             'to_warehouses' => $to_warehouses,
+            'drivers' => $this->activeDrivers(),
+            'assigned_source_warehouse_id' => $editAssignedWarehouseId,
+            'source_locked' => $editAssignedWarehouseId !== null,
         ]);
     }
 
@@ -1160,7 +1301,9 @@ class TransferController extends BaseController
         $user = Auth::user();
         $Transfer_data = Transfer::with([
             'details.product.unit', 'from_warehouse', 'to_warehouse', 'requester', 'processor',
-            'acknowledger', 'histories.performer',
+            'acknowledger', 'driver', 'histories.performer', 'transferReturn.details.product', 'transferReturn.driver',
+            'transferReturn.fromWarehouse', 'transferReturn.toWarehouse',
+            'stockMovements.warehouse',
         ])
             ->where('deleted_at', '=', null)
             ->findOrFail($id);
@@ -1179,6 +1322,7 @@ class TransferController extends BaseController
         $transfer['statut'] = $Transfer_data->statut;
         $transfer['approval_status'] = $Transfer_data->approval_status;
         $transfer['workflow_status'] = $Transfer_data->workflow_status ?: $Transfer_data->statut;
+        $transfer['transfer_type'] = $Transfer_data->transfer_type ?: 'direct_transfer';
         $transfer['request_note'] = $Transfer_data->request_note ?: $Transfer_data->notes;
         $transfer['response_note'] = $Transfer_data->response_note;
         $transfer['acknowledgement_note'] = $Transfer_data->acknowledgement_note;
@@ -1190,6 +1334,15 @@ class TransferController extends BaseController
         $transfer['acknowledged_at'] = optional($Transfer_data->acknowledged_at)->toDateTimeString();
         $transfer['dispatched_at'] = optional($Transfer_data->dispatched_at)->toDateTimeString();
         $transfer['received_at'] = optional($Transfer_data->received_at)->toDateTimeString();
+        $transfer['dispatch_note'] = $Transfer_data->dispatch_note;
+        $transfer['receiving_note'] = $Transfer_data->receiving_note;
+        $transfer['vehicle_details'] = $Transfer_data->vehicle_details;
+        $transfer['driver'] = $Transfer_data->driver ? [
+            'id' => $Transfer_data->driver->id,
+            'name' => trim($Transfer_data->driver->firstname . ' ' . $Transfer_data->driver->lastname),
+            'phone' => $Transfer_data->driver->phone,
+            'employee_code' => 'EMP-' . str_pad((string) $Transfer_data->driver->id, 4, '0', STR_PAD_LEFT),
+        ] : null;
         if ($canViewTransferPrice) {
             $transfer['GrandTotal'] = $Transfer_data->GrandTotal;
         }
@@ -1228,6 +1381,11 @@ class TransferController extends BaseController
             $data['unapproved_quantity'] = max(0, $data['requested_quantity'] - $data['approved_quantity']);
             $data['dispatched_quantity'] = (float) $detail->dispatched_quantity;
             $data['received_quantity'] = (float) $detail->received_quantity;
+            $data['accepted_quantity'] = (float) $detail->accepted_quantity;
+            $data['rejected_quantity'] = (float) $detail->rejected_quantity;
+            $data['rejection_reason_code'] = $detail->rejection_reason_code;
+            $data['rejection_note'] = $detail->rejection_note;
+            $data['identifiers'] = $detail->identifiers ?: [];
             $data['decision_status'] = $detail->decision_status;
             $data['response_reason'] = $detail->response_reason;
             $stock = $availability[(int) $detail->id] ?? ['on_hand' => 0, 'reserved' => 0, 'transferable' => 0];
@@ -1255,7 +1413,7 @@ class TransferController extends BaseController
         return response()->json([
             'details' => $details,
             'transfer' => $transfer,
-            'history' => $Transfer_data->histories->map(function ($history) {
+            'history' => ($this->userHasAnyPermission($user, ['transfer_history']) ? $Transfer_data->histories : collect())->map(function ($history) {
                 return [
                     'id' => $history->id,
                     'action' => $history->action,
@@ -1267,6 +1425,36 @@ class TransferController extends BaseController
                     'created_at' => optional($history->created_at)->toDateTimeString(),
                 ];
             })->values(),
+            'return' => $Transfer_data->transferReturn ? [
+                'id' => $Transfer_data->transferReturn->id,
+                'reference' => $Transfer_data->transferReturn->reference,
+                'status' => $Transfer_data->transferReturn->status,
+                'note' => $Transfer_data->transferReturn->note,
+                'driver' => $Transfer_data->transferReturn->driver ? trim($Transfer_data->transferReturn->driver->firstname . ' ' . $Transfer_data->transferReturn->driver->lastname) : null,
+                'driver_phone' => optional($Transfer_data->transferReturn->driver)->phone,
+                'driver_code' => $Transfer_data->transferReturn->driver ? 'EMP-' . str_pad((string) $Transfer_data->transferReturn->driver->id, 4, '0', STR_PAD_LEFT) : null,
+                'from_warehouse' => optional($Transfer_data->transferReturn->fromWarehouse)->name,
+                'to_warehouse' => optional($Transfer_data->transferReturn->toWarehouse)->name,
+                'vehicle_details' => $Transfer_data->transferReturn->vehicle_details,
+                'created_at' => optional($Transfer_data->transferReturn->created_at)->toDateTimeString(),
+                'dispatched_at' => optional($Transfer_data->transferReturn->dispatched_at)->toDateTimeString(),
+                'received_at' => optional($Transfer_data->transferReturn->received_at)->toDateTimeString(),
+                'details' => $Transfer_data->transferReturn->details->map(fn ($row) => [
+                    'id' => $row->id, 'product' => optional($row->product)->name,
+                    'code' => optional($row->product)->code,
+                     'quantity' => (float) $row->quantity, 'reason_code' => $row->reason_code,
+                     'reason_note' => $row->reason_note, 'received_condition' => $row->received_condition,
+                     'identifiers' => $row->identifiers ?: [],
+                ])->values(),
+            ] : null,
+            'movements' => ($this->userHasAnyPermission($user, ['transfer_history']) ? $Transfer_data->stockMovements : collect())->map(fn ($movement) => [
+                'id' => $movement->id, 'reference' => $movement->reference,
+                'movement_type' => $movement->movement_type, 'stock_state' => $movement->stock_state,
+                'quantity' => (float) $movement->quantity, 'warehouse_id' => $movement->warehouse_id,
+                'warehouse' => optional($movement->warehouse)->name,
+                'created_at' => optional($movement->created_at)->toDateTimeString(),
+            ])->values(),
+            'drivers' => $this->activeDrivers(),
             'actions' => [
                 'can_process' => $this->userHasAnyPermission($user, ['transfer_approve', 'transfer_partial_approve', 'transfer_decline'])
                     && $Transfer_data->workflow_status === Transfer::WORKFLOW_PENDING_APPROVAL
@@ -1276,12 +1464,27 @@ class TransferController extends BaseController
                     && $Transfer_data->workflow_status === Transfer::WORKFLOW_PENDING_ACKNOWLEDGEMENT
                     && $this->userHasWarehouse($user, (int) $Transfer_data->to_warehouse_id),
                 'can_dispatch' => $this->userHasAnyPermission($user, ['transfer_dispatch'])
-                    && in_array($Transfer_data->workflow_status, [Transfer::WORKFLOW_ACKNOWLEDGED, Transfer::WORKFLOW_READY_FOR_DISPATCH], true)
-                    && in_array($Transfer_data->approval_status, ['approved', 'partially_approved'], true)
+                    && in_array($Transfer_data->workflow_status, [Transfer::WORKFLOW_DRAFT, Transfer::WORKFLOW_ACKNOWLEDGED, Transfer::WORKFLOW_READY_FOR_DISPATCH], true)
+                    && ($Transfer_data->transfer_type !== 'destination_request' || $Transfer_data->workflow_status !== Transfer::WORKFLOW_DRAFT)
                     && $this->userHasWarehouse($user, (int) $Transfer_data->from_warehouse_id),
                 'can_receive' => $this->userHasAnyPermission($user, ['transfer_receive'])
-                    && in_array($Transfer_data->workflow_status, [Transfer::WORKFLOW_DISPATCHED, Transfer::WORKFLOW_PARTIALLY_RECEIVED], true)
+                    && in_array($Transfer_data->workflow_status, [Transfer::WORKFLOW_IN_TRANSIT, Transfer::WORKFLOW_DISPATCHED], true)
                     && $this->userHasWarehouse($user, (int) $Transfer_data->to_warehouse_id),
+                'can_dispatch_return' => $Transfer_data->transferReturn
+                    && $this->userHasAnyPermission($user, ['transfer_return_dispatch'])
+                    && in_array($Transfer_data->transferReturn->status, [TransferReturn::PENDING, TransferReturn::READY], true)
+                    && $this->userHasWarehouse($user, (int) $Transfer_data->transferReturn->from_warehouse_id),
+                'can_receive_return' => $Transfer_data->transferReturn
+                    && $this->userHasAnyPermission($user, ['transfer_return_receive'])
+                    && $Transfer_data->transferReturn->status === TransferReturn::IN_TRANSIT
+                    && $this->userHasWarehouse($user, (int) $Transfer_data->transferReturn->to_warehouse_id),
+                'can_cancel' => $this->userHasAnyPermission($user, ['transfer_cancel'])
+                    && in_array($Transfer_data->workflow_status, [
+                        Transfer::WORKFLOW_DRAFT, Transfer::WORKFLOW_PENDING_APPROVAL,
+                        Transfer::WORKFLOW_PENDING_ACKNOWLEDGEMENT, Transfer::WORKFLOW_ACKNOWLEDGED,
+                        Transfer::WORKFLOW_READY_FOR_DISPATCH,
+                    ], true)
+                    && $this->userHasWarehouse($user, (int) $Transfer_data->from_warehouse_id),
             ],
             'can_view_transfer_price' => $canViewTransferPrice,
         ]);
@@ -1318,6 +1521,19 @@ class TransferController extends BaseController
             || $user->effectivePermissionNames()->intersect($permissions)->isNotEmpty();
     }
 
+    private function activeDrivers()
+    {
+        return Employee::whereNull('deleted_at')->whereNull('leaving_date')
+            ->whereHas('designation', fn ($query) => $query->whereRaw('LOWER(designation) = ?', ['driver']))
+            ->orderBy('firstname')->get(['id', 'firstname', 'lastname', 'phone'])
+            ->map(fn ($driver) => [
+                'id' => $driver->id,
+                'name' => trim($driver->firstname . ' ' . $driver->lastname),
+                'phone' => $driver->phone,
+                'employee_code' => 'EMP-' . str_pad((string) $driver->id, 4, '0', STR_PAD_LEFT),
+            ])->values();
+    }
+
     // ---------------- Show Form Create Transfer ---------------\\
 
     public function create(Request $request)
@@ -1351,11 +1567,25 @@ class TransferController extends BaseController
             ->orderBy('name')
             ->get(['id', 'name']);
 
+        $drivers = Employee::with('designation:id,designation')
+            ->whereNull('deleted_at')
+            ->whereNull('leaving_date')
+            ->whereHas('designation', fn ($query) => $query->whereRaw('LOWER(designation) = ?', ['driver']))
+            ->orderBy('firstname')
+            ->get(['id', 'firstname', 'lastname', 'phone', 'designation_id'])
+            ->map(fn ($driver) => [
+                'id' => $driver->id,
+                'name' => trim($driver->firstname . ' ' . $driver->lastname),
+                'phone' => $driver->phone,
+                'employee_code' => 'EMP-' . str_pad((string) $driver->id, 4, '0', STR_PAD_LEFT),
+            ])->values();
+
         return response()->json([
             'warehouses' => $warehouses,
             'to_warehouses' => $to_warehouses,
             'assigned_source_warehouse_id' => $assignedSourceWarehouseId,
             'source_locked' => $sourceLocked,
+            'drivers' => $drivers,
         ]);
     }
 
@@ -1468,7 +1698,10 @@ class TransferController extends BaseController
         $validated = $request->validated();
         $transfer = Transfer::whereNull('deleted_at')->findOrFail($id);
         $this->assertTransferAccessible($request->user('api'), $transfer);
-        $result = $workflow->dispatch($transfer, $request->user('api'), $validated['note'] ?? null);
+        if (empty($validated['driver_id'])) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['driver_id' => ['Select an active driver before dispatch.']]);
+        }
+        $result = $workflow->dispatchOutbound($transfer, $request->user('api'), (int) $validated['driver_id'], $validated['note'] ?? null, $validated['vehicle_details'] ?? null);
 
         return response()->json(['success' => true, 'transfer' => $result]);
     }
@@ -1479,9 +1712,38 @@ class TransferController extends BaseController
         $validated = $request->validated();
         $transfer = Transfer::whereNull('deleted_at')->findOrFail($id);
         $this->assertTransferAccessible($request->user('api'), $transfer);
-        $result = $workflow->receive($transfer, $request->user('api'), $validated['items'], $validated['note'] ?? null);
+        $result = $workflow->receiveDelivery($transfer, $request->user('api'), $validated['items'], $validated['note'] ?? null, $validated['return_note'] ?? null);
 
         return response()->json(['success' => true, 'transfer' => $result]);
+    }
+
+    public function dispatchReturn(TransferActionRequest $request, $id, StockTransferWorkflowService $workflow)
+    {
+        $this->authorizeForUser($request->user('api'), 'dispatchReturn', Transfer::class);
+        $validated = $request->validated();
+        if (empty($validated['driver_id'])) throw \Illuminate\Validation\ValidationException::withMessages(['driver_id' => ['Select an active return driver.']]);
+        $return = TransferReturn::with('transfer')->findOrFail($id);
+        $this->assertTransferAccessible($request->user('api'), $return->transfer);
+        return response()->json(['success' => true, 'return' => $workflow->dispatchReturn($return, $request->user('api'), (int) $validated['driver_id'], $validated['note'] ?? null, $validated['vehicle_details'] ?? null)]);
+    }
+
+    public function receiveReturn(ReceiveTransferReturnRequest $request, $id, StockTransferWorkflowService $workflow)
+    {
+        $this->authorizeForUser($request->user('api'), 'receiveReturn', Transfer::class);
+        $validated = $request->validated();
+        $return = TransferReturn::with('transfer')->findOrFail($id);
+        $this->assertTransferAccessible($request->user('api'), $return->transfer);
+        return response()->json(['success' => true, 'return' => $workflow->receiveReturn($return, $request->user('api'), $validated['items'], $validated['note'] ?? null)]);
+    }
+
+    public function cancelTransfer(TransferActionRequest $request, $id, StockTransferWorkflowService $workflow)
+    {
+        $this->authorizeForUser($request->user('api'), 'cancel', Transfer::class);
+        $validated = $request->validated();
+        $transfer = Transfer::whereNull('deleted_at')->findOrFail($id);
+        $this->assertTransferAccessible($request->user('api'), $transfer);
+
+        return response()->json(['success' => true, 'transfer' => $workflow->cancelTransfer($transfer, $request->user('api'), (string) ($validated['note'] ?? ''))]);
     }
 
     /**

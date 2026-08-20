@@ -3785,7 +3785,14 @@ export default {
         { value: 'transfer_decline', label: 'Decline Request' },
         { value: 'transfer_acknowledge', label: 'Acknowledge Response' },
         { value: 'transfer_dispatch', label: 'Dispatch Stock' },
-        { value: 'transfer_receive', label: 'Receive Stock' }
+        { value: 'transfer_receive', label: 'Receive Stock' },
+        { value: 'transfer_partial_receive', label: 'Partially Receive Stock' },
+        { value: 'transfer_reject_items', label: 'Reject Items' },
+        { value: 'transfer_return_create', label: 'Create Rejected Stock Return' },
+        { value: 'transfer_return_dispatch', label: 'Dispatch Return' },
+        { value: 'transfer_return_receive', label: 'Receive Return' },
+        { value: 'transfer_cancel', label: 'Cancel Transfer' },
+        { value: 'transfer_history', label: 'View Transfer History' }
       ],
       role: {
         name: "",

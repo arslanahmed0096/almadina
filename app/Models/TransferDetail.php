@@ -13,6 +13,8 @@ class TransferDetail extends Model
         'cost', 'TaxNet', 'discount', 'discount_method', 'tax_method',
         'requested_quantity', 'approved_quantity', 'dispatched_quantity', 'received_quantity',
         'decision_status', 'response_reason', 'requested_batches',
+        'accepted_quantity', 'rejected_quantity', 'rejection_reason_code', 'rejection_note',
+        'rejected_by', 'rejected_at', 'identifiers',
     ];
 
     protected $casts = [
@@ -30,6 +32,10 @@ class TransferDetail extends Model
         'dispatched_quantity' => 'double',
         'received_quantity' => 'double',
         'requested_batches' => 'array',
+        'accepted_quantity' => 'double',
+        'rejected_quantity' => 'double',
+        'rejected_at' => 'datetime',
+        'identifiers' => 'array',
     ];
 
     public function transfer()

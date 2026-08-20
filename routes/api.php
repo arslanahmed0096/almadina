@@ -851,12 +851,17 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
     Route::post('transfers/{id}/acknowledge', 'TransferController@acknowledge');
     Route::post('transfers/{id}/dispatch', 'TransferController@dispatchTransfer');
     Route::post('transfers/{id}/receive', 'TransferController@receive');
+    Route::post('transfers/{id}/cancel', 'TransferController@cancelTransfer');
+    Route::post('transfer-returns/{id}/dispatch', 'TransferController@dispatchReturn');
+    Route::post('transfer-returns/{id}/receive', 'TransferController@receiveReturn');
     Route::get('batches_for_transfer/{product_id}/{warehouse_id}/{variant_id?}', 'TransferController@batches_for_transfer');
 
     // ------------------------------- Users --------------------------\\
     // ------------------------------------------------------------------\\
 
     Route::get('get_user_auth', 'UserController@GetUserAuth');
+    Route::get('transfer_notifications', 'UserController@GetTransferNotifications');
+    Route::put('transfer_notifications/{id}/read', 'UserController@MarkTransferNotificationRead');
     Route::get('users_list_for_select', 'UserController@listForSelect');
     Route::resource('users', 'UserController');
     Route::put('users_switch_activated/{id}', 'UserController@IsActivated');

@@ -4,11 +4,21 @@
     <div v-if="isLoading" class="loading_page spinner spinner-primary mr-3"></div>
 
     <validation-observer ref="Edit_transfer" v-if="!isLoading">
-      <b-form @submit.prevent="Submit_Transfer">
+      <b-form @submit.prevent="Submit_Transfer('draft')">
         <b-row>
           <b-col lg="12" md="12" sm="12">
             <b-card>
               <b-row>
+
+                <b-col md="12" class="mb-3">
+                  <b-form-group label="Transfer Type *">
+                    <b-form-radio-group v-model="transfer.transfer_type" @change="onTransferTypeChanged">
+                      <b-form-radio value="direct_transfer">Transfer by this branch</b-form-radio>
+                      <b-form-radio value="destination_request">Request from destination branch</b-form-radio>
+                    </b-form-radio-group>
+                    <small class="text-muted">Destination requests require a note and source-warehouse approval.</small>
+                  </b-form-group>
+                </b-col>
 
                 <b-modal hide-footer id="open_scan" size="md" title="Barcode Scanner">
                   <qrcode-scanner
@@ -39,6 +49,17 @@
                     </b-form-group>
                   </validation-provider>
                 </b-col>
+                <b-col v-if="transfer.transfer_type === 'direct_transfer'" lg="4" md="4" sm="12" class="mb-3">
+                  <b-form-group label="Driver">
+                    <v-select v-model="transfer.driver_id" :reduce="option => option.value" placeholder="Choose active driver" :options="drivers.map(driver => ({ label: driver.name + (driver.phone ? ' - ' + driver.phone : ''), value: driver.id }))" />
+                  </b-form-group>
+                </b-col>
+                <b-col v-if="transfer.transfer_type === 'direct_transfer'" lg="4" md="4" sm="12" class="mb-3">
+                  <b-form-group label="Vehicle details (optional)"><b-form-input v-model.trim="transfer.vehicle_details" maxlength="191"></b-form-input></b-form-group>
+                </b-col>
+                <b-col lg="4" md="4" sm="12" class="mb-3">
+                  <b-form-group label="Required Date (optional)"><b-form-input type="date" v-model="transfer.required_date"></b-form-input></b-form-group>
+                </b-col>
                 <!-- From warehouse -->
                 <b-col lg="4" md="4" sm="12" class="mb-3">
                   <validation-provider name="From Warehouse" :rules="{ required: true}">
@@ -46,12 +67,12 @@
                       <v-select
                         :class="{'is-invalid': !!errors.length}"
                         :state="errors[0] ? false : (valid ? true : null)"
-                        :disabled="details.length > 0"
+                        :disabled="details.length > 0 || (source_locked && transfer.transfer_type === 'direct_transfer')"
                         @input="Selected_From_Warehouse"
                         v-model="transfer.from_warehouse"
                         :reduce="label => label.value"
                         :placeholder="$t('Choose_Warehouse')"
-                        :options="warehouses.map(warehouses => ({label: warehouses.name, value: warehouses.id}))"
+                        :options="sourceWarehouseOptions.map(warehouse => ({label: warehouse.name, value: warehouse.id}))"
                       />
                       <b-form-invalid-feedback>{{ errors[0] }}</b-form-invalid-feedback>
                     </b-form-group>
@@ -66,9 +87,10 @@
                         :class="{'is-invalid': !!errors.length}"
                         :state="errors[0] ? false : (valid ? true : null)"
                         v-model="transfer.to_warehouse"
+                        :disabled="source_locked && transfer.transfer_type === 'destination_request'"
                         :reduce="label => label.value"
                         :placeholder="$t('Choose_Warehouse')"
-                        :options="to_warehouses.map(to_warehouses => ({label: to_warehouses.name, value: to_warehouses.id}))"
+                        :options="destinationWarehouseOptions.map(warehouse => ({label: warehouse.name, value: warehouse.id}))"
                       />
                       <b-form-invalid-feedback>{{ errors[0] }}</b-form-invalid-feedback>
                     </b-form-group>
@@ -181,6 +203,15 @@
                             >
                               <lucide-icon class="text-25 text-danger" name="x" />
                             </a>
+                          </td>
+                        </tr>
+
+                        <tr v-if="detail.is_imei && detail.del !== 1 && detail.no_unit !== 0" :key="'serial-' + detail.detail_id">
+                          <td :colspan="canViewTransferPrice ? 9 : 5" class="bg-light">
+                            <b-form-group label="Serial / IMEI numbers" class="mb-0">
+                              <b-form-textarea v-model="detail.identifiers_text" rows="2" placeholder="Enter one serial/IMEI per line or separate them with commas"></b-form-textarea>
+                              <small class="text-muted">Required: {{ Number(detail.quantity) || 0 }} unique identifier(s).</small>
+                            </b-form-group>
                           </td>
                         </tr>
 
@@ -409,7 +440,7 @@
                 </b-col>
 
                  <!-- Status  -->
-                <b-col lg="4" md="4" sm="12" class="mb-3">
+                <b-col v-if="false" lg="4" md="4" sm="12" class="mb-3">
                   <validation-provider name="Status" :rules="{ required: true}">
                     <b-form-group slot-scope="{ valid, errors }" :label="$t('Status') + ' ' + '*'">
                       <v-select
@@ -431,14 +462,12 @@
 
 
                 <b-col md="12">
-                  <b-form-group :label="$t('Note')">
-                    <textarea
-                      v-model="transfer.notes"
-                      rows="4"
-                      class="form-control"
-                      :placeholder="$t('Afewwords')"
-                    ></textarea>
-                  </b-form-group>
+                  <validation-provider name="Transfer Note" :rules="{ required: transfer.transfer_type === 'destination_request', max: 5000 }" v-slot="validationContext">
+                    <b-form-group :label="transfer.transfer_type === 'destination_request' ? 'Stock Request Note *' : 'Transfer Note (optional)'">
+                      <b-form-textarea v-model.trim="transfer.notes" rows="4" maxlength="5000" :state="getValidationState(validationContext)" :placeholder="transfer.transfer_type === 'destination_request' ? 'Explain why this stock is required' : 'Optional transfer details'"></b-form-textarea>
+                      <b-form-invalid-feedback>{{ validationContext.errors[0] }}</b-form-invalid-feedback>
+                    </b-form-group>
+                  </validation-provider>
                 </b-col>
                 <b-col md="12" v-if="hasBatchValidationErrors">
                   <div style="padding: 10px 14px; background: #fef3c7; color: #92400e; border: 1px solid #fde68a; border-radius: 10px; font-size: 13px; font-weight: 600; display: flex; align-items: center; margin-bottom: 14px;">
@@ -449,11 +478,13 @@
 
                 <b-col md="12">
                   <b-form-group>
-                    <b-button variant="primary" @click="Submit_Transfer" :disabled="SubmitProcessing || hasBatchValidationErrors">
+                    <b-button variant="outline-primary" class="mr-2" @click="Submit_Transfer('draft')" :disabled="SubmitProcessing || hasBatchValidationErrors">
                       <span v-if="SubmitProcessing" class="spinner sm spinner-white mr-2"></span>
                       <lucide-icon v-else class="me-2 font-weight-bold" name="check" />
-                      {{ SubmitProcessing ? ($t('Saving') || 'Saving...') : $t('submit') }}
+                      {{ SubmitProcessing ? ($t('Saving') || 'Saving...') : 'Save Draft' }}
                     </b-button>
+                    <b-button v-if="transfer.transfer_type === 'direct_transfer' && currentUserPermissions && currentUserPermissions.includes('transfer_dispatch')" variant="primary" class="mr-2" @click="Submit_Transfer('dispatch')" :disabled="SubmitProcessing || hasBatchValidationErrors"><lucide-icon name="truck" class="mr-1" />Dispatch Transfer</b-button>
+                    <b-button v-if="transfer.transfer_type === 'destination_request'" variant="primary" @click="Submit_Transfer('request')" :disabled="SubmitProcessing || hasBatchValidationErrors"><lucide-icon name="send" class="mr-1" />Submit Stock Request</b-button>
                     <div v-once class="typo__p" v-if="SubmitProcessing">
                       <div class="spinner sm spinner-primary mt-3"></div>
                     </div>
@@ -611,6 +642,9 @@ export default {
       },
       warehouses: [],
       to_warehouses: [],
+      drivers: [],
+      source_locked: false,
+      assigned_warehouse_id: null,
       products: [],
       total: 0,
       GrandTotal: 0,
@@ -620,6 +654,11 @@ export default {
         to_warehouse: "",
         statut: "",
         notes: "",
+        transfer_type: "direct_transfer",
+        required_date: "",
+        driver_id: null,
+        vehicle_details: "",
+        action: "draft",
         items: "",
         date:'',
         tax_rate: 0,
@@ -663,6 +702,18 @@ export default {
 
     canViewTransferPrice() {
       return this.currentUserPermissions && this.currentUserPermissions.includes("transfer_price_view");
+    },
+
+    sourceWarehouseOptions() {
+      if (this.transfer.transfer_type === 'destination_request' && this.assigned_warehouse_id) {
+        return (this.to_warehouses || []).filter(warehouse => Number(warehouse.id) !== Number(this.assigned_warehouse_id));
+      }
+      return this.warehouses || [];
+    },
+
+    destinationWarehouseOptions() {
+      if (this.transfer.transfer_type === 'destination_request' && this.assigned_warehouse_id) return this.warehouses || [];
+      return (this.to_warehouses || []).filter(warehouse => Number(warehouse.id) !== Number(this.transfer.from_warehouse));
     },
 
     hasBatchValidationErrors() {
@@ -767,11 +818,16 @@ export default {
 
     
     //------------- Submit Validation Update Transfer
-    Submit_Transfer() {
+    Submit_Transfer(action = 'draft') {
       if (this.SubmitProcessing) {
         return;
       }
 
+      if (action === 'dispatch' && !this.transfer.driver_id) {
+        this.makeToast('warning', 'Select an active driver before dispatch.', this.$t('Warning'));
+        return;
+      }
+      this.transfer.action = action;
       this.SubmitProcessing = true;
       this.$refs.Edit_transfer.validate().then(success => {
         if (!success) {
@@ -981,6 +1037,13 @@ export default {
         for (var i = 0; i < this.details.length; i++) {
           if (this.details[i].quantity == "") {
             count += 1;
+          }
+          if (this.details[i].is_imei && this.details[i].del !== 1 && this.details[i].no_unit !== 0) {
+            const identifiers = this.parseIdentifiers(this.details[i].identifiers_text);
+            if (!Number.isInteger(Number(this.details[i].quantity)) || identifiers.length !== Number(this.details[i].quantity) || new Set(identifiers.map(value => value.toLowerCase())).size !== identifiers.length) {
+              this.makeToast('warning', `Enter one unique serial/IMEI for every unit of ${this.details[i].name}.`, this.$t('Warning'));
+              return false;
+            }
           }
         }
 
@@ -1270,6 +1333,8 @@ export default {
               : response.data.warehouse_location.code)
           : null;
         this.$set(this.product, "is_batch_tracked", !!response.data.is_batch_tracked);
+        this.$set(this.product, "is_imei", !!response.data.is_imei);
+        this.$set(this.product, "identifiers_text", "");
         this.$set(this.product, "batches", []);
         this.$set(this.product, "available_batches", []);
         this.$set(this.product, "batches_loading", false);
@@ -1422,6 +1487,8 @@ export default {
         const out = Object.assign({}, d);
         delete out.available_batches;
         delete out.batches_loading;
+        out.identifiers = d.is_imei ? this.parseIdentifiers(d.identifiers_text) : [];
+        delete out.identifiers_text;
         if (d.is_batch_tracked && Array.isArray(d.batches)) {
           out.batches = d.batches
             .filter(b => b && b.product_batch_id && Number(b.qty) > 0)
@@ -1436,6 +1503,28 @@ export default {
       });
     },
 
+    onTransferTypeChanged(type) {
+      if (this.details.length) {
+        this.details = [];
+        this.Calcul_Total();
+        this.makeToast('warning', 'Products were cleared because the source warehouse flow changed.', this.$t('Warning'));
+      }
+      if (!this.assigned_warehouse_id) return;
+      if (type === 'destination_request') {
+        this.transfer.to_warehouse = this.assigned_warehouse_id;
+        this.transfer.from_warehouse = '';
+        this.products = [];
+      } else {
+        this.transfer.from_warehouse = this.assigned_warehouse_id;
+        if (Number(this.transfer.to_warehouse) === Number(this.assigned_warehouse_id)) this.transfer.to_warehouse = '';
+        this.Selected_From_Warehouse(this.assigned_warehouse_id);
+      }
+    },
+
+    parseIdentifiers(value) {
+      return String(value || '').split(/[\n,]+/).map(item => item.trim()).filter(Boolean);
+    },
+
     //---------------------------------------Get Elements ------------------------------\\
     GetElements() {
       let id = this.$route.params.id;
@@ -1446,6 +1535,9 @@ export default {
           this.details = response.data.details;
           this.warehouses = response.data.warehouses;
           this.to_warehouses = response.data.to_warehouses;
+          this.drivers = response.data.drivers || [];
+          this.source_locked = !!response.data.source_locked;
+          this.assigned_warehouse_id = response.data.assigned_source_warehouse_id || null;
           this.Get_Products_By_Warehouse(this.transfer.from_warehouse);
           this.Calcul_Total();
           // Pharmacy: hydrate available batches for preloaded batch-tracked lines so the

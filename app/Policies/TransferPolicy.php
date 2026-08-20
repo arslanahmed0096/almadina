@@ -86,6 +86,21 @@ class TransferPolicy
         return $this->hasPermission($user, 'transfer_receive');
     }
 
+    public function dispatchReturn(User $user)
+    {
+        return $this->hasPermission($user, 'transfer_return_dispatch');
+    }
+
+    public function receiveReturn(User $user)
+    {
+        return $this->hasPermission($user, 'transfer_return_receive');
+    }
+
+    public function cancel(User $user)
+    {
+        return $this->hasPermission($user, 'transfer_cancel');
+    }
+
     public function Stock_Transfer_Report(User $user)
     {
         $permission = Permission::where('name', 'Stock_Transfer_Report')->first();

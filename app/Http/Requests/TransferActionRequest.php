@@ -13,6 +13,10 @@ class TransferActionRequest extends FormRequest
 
     public function rules(): array
     {
-        return ['note' => 'nullable|string|max:5000'];
+        return [
+            'note' => 'nullable|string|max:5000',
+            'driver_id' => 'nullable|integer|exists:employees,id',
+            'vehicle_details' => 'nullable|string|max:191',
+        ];
     }
 }

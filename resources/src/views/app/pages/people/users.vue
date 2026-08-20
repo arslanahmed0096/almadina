@@ -223,6 +223,13 @@ export default {
           thClass: "text-left"
         },
         {
+          label: this.$t("RoleName"),
+          field: "role_name",
+          sortable: false,
+          tdClass: "text-left",
+          thClass: "text-left"
+        },
+        {
           label: this.$t("Email"),
           field: "email",
           tdClass: "text-left",
@@ -381,6 +388,7 @@ export default {
         this.$t("Firstname"),
         this.$t("lastname"),
         this.$t("username"),
+        this.$t("RoleName"),
         this.$t("Email"),
         this.$t("Phone")
       ];
@@ -389,6 +397,7 @@ export default {
         u.firstname,
         u.lastname,
         u.username,
+        u.role_name,
         u.email,
         u.phone
       ]));

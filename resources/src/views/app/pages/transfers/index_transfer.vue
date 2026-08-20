@@ -108,7 +108,7 @@
                 </b-dropdown-item>
 
                 <b-dropdown-item
-                  v-if="currentUserPermissions && currentUserPermissions.includes('transfer_edit')"
+                  v-if="props.row.workflow_status === 'draft' && currentUserPermissions && currentUserPermissions.includes('transfer_edit')"
                   title="Edit"
                   :to="{ name:'edit_transfer', params: { id: props.row.id } }"
                 >
@@ -131,8 +131,10 @@
             <span :class="workflowBadgeClass(props.row.workflow_status)">{{ workflowLabel(props.row.workflow_status) }}</span>
           </div>
           <div v-else-if="props.column.field == 'approval_status'">
+            <span v-if="props.row.approval_status === 'draft'" class="badge badge-outline-secondary">Not Submitted</span>
+            <span v-else-if="props.row.approval_status === 'not_required'" class="badge badge-outline-secondary">Not Required</span>
             <span
-              v-if="!props.row.approval_status || props.row.approval_status === 'approved'"
+              v-else-if="!props.row.approval_status || props.row.approval_status === 'approved'"
               class="badge badge-outline-success"
             >{{ $t('Approved') }}</span>
             <span
@@ -147,6 +149,9 @@
               v-else-if="props.row.approval_status === 'partially_approved'"
               class="badge badge-outline-info"
             >Partially Approved</span>
+          </div>
+          <div v-else-if="props.column.field == 'transfer_type'">
+            {{ props.row.transfer_type === 'destination_request' ? 'Destination Request' : 'Direct Transfer' }}
           </div>
         </template>
       </vue-good-table>
@@ -202,11 +207,18 @@
                 :placeholder="$t('Choose_Status')"
                 :options="
                       [
+                        {label: 'Draft', value: 'draft'},
                         {label: 'Pending Approval', value: 'pending_approval'},
                         {label: 'Pending Acknowledgement', value: 'pending_acknowledgement'},
                         {label: 'Acknowledged', value: 'acknowledged'},
+                        {label: 'Ready for Dispatch', value: 'ready_for_dispatch'},
+                        {label: 'In Transit', value: 'in_transit'},
                         {label: 'Dispatched', value: 'dispatched'},
                         {label: 'Partially Received', value: 'partially_received'},
+                        {label: 'Received', value: 'received'},
+                        {label: 'Return Pending', value: 'return_pending'},
+                        {label: 'Return In Transit', value: 'return_in_transit'},
+                        {label: 'Return Received', value: 'return_received'},
                         {label: 'Completed', value: 'completed'},
                         {label: 'Cancelled', value: 'cancelled'},
                       ]"
@@ -305,6 +317,12 @@ export default {
           thClass: "text-left"
         },
         {
+          label: "Transfer Type",
+          field: "transfer_type",
+          tdClass: "text-left",
+          thClass: "text-left"
+        },
+        {
           label: this.$t("FromWarehouse"),
           field: "from_warehouse",
           tdClass: "text-left",
@@ -320,6 +338,25 @@ export default {
           label: this.$t("Items"),
           field: "items",
           type: "decimal",
+          tdClass: "text-left",
+          thClass: "text-left"
+        },
+        {
+          label: "Total Quantity",
+          field: "total_quantity",
+          type: "decimal",
+          tdClass: "text-left",
+          thClass: "text-left"
+        },
+        {
+          label: "Driver",
+          field: "driver",
+          tdClass: "text-left",
+          thClass: "text-left"
+        },
+        {
+          label: "Dispatched At",
+          field: "dispatched_at",
           tdClass: "text-left",
           thClass: "text-left"
         }
@@ -477,7 +514,7 @@ export default {
     workflowBadgeClass(status) {
       if (['completed', 'received'].includes(status)) return 'badge badge-outline-success';
       if (['declined', 'cancelled'].includes(status)) return 'badge badge-outline-danger';
-      if (['pending_approval', 'pending_acknowledgement'].includes(status)) return 'badge badge-outline-warning';
+      if (['draft', 'pending_approval', 'pending_acknowledgement', 'ready_for_dispatch', 'return_pending'].includes(status)) return 'badge badge-outline-warning';
       return 'badge badge-outline-info';
     },
     //----------------------------------------- Format Display Date (for tables) -------------------------------\\

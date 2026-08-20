@@ -13,9 +13,10 @@ class Transfer extends Model
     protected $fillable = [
         'id', 'Ref', 'date', 'user_id', 'from_warehouse_id', 'to_warehouse_id', 'time',
         'items', 'statut', 'approval_status', 'notes', 'GrandTotal', 'discount', 'shipping', 'TaxNet', 'tax_rate',
-        'workflow_status', 'required_date', 'request_note', 'response_note', 'acknowledgement_note',
+        'workflow_status', 'transfer_type', 'required_date', 'request_note', 'response_note', 'acknowledgement_note',
         'processed_by', 'acknowledged_by', 'dispatched_by', 'received_by', 'requested_at',
         'processed_at', 'acknowledged_at', 'dispatched_at', 'received_at',
+        'driver_id', 'vehicle_details', 'dispatch_note', 'receiving_note', 'cancelled_by', 'cancelled_at',
         'created_at', 'updated_at', 'deleted_at',
     ];
 
@@ -35,6 +36,7 @@ class Transfer extends Model
         'acknowledged_at' => 'datetime',
         'dispatched_at' => 'datetime',
         'received_at' => 'datetime',
+        'cancelled_at' => 'datetime',
     ];
 
     public const WORKFLOW_PENDING_APPROVAL = 'pending_approval';
@@ -46,6 +48,11 @@ class Transfer extends Model
     public const WORKFLOW_RECEIVED = 'received';
     public const WORKFLOW_COMPLETED = 'completed';
     public const WORKFLOW_CANCELLED = 'cancelled';
+    public const WORKFLOW_DRAFT = 'draft';
+    public const WORKFLOW_IN_TRANSIT = 'in_transit';
+    public const WORKFLOW_RETURN_PENDING = 'return_pending';
+    public const WORKFLOW_RETURN_IN_TRANSIT = 'return_in_transit';
+    public const WORKFLOW_RETURN_RECEIVED = 'return_received';
 
     public function user()
     {
@@ -71,6 +78,10 @@ class Transfer extends Model
     {
         return $this->hasMany(TransferStatusHistory::class)->orderBy('id');
     }
+
+    public function driver() { return $this->belongsTo(Employee::class, 'driver_id'); }
+    public function transferReturn() { return $this->hasOne(TransferReturn::class); }
+    public function stockMovements() { return $this->hasMany(TransferStockMovement::class); }
 
     public function requester()
     {
