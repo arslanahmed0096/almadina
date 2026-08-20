@@ -709,6 +709,15 @@ export default {
       return `${value[0]}.${formated}`;
     },
 
+    //------ Toast
+    makeToast(variant, msg, title) {
+      this.$root.$bvToast.toast(msg, {
+        title: title,
+        variant: variant,
+        solid: true
+      });
+    },
+
     workflowLabel(status) {
       if (!status) return '—';
       return String(status).split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
@@ -854,7 +863,15 @@ export default {
           if (!result.value && result.dismiss) return;
           this.actionProcessing = true;
           axios.post(`transfers/${this.$route.params.id}/${action}`, { note: result.value || '' })
-            .then(() => { this.makeToast('success', `${title} completed.`, this.$t('Success')); this.Get_Transfer_Details(); })
+            .then(() => {
+              this.makeToast('success', `${title} completed.`, this.$t('Success'));
+              if (action === 'acknowledge') {
+                // Redirect to transfers list after acknowledgement
+                this.$router.push({ name: 'index_transfer' });
+                return;
+              }
+              this.Get_Transfer_Details();
+            })
             .catch(error => this.makeToast('danger', this.workflowError(error), this.$t('Failed')))
             .finally(() => { this.actionProcessing = false; });
         });

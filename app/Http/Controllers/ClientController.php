@@ -124,6 +124,8 @@ class ClientController extends BaseController
             $item['username'] = $client->username;
             $item['company_name'] = $client->company_name;
             $item['phone'] = $client->phone;
+            $phoneDigits = preg_replace('/\D+/', '', (string) ($client->phone ?? ''));
+            $item['display_phone'] = $phoneDigits !== '' && strpos($phoneDigits, '0') !== 0 ? '0' . $phoneDigits : $phoneDigits;
             $item['tax_number'] = $client->tax_number;
             $item['code'] = $client->code;
             $item['email'] = $client->email;
@@ -431,9 +433,12 @@ class ClientController extends BaseController
 
     public function Get_Clients_Without_Paginate()
     {
-        $clients = $this->uniqueClientsByPhone(
-            Client::where('deleted_at', '=', null)->get(['id', 'name', 'phone'])
-        );
+        $clients = Client::where('deleted_at', '=', null)->get(['id', 'name', 'phone']);
+        $clients = $this->uniqueClientsByPhone($clients)->map(function ($c) {
+            $phone = (string) ($c->phone ?? '');
+            $display = $phone !== '' && strpos($phone, '0') !== 0 ? '0' . $phone : $phone;
+            return ['id' => $c->id, 'name' => $c->name, 'phone' => $phone, 'display_phone' => $display];
+        });
 
         return response()->json($clients);
     }
@@ -446,25 +451,37 @@ class ClientController extends BaseController
         $limit = min(max((int) $request->input('limit', 20), 1), 50);
         $digits = preg_replace('/\D+/', '', $search) ?? '';
 
-        $clients = Client::query()
-            ->whereNull('deleted_at')
-            ->when($search !== '', function ($query) use ($search, $digits) {
-                $query->where(function ($q) use ($search, $digits) {
-                    $q->where('name', 'LIKE', "%{$search}%")
-                        ->orWhere('phone', 'LIKE', "%{$search}%");
+        $clientsQuery = Client::query()->whereNull('deleted_at');
 
-                    if ($digits !== '') {
-                        $q->orWhere('phone', 'LIKE', "%{$digits}%");
+        if ($search !== '') {
+            $clientsQuery->where(function ($q) use ($search, $digits) {
+                $q->where('name', 'LIKE', "%{$search}%")
+                    ->orWhere('phone', 'LIKE', "%{$search}%");
+
+                if ($digits !== '') {
+                    // If search digits start with 0, also search without that leading zero.
+                    $noLeading = ltrim($digits, '0');
+                    $q->orWhere('phone', 'LIKE', "%{$digits}%");
+                    if ($noLeading !== '' && $noLeading !== $digits) {
+                        $q->orWhere('phone', 'LIKE', "%{$noLeading}%");
                     }
-                });
-            })
-            ->orderBy('name')
-            ->limit($limit * 3)
-            ->get(['id', 'name', 'phone']);
+                    // If search digits do not start with 0, also search with a leading zero.
+                    if (strpos($digits, '0') !== 0) {
+                        $q->orWhere('phone', 'LIKE', "%0{$digits}%");
+                    }
+                }
+            });
+        }
 
-        return response()->json([
-            'clients' => $this->uniqueClientsByPhone($clients)->take($limit)->values(),
-        ]);
+        $clients = $clientsQuery->orderBy('name')->limit($limit * 3)->get(['id', 'name', 'phone']);
+
+        $payload = $this->uniqueClientsByPhone($clients)->map(function ($c) {
+            $phone = preg_replace('/\D+/', '', (string) ($c->phone ?? ''));
+            $display = $phone !== '' && strpos($phone, '0') !== 0 ? '0' . $phone : $phone;
+            return ['id' => $c->id, 'name' => $c->name, 'phone' => $c->phone, 'display_phone' => $display];
+        })->take($limit)->values();
+
+        return response()->json(['clients' => $payload]);
     }
 
     private function uniqueClientsByPhone($clients)

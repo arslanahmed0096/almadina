@@ -3289,12 +3289,17 @@ export default {
     // Customer options for v-select with phone search capability
     customerOptions() {
       const clients = Array.isArray(this.clients) ? this.clients : [];
-      return clients.map(client => ({
-        label: client.name,
+      return clients.map(client => {
+        const raw = client.display_phone || client.phone || '';
+        const digits = String(raw).replace(/\D+/g, '');
+        const display = digits ? (digits.charAt(0) === '0' ? digits : '0' + digits) : '';
+        return ({
+          label: display ? `${client.name} - ${display}` : client.name,
         value: client.id,
         phone: client.phone || '',
         name: client.name || ''
-      }));
+        });
+      });
     },
 
     // Customer display screen options (multi-screen support)

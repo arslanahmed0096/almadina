@@ -32,4 +32,11 @@ class Client extends Model
     {
         return $this->morphMany(CustomFieldValue::class, 'entity', 'entity_type', 'entity_id');
     }
+
+    public function getDisplayPhoneAttribute()
+    {
+        $phone = preg_replace('/\D+/', '', (string) ($this->phone ?? ''));
+        if ($phone === '') return '';
+        return strpos($phone, '0') === 0 ? $phone : '0' . $phone;
+    }
 }

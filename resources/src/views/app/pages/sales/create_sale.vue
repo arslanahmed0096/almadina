@@ -1280,7 +1280,10 @@ export default {
 
     customerOptionLabel(client) {
       if (!client) return '';
-      return client.phone ? client.name + ' - ' + client.phone : client.name;
+      const raw = client.display_phone || client.phone || '';
+      const digits = String(raw).replace(/\D+/g, '');
+      const display = digits ? (digits.charAt(0) === '0' ? digits : '0' + digits) : '';
+      return display ? client.name + ' - ' + display : client.name;
     },
 
     normalizedPhone(phone) {

@@ -48,7 +48,7 @@
                   <strong>{{ (c.client && c.client.name) || c.username }}</strong>
                 </td>
                 <td>{{ c.email }}</td>
-                <td>{{ (c.client && c.client.phone) || '—' }}</td>
+                <td>{{ c.client && (c.client.display_phone || (String(c.client.phone || '').replace(/\D+/g,'').charAt(0) === '0' ? String(c.client.phone || '').replace(/\D+/g,'') : '0' + String(c.client.phone || '').replace(/\D+/g,''))) || '—' }}</td>
                 <td>
                   <code v-if="c.invite_code">{{ c.invite_code.code }}</code>
                   <span v-else class="text-muted">—</span>
