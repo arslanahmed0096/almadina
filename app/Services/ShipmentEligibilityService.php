@@ -62,6 +62,7 @@ class ShipmentEligibilityService
         );
 
         $credit = $this->calculateCustomerAvailableCredit($sale->client, $sale);
+        $overdueInvoices = app(CustomerCreditService::class)->overdueInvoices($sale->client);
         $saleIsShippable = ! $sale->deleted_at
             && ! in_array($sale->statut, ['cancelled', 'canceled'], true)
             && ! SaleReturn::where('sale_id', $sale->id)->whereNull('deleted_at')->exists();
@@ -83,6 +84,15 @@ class ShipmentEligibilityService
                 $credit['available_credit'],
                 $credit['unlimited']
             );
+            if ((float) $allocation['outstanding_amount'] > 0.009 && $overdueInvoices->isNotEmpty()) {
+                $overdue = $overdueInvoices->first();
+                $eligibility = [
+                    'eligible' => false,
+                    'eligibility_type' => 'overdue_credit_invoice',
+                    'eligibility_message' => 'Cannot be shipped — Customer has overdue invoice '.$overdue['invoice_reference'].'. Outstanding amount: '.$this->money($overdue['outstanding_amount']).'. Due date: '.$overdue['credit_due_date'].'.',
+                    'additional_required' => 0.0,
+                ];
+            }
             if (! $saleIsShippable) {
                 $eligibility = [
                     'eligible' => false,
@@ -243,46 +253,7 @@ class ShipmentEligibilityService
             ];
         }
 
-        $completedTotal = (float) DB::table('sales')
-            ->whereNull('deleted_at')
-            ->where('statut', 'completed')
-            ->where('client_id', $client->id)
-            ->sum('GrandTotal');
-        $completedPaid = (float) DB::table('sales')
-            ->whereNull('deleted_at')
-            ->where('statut', 'completed')
-            ->where('client_id', $client->id)
-            ->sum('paid_amount');
-        $completedDue = $completedTotal - $completedPaid;
-        if ($currentSale && $currentSale->statut === 'completed' && (int) $currentSale->client_id === (int) $client->id) {
-            // This sale's receivable already consumes the customer's credit. Exclude it
-            // while evaluating its own items so shipment does not charge the same debt twice.
-            $completedDue -= max(0, (float) $currentSale->GrandTotal - (float) $currentSale->paid_amount);
-        }
-
-        $returnTotal = (float) DB::table('sale_returns')
-            ->whereNull('deleted_at')
-            ->where('client_id', $client->id)
-            ->sum('GrandTotal');
-        $returnPaid = (float) DB::table('sale_returns')
-            ->whereNull('deleted_at')
-            ->where('client_id', $client->id)
-            ->sum('paid_amount');
-        $returnDue = $returnTotal - $returnPaid;
-
-        $reserved = $this->calculateOrderedShipmentCreditUsage((int) $client->id);
-        $currentUsage = (float) max(0, round((float) ($client->opening_balance ?? 0) + $completedDue - $returnDue + $reserved, 2));
-        $limit = max(0, round((float) ($client->credit_limit ?? 0), 2));
-        // A zero credit limit means the customer has no credit facility.
-        // Fully paid items remain eligible because they require no credit.
-        $unlimited = false;
-
-        return [
-            'credit_limit' => $limit,
-            'current_usage' => $currentUsage,
-            'available_credit' => (float) max(0, round($limit - $currentUsage, 2)),
-            'unlimited' => $unlimited,
-        ];
+        return app(CustomerCreditService::class)->availableCredit($client, $currentSale);
     }
 
     /**
@@ -343,6 +314,7 @@ class ShipmentEligibilityService
                 ->all();
             $allocations = $this->allocateSalePayments($lockedSale, $allocationPriority);
             $credit = $this->calculateCustomerAvailableCredit($client, $lockedSale);
+            $overdueInvoices = app(CustomerCreditService::class)->overdueInvoices($client);
             $creditRequiredCents = 0;
             $selectedOutstanding = [];
             foreach ($selectedDetails as $detail) {
@@ -354,6 +326,12 @@ class ShipmentEligibilityService
                 }
                 $outstanding = $allocations[(int) $detail->id]['outstanding_amount'];
                 $selectedOutstanding[] = $outstanding;
+                if ((float) $outstanding > 0.009 && $overdueInvoices->isNotEmpty()) {
+                    $overdue = $overdueInvoices->first();
+                    throw ValidationException::withMessages([
+                        'sale_detail_ids' => ['Shipment blocked because this customer has an overdue credit invoice: '.$overdue['invoice_reference'].'. Outstanding amount: PKR '.$this->money($overdue['outstanding_amount']).'. Due date: '.$overdue['credit_due_date'].'.'],
+                    ]);
+                }
                 $evaluation = $this->evaluateItemEligibility($outstanding, $credit['available_credit'], $credit['unlimited']);
                 if (! $evaluation['eligible']) {
                     throw ValidationException::withMessages([
@@ -425,6 +403,9 @@ class ShipmentEligibilityService
             } elseif (! $inventoryWasAlreadyConsumed) {
                 $lockedSale->statut = 'ordered';
                 $lockedSale->shipping_status = 'ordered';
+            }
+            if ($creditRequiredCents > 0 && ! $lockedSale->credit_due_date) {
+                app(CustomerCreditService::class)->applySnapshot($lockedSale);
             }
             $lockedSale->save();
 

@@ -1057,6 +1057,7 @@
           <li
             v-show="currentUserPermissions && (  
               currentUserPermissions.includes('setting_system') ||
+              currentUserPermissions.includes('policies.view') ||
               currentUserPermissions.includes('update_settings') ||
               currentUserPermissions.includes('sms_settings') ||
               currentUserPermissions.includes('login_device_management') ||
@@ -1085,6 +1086,12 @@
               <lucide-icon class="submenu-arrow" name="chevron-down" v-if="!isCollapsed" />
             </a>
             <ul class="submenu" v-if="openMenus.includes('settings') && !isCollapsed">
+              <li class="submenu-item" v-if="currentUserPermissions && (currentUserPermissions.includes('policies.view') || currentUserPermissions.includes('setting_system'))">
+                <router-link to="/app/settings/policies/credit-limit" class="submenu-link">
+                  <lucide-icon class="submenu-icon" name="shield" />
+                  <span>Policies</span>
+                </router-link>
+              </li>
               <li class="submenu-item" v-if="currentUserPermissions && currentUserPermissions.includes('setting_system')">
                 <router-link to="/app/settings/System_settings" class="submenu-link">
                   <lucide-icon class="submenu-icon" name="settings" />

@@ -109,6 +109,16 @@
                       <span :class="getPaymentBadgeClass(sale.payment_status)">{{sale.payment_status}}</span>
                     </td>
                   </tr>
+                  <tr v-if="sale.credit_days">
+                    <td class="invoice-meta-label">Credit Terms:</td>
+                    <td class="invoice-meta-value">{{ sale.credit_days }} days · {{ sale.credit_due_date }}</td>
+                  </tr>
+                  <tr v-if="sale.credit_days">
+                    <td class="invoice-meta-label">Credit Status:</td>
+                    <td class="invoice-meta-value">
+                      <span :class="getCreditBadgeClass(sale.credit_status)">{{ sale.credit_status }}</span>
+                    </td>
+                  </tr>
                   <tr v-if="sale.sales_agent_name">
                     <td class="invoice-meta-label">{{ $t('SalesAgent') }}:</td>
                     <td class="invoice-meta-value">
@@ -388,6 +398,12 @@ export default {
   },
 
   methods: {
+    getCreditBadgeClass(status) {
+      if (status === 'Paid') return 'badge badge-outline-success';
+      if (status === 'Overdue') return 'badge badge-outline-danger';
+      if (status === 'Due Today') return 'badge badge-outline-warning';
+      return 'badge badge-outline-info';
+    },
    
 
     //----------------------------------- Invoice Sale PDF  -------------------------\\

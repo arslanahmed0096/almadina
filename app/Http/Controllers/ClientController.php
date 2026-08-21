@@ -13,6 +13,7 @@ use App\Models\Quotation;
 use App\Models\Sale;
 use App\Models\SaleReturn;
 use App\Models\Setting;
+use App\Services\CustomerCreditService;
 use App\utils\helpers;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -29,7 +30,7 @@ class ClientController extends BaseController
 {
     // ------------- Get ALL Customers -------------\\
 
-    public function index(request $request)
+    public function index(request $request, CustomerCreditService $creditService)
     {
         $this->authorizeForUser($request->user('api'), 'view', Client::class);
         // How many items do you want to display.
@@ -139,6 +140,7 @@ class ClientController extends BaseController
             $item['points'] = $client->points;
             $item['opening_balance'] = $client->opening_balance ?? 0;
             $item['credit_limit'] = $client->credit_limit ?? 0;
+            $item['available_credit'] = $creditService->availableCredit($client)['available_credit'];
             $item['net_balance'] = ($client->opening_balance ?? 0) + $item['due'] - $item['return_Due'];
             $data[] = $item;
         }
@@ -1487,6 +1489,7 @@ class ClientController extends BaseController
         $client->return_due = $return_due;
         $client->paymentsTotal = $payments_total;
         $client->netBalance = ($client->opening_balance ?? 0) + $sale_due - $return_due;
+        $client->credit_summary = app(\App\Services\CustomerCreditService::class)->summary($client);
 
         return response()->json($client);
     }

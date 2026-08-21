@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Models\UserWarehouse;
 use App\Models\Warehouse;
 use App\Notifications\TransferWorkflowNotification;
+use App\Notifications\OverdueCreditInvoiceNotification;
 use App\utils\helpers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -156,7 +157,7 @@ class UserController extends BaseController
     {
         $user = $request->user('api');
         $query = $user->unreadNotifications()
-            ->where('type', TransferWorkflowNotification::class);
+            ->whereIn('type', [TransferWorkflowNotification::class, OverdueCreditInvoiceNotification::class]);
 
         $notifications = (clone $query)
             ->latest()
@@ -166,6 +167,8 @@ class UserController extends BaseController
                 return [
                     'id' => $notification->id,
                     'transfer_id' => (int) ($notification->data['transfer_id'] ?? 0),
+                    'sale_id' => isset($notification->data['sale_id']) ? (int) $notification->data['sale_id'] : null,
+                    'title' => $notification->data['title'] ?? null,
                     'persisted' => true,
                     'message' => $notification->data['message'] ?? 'Stock transfer update',
                     'url' => $notification->data['url'] ?? '/app/transfers/list',
@@ -233,7 +236,7 @@ class UserController extends BaseController
     {
         $notification = $request->user('api')
             ->notifications()
-            ->where('type', TransferWorkflowNotification::class)
+            ->whereIn('type', [TransferWorkflowNotification::class, OverdueCreditInvoiceNotification::class])
             ->findOrFail($id);
 
         $notification->markAsRead();

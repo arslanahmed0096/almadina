@@ -3666,6 +3666,47 @@
                   </b-card>
                 </b-col>
 
+
+                <!-- Policies -->
+                <b-col md="4">
+                  <b-card no-body class="ul-card__border-radius">
+                    <b-card-header header-tag="header" class="p-1" role="tab">
+                      <b-button
+                        class="card-title mb-0"
+                        block
+                        href="#"
+                        v-b-toggle.panel-policies
+                        variant="transparent"
+                      >Policies</b-button>
+                    </b-card-header>
+                    <b-collapse
+                      id="panel-policies"
+                      :visible="true"
+                      accordion="my-accordion-policies"
+                      role="tabpanel"
+                    >
+                      <b-card-body>
+                        <b-row>
+                          <b-col md="12">
+                            <label class="checkbox checkbox-outline-primary">
+                              <input type="checkbox" v-model="permissions" value="policies.view">
+                              <span>View Policies</span>
+                              <span class="checkmark"></span>
+                            </label>
+                          </b-col>
+                          <b-col md="12">
+                            <label class="checkbox checkbox-outline-primary">
+                              <input type="checkbox" v-model="permissions" value="policies.update">
+                              <span>Update Policies</span>
+                              <span class="checkmark"></span>
+                            </label>
+                          </b-col>
+                        </b-row>
+                      </b-card-body>
+                    </b-collapse>
+                  </b-card>
+                </b-col>
+
                   <!-- Store -->
                 <b-col md="4">
                   <b-card no-body class="ul-card__border-radius">

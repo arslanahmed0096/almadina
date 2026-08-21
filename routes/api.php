@@ -882,6 +882,9 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
     Route::resource('settings', 'SettingsController');
     Route::get('get_Settings_data_api', 'SettingsController@get_Settings_data_api');
     Route::get('get_Settings_data', 'SettingsController@getSettings');
+    Route::get('policies/credit-limit', 'PolicyController@show');
+    Route::put('policies/credit-limit', 'PolicyController@update');
+    Route::get('credit-policy/current', 'PolicyController@current');
     Route::put('settings/dashboard-grid-layout', 'SettingsController@updateDashboardGridLayout');
     // Dedicated Dark Mode endpoints (independent from other settings APIs)
     Route::put('pos_settings/{id}', 'SettingsController@update_pos_settings');

@@ -599,6 +599,30 @@
                   </validation-provider>
                 </b-col>
 
+                <b-col cols="12" class="mb-3" v-if="requestedCreditAmount > 0">
+                  <b-alert show :variant="creditPolicy.is_active ? 'info' : 'danger'" class="mb-0">
+                    <div class="d-flex align-items-center justify-content-between flex-wrap">
+                      <div>
+                        <strong>Credit Limit Policy</strong>
+                        <div v-if="creditPolicy.is_active">
+                          Select the credit period to apply to this invoice.
+                          Credit due date: <strong>{{ creditDueDatePreview }}</strong>.
+                        </div>
+                        <div v-else>Credit transactions are currently disabled by policy.</div>
+                        <small>The global policy is preselected. Your selection is saved permanently on this invoice.</small>
+                      </div>
+                      <div class="mt-2" style="min-width: 220px;">
+                        <label class="font-weight-bold mb-1">Allowed Credit Days</label>
+                        <b-form-select
+                          v-model.number="sale.credit_days"
+                          :options="creditDaysOptions"
+                          :disabled="!creditPolicy.is_active"
+                        />
+                      </div>
+                    </div>
+                  </b-alert>
+                </b-col>
+
                 <div class="w-100"></div>
 
                 <!-- Payment choice -->
@@ -1099,6 +1123,7 @@ export default {
         warehouse_id: "",
         sales_agent_id: null,
         transaction_type: "sale",
+        credit_days: 30,
         tax_rate: 0,
         TaxNet: 0,
         shipping: 0,
@@ -1109,6 +1134,7 @@ export default {
       // Credit control
       selectedClientCreditLimit: 0,
       selectedClientNetBalance: 0,
+      creditPolicy: { allowed_credit_days: 30, is_active: true },
       timer:null,
       total: 0,
       GrandTotal: 0,
@@ -1156,6 +1182,25 @@ export default {
 
   computed: {
     ...mapGetters(["currentUserPermissions","currentUser"]),
+
+    requestedCreditAmount() {
+      if (this.sale.transaction_type !== 'sale' || this.sale.statut !== 'completed') return 0;
+      const paid = this.payment.status === 'pending' ? 0 : Number(this.payment.amount || 0);
+      return Math.max(0, Number(this.GrandTotal || 0) - paid);
+    },
+
+    creditDueDatePreview() {
+      const date = new Date(`${this.sale.date || new Date().toISOString().slice(0, 10)}T12:00:00`);
+      date.setDate(date.getDate() + Number(this.sale.credit_days || this.creditPolicy.allowed_credit_days || 30));
+      return date.toISOString().slice(0, 10);
+    },
+
+    creditDaysOptions() {
+      const values = Array.isArray(this.creditPolicy.allowed_values)
+        ? this.creditPolicy.allowed_values
+        : [5, 10, 15, 20, 25, 30];
+      return values.map(value => ({ value: Number(value), text: `${value} days` }));
+    },
 
     customerOptions() {
       return this.uniqueClients(this.clients).map(client => ({
@@ -1631,6 +1676,67 @@ export default {
         variant: variant,
         solid: true
       });
+    },
+
+    // Keep policy and validation failures actionable instead of replacing the
+    // server's explanation with the generic "Something went Wrong" message.
+    saleCreationErrorMessage(error) {
+      // main.js deliberately rejects API failures with response.data, so this
+      // method accepts both a normal Axios error and that unwrapped payload.
+      const data = error && error.response && error.response.data
+        ? error.response.data
+        : (error && typeof error === 'object' ? error : {});
+      const errors = data.errors || {};
+      const firstMessage = key => {
+        const value = errors[key];
+        return Array.isArray(value) ? value[0] : value;
+      };
+      const rejectionCode = firstMessage('rejection_code');
+      let message = firstMessage('credit');
+
+      if (!message) {
+        const validationKeys = Object.keys(errors).filter(key => ![
+          'rejection_code',
+          'customer_credit_limit',
+          'total_outstanding_credit',
+          'available_credit',
+          'requested_credit_amount',
+          'overdue_invoices'
+        ].includes(key));
+        if (validationKeys.length) message = firstMessage(validationKeys[0]);
+      }
+
+      if (!message) {
+        message = data.message || this.$t('InvalidData') || 'Unable to create sale.';
+      }
+
+      if (rejectionCode === 'CREDIT_LIMIT_EXCEEDED') {
+        const money = value => `Rs ${Number(value || 0).toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        })}`;
+        message += ` Limit: ${money(firstMessage('customer_credit_limit'))}.`;
+        message += ` Used: ${money(firstMessage('total_outstanding_credit'))}.`;
+        message += ` Available: ${money(firstMessage('available_credit'))}.`;
+        message += ` Requested: ${money(firstMessage('requested_credit_amount'))}.`;
+      }
+
+      if (rejectionCode === 'OVERDUE_CREDIT_INVOICE') {
+        try {
+          const invoices = JSON.parse(firstMessage('overdue_invoices') || '[]');
+          if (invoices.length) {
+            const invoice = invoices[0];
+            message += ` Invoice: ${invoice.invoice_reference}; due ${invoice.credit_due_date};`;
+            message += ` outstanding Rs ${Number(invoice.outstanding_amount || 0).toLocaleString()}.`;
+            if (invoices.length > 1) message += ` ${invoices.length - 1} more overdue invoice(s).`;
+          }
+        } catch (ignored) {
+          // The primary rejection message is still useful if invoice metadata
+          // cannot be decoded.
+        }
+      }
+
+      return message;
     },
 
     //---------------------- get_units ------------------------------\\
@@ -2554,6 +2660,7 @@ export default {
               warehouse_id: this.sale.warehouse_id,
               sales_agent_id: this.sale.sales_agent_id || null,
               transaction_type: this.sale.transaction_type,
+              credit_days: this.requestedCreditAmount > 0 ? Number(this.sale.credit_days) : null,
               statut: this.sale.statut,
               notes: this.sale.notes,
               tax_rate: this.sale.tax_rate?this.sale.tax_rate:0,
@@ -2585,7 +2692,7 @@ export default {
               this.paymentProcessing = false;
               this.makeToast(
                 "danger",
-                this.$t("InvalidData"),
+                this.saleCreationErrorMessage(error),
                 this.$t("Failed")
               );
             });
@@ -2754,6 +2861,12 @@ export default {
   //----------------------------- Created function-------------------
   created() {
     this.GetElements();
+    axios.get("credit-policy/current")
+      .then(response => {
+        this.creditPolicy = response.data.policy;
+        this.$set(this.sale, 'credit_days', Number(this.creditPolicy.allowed_credit_days || 30));
+      })
+      .catch(() => { /* backend uses the same safe 30-day default */ });
   }
 };
 </script>

@@ -86,9 +86,15 @@
           <b-col md="3" class="mb-2">
             <div class="kpi-card">
               <div class="kpi-label">{{ $t('Credit_Limit') }}</div>
-              <div class="kpi-value text-info">{{ (client.credit_limit && client.credit_limit > 0) ? money(client.credit_limit) : $t('No_limit') }}</div>
+              <div class="kpi-value text-info">{{ money(creditSummary.credit_limit) }}</div>
             </div>
           </b-col>
+          <b-col md="3" class="mb-2"><div class="kpi-card"><div class="kpi-label">Used Credit</div><div class="kpi-value">{{ money(creditSummary.total_outstanding_credit) }}</div></div></b-col>
+          <b-col md="3" class="mb-2"><div class="kpi-card"><div class="kpi-label">Available Credit</div><div class="kpi-value text-success">{{ money(creditSummary.available_credit) }}</div></div></b-col>
+          <b-col md="3" class="mb-2"><div class="kpi-card"><div class="kpi-label">Overdue Amount</div><div class="kpi-value text-danger">{{ money(creditSummary.total_overdue_amount) }}</div></div></b-col>
+          <b-col md="3" class="mb-2"><div class="kpi-card"><div class="kpi-label">Unpaid Invoices</div><div class="kpi-value">{{ creditSummary.unpaid_invoice_count || 0 }}</div></div></b-col>
+          <b-col md="3" class="mb-2"><router-link :to="{ name: 'index_sales', query: { credit_status: 'overdue' } }" class="kpi-card d-block"><div class="kpi-label">Overdue Invoices</div><div class="kpi-value text-danger">{{ creditSummary.overdue_invoice_count || 0 }}</div></router-link></b-col>
+          <b-col md="3" class="mb-2"><div class="kpi-card"><div class="kpi-label">Oldest Overdue Date</div><div class="kpi-value">{{ creditSummary.oldest_overdue_date || '—' }}</div></div></b-col>
         </b-row>
       </div>
     </b-card>
@@ -373,6 +379,17 @@ export default {
     }
   },
   computed:{
+    creditSummary(){
+      return this.client.credit_summary || {
+        credit_limit: this.client.credit_limit || 0,
+        total_outstanding_credit: 0,
+        available_credit: this.client.credit_limit || 0,
+        total_overdue_amount: 0,
+        unpaid_invoice_count: 0,
+        overdue_invoice_count: 0,
+        oldest_overdue_date: null
+      }
+    },
     clientInitials(){
       const n = (this.client.name || '').trim();
       if (!n) return 'C';

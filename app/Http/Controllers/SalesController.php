@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Mail\CustomEmail;
 use App\Services\BatchService;
+use App\Services\CustomerCreditService;
 use App\Models\Account;
 use App\Models\Client;
 use App\Models\EmailMessage;
@@ -53,7 +54,7 @@ class SalesController extends BaseController
 {
     // ------------- GET ALL SALES -----------\\
 
-    public function index(request $request)
+    public function index(request $request, CustomerCreditService $creditService)
     {
         $this->authorizeForUser($request->user('api'), 'view', Sale::class);
         $user = Auth::user();
@@ -107,6 +108,17 @@ class SalesController extends BaseController
             });
         if (! $is_all_warehouses) {
             $Sales->whereIn('warehouse_id', $warehouse_ids);
+        }
+        if ($request->filled('credit_status')) {
+            $today = Carbon::today(config('app.timezone'))->toDateString();
+            $Sales->whereNotNull('credit_due_date')->whereRaw('(GrandTotal - paid_amount) > 0.009');
+            if ($request->credit_status === 'overdue') {
+                $Sales->whereDate('credit_due_date', '<', $today);
+            } elseif ($request->credit_status === 'due_today') {
+                $Sales->whereDate('credit_due_date', '=', $today);
+            } elseif ($request->credit_status === 'within_due_date') {
+                $Sales->whereDate('credit_due_date', '>', $today);
+            }
         }
         // Multiple Filter
         $Filtred = $helpers->filter($Sales, $columns, $param, $request)
@@ -163,6 +175,10 @@ class SalesController extends BaseController
             $item['paid_amount'] = number_format($Sale['paid_amount'], 2, '.', '');
             $item['due'] = number_format($item['GrandTotal'] - $item['paid_amount'], 2, '.', '');
             $item['payment_status'] = $Sale['payment_statut'];
+            $item['credit_days'] = $Sale->credit_days;
+            $item['credit_due_date'] = optional($Sale->credit_due_date)->format('Y-m-d');
+            $item['outstanding_amount'] = number_format($creditService->outstandingForSale($Sale), 2, '.', '');
+            $item['credit_status'] = $creditService->creditStatus($Sale);
 
             if (SaleReturn::where('sale_id', $Sale['id'])->where('deleted_at', '=', null)->exists()) {
                 $sellReturn = SaleReturn::where('sale_id', $Sale['id'])->where('deleted_at', '=', null)->first();
@@ -208,7 +224,7 @@ class SalesController extends BaseController
 
     // ------------- STORE NEW SALE-----------\\
 
-    public function store(Request $request)
+    public function store(Request $request, CustomerCreditService $creditService)
     {
         $this->authorizeForUser($request->user('api'), 'create', Sale::class);
 
@@ -216,14 +232,26 @@ class SalesController extends BaseController
             'client_id' => 'required',
             'warehouse_id' => 'required',
             'transaction_type' => 'nullable|in:sale,order',
+            'credit_days' => 'nullable|integer|in:5,10,15,20,25,30',
         ]);
 
         $this->assertProductsSelectable($request->user('api'), $request->input('details', []));
 
         $transactionType = $request->input('transaction_type', 'sale') === 'order' ? 'order' : 'sale';
 
-        $sale = \DB::transaction(function () use ($request, $transactionType) {
+        $sale = \DB::transaction(function () use ($request, $transactionType, $creditService) {
             $helpers = new helpers;
+            $clientForCredit = Client::whereKey($request->client_id)->lockForUpdate()->firstOrFail();
+            $initialPayment = ($request->input('payment.status') === 'pending')
+                ? 0.0
+                : min((float) $request->GrandTotal, max(0, (float) $request->amount));
+            $requestedCredit = $transactionType === 'sale'
+                ? max(0, round((float) $request->GrandTotal - $initialPayment, 2))
+                : 0.0;
+            $creditResult = $creditService->assertEligible($clientForCredit, $requestedCredit);
+            $appliedCreditDays = $request->filled('credit_days')
+                ? (int) $request->credit_days
+                : (int) $creditResult['allowed_credit_days'];
             $order = new Sale;
 
             $order->is_pos = 0;
@@ -246,6 +274,11 @@ class SalesController extends BaseController
             $order->notes = $request->notes;
             $order->user_id = Auth::user()->id;
             $order->sales_agent_id = $request->sales_agent_id ?? null;
+            if ($requestedCredit > 0) {
+                $order->credit_days = $appliedCreditDays;
+                $order->credit_due_date = Carbon::parse($request->date ?: now())
+                    ->addDays($appliedCreditDays)->toDateString();
+            }
             $order->save();
 
             $data = $request['details'];
@@ -487,7 +520,7 @@ class SalesController extends BaseController
 
     // ------------- UPDATE SALE -----------
 
-    public function update(Request $request, $id)
+    public function update(Request $request, $id, CustomerCreditService $creditService)
     {
         $this->authorizeForUser($request->user('api'), 'update', Sale::class);
 
@@ -496,13 +529,23 @@ class SalesController extends BaseController
             'client_id' => 'required',
         ]);
 
-        $sale = \DB::transaction(function () use ($request, $id) {
+        $sale = \DB::transaction(function () use ($request, $id, $creditService) {
 
             $user = Auth::user();
             // New way: Check user's record_view field (user-level boolean)
             // Backward compatibility: If record_view is null, fall back to role permission check
             $view_records = $user->hasRecordView();
-            $current_Sale = Sale::findOrFail($id);
+            $current_Sale = Sale::whereKey($id)->lockForUpdate()->firstOrFail();
+            $newClient = Client::whereKey($request->client_id)->lockForUpdate()->firstOrFail();
+            $requestedCredit = $request->statut === 'completed'
+                ? max(0, round((float) $request->GrandTotal - (float) $current_Sale->paid_amount, 2))
+                : 0.0;
+            $creditResult = $creditService->assertEligible($newClient, $requestedCredit, $current_Sale);
+            if ($requestedCredit > 0 && ! $current_Sale->credit_due_date) {
+                $current_Sale->credit_days = $creditResult['allowed_credit_days'];
+                $current_Sale->credit_due_date = Carbon::parse($request->date ?: now())
+                    ->addDays($creditResult['allowed_credit_days'])->toDateString();
+            }
 
              /**
              * Warehouses restriction
@@ -1302,7 +1345,7 @@ class SalesController extends BaseController
 
     // ---------------- Get Details Sale-----------------\\
 
-    public function show(Request $request, $id)
+    public function show(Request $request, $id, CustomerCreditService $creditService)
     {
 
         $this->authorizeForUser($request->user('api'), 'view', Sale::class);
@@ -1340,8 +1383,11 @@ class SalesController extends BaseController
         $sale_details['client_tax'] = $sale_data['client']->tax_number;
         $sale_details['GrandTotal'] = number_format($sale_data->GrandTotal, 2, '.', '');
         $sale_details['paid_amount'] = number_format($sale_data->paid_amount, 2, '.', '');
-        $sale_details['due'] = number_format($sale_details['GrandTotal'] - $sale_details['paid_amount'], 2, '.', '');
+        $sale_details['due'] = number_format($creditService->outstandingForSale($sale_data), 2, '.', '');
         $sale_details['payment_status'] = $sale_data->payment_statut;
+        $sale_details['credit_days'] = $sale_data->credit_days;
+        $sale_details['credit_due_date'] = optional($sale_data->credit_due_date)->format('Y-m-d');
+        $sale_details['credit_status'] = $creditService->creditStatus($sale_data);
         $sale_details['sales_agent_name'] = $sale_data->salesAgent
             ? Str::title(Str::lower(trim((string) $sale_data->salesAgent->name)))
             : null;

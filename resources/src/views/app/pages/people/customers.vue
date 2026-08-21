@@ -91,6 +91,11 @@
                   : $t('No_limit') }}
             </span>
           </span>
+          <span v-else-if="props.column.field == 'available_credit'">
+            <span class="text-success font-weight-bold">
+              {{ formatPriceWithSymbol(currentUser.currency, props.row.available_credit || 0, 2) }}
+            </span>
+          </span>
           <span v-else-if="props.column.field == 'actions'">
             <div>
               <b-dropdown
@@ -1229,9 +1234,17 @@ export default {
           tdClass: "text-left",
           thClass: "text-left"
         },
-          {
+        {
           label: this.$t("Credit_Limit"),
           field: "credit_limit",
+          type: "decimal",
+          tdClass: "text-left",
+          thClass: "text-left",
+          sortable: false
+        },
+        {
+          label: "Available Credit",
+          field: "available_credit",
           type: "decimal",
           tdClass: "text-left",
           thClass: "text-left",

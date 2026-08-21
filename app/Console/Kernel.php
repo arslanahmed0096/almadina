@@ -32,6 +32,10 @@ class Kernel extends ConsoleKernel
 
         $schedule->command('assets:check-validation-due')->daily();
 
+        $schedule->command('invoices:send-overdue-credit-reminders')
+            ->dailyAt('08:00')
+            ->withoutOverlapping();
+
         $schedule->call(function () {
             UserLoginSession::purgeExpiredHistory();
         })->hourly()->name('purge-expired-login-history')->withoutOverlapping();

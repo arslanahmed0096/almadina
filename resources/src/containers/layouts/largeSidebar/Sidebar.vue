@@ -451,6 +451,7 @@
 
           <li
             v-show="currentUserPermissions && (currentUserPermissions.includes('setting_system')
+                        || currentUserPermissions.includes('policies.view')
                         || currentUserPermissions.includes('update_settings')
                         || currentUserPermissions.includes('sms_settings')
                         || currentUserPermissions.includes('quickbooks_settings')
@@ -1572,6 +1573,15 @@
           data-parent="settings"
           :class="{ 'd-block': selectedParentMenu == 'settings' }"
         >
+          <li
+            class="nav-item"
+            v-if="currentUserPermissions && (currentUserPermissions.includes('policies.view') || currentUserPermissions.includes('setting_system'))"
+          >
+            <router-link tag="a" class to="/app/settings/policies/credit-limit">
+              <lucide-icon class="nav-icon" name="shield" />
+              <span class="item-name">Policies</span>
+            </router-link>
+          </li>
           <li
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('setting_system')"

@@ -1797,6 +1797,14 @@ const baseRoutes = [
                     ),
                 redirect: "/app/settings/System_settings",
                 children: [
+                    {
+                        name: "credit_limit_policy",
+                        path: "policies/credit-limit",
+                        component: () =>
+                            import(
+                                /* webpackChunkName: "credit-limit-policy" */ "./views/app/pages/settings/policies/credit_limit"
+                            )
+                    },
                     // payment_methods
                     {
                         name: "payment_methods",

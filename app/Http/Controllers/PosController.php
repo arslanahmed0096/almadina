@@ -28,6 +28,7 @@ use App\Models\User;
 use App\Models\UserWarehouse;
 use App\Models\Warehouse;
 use App\Services\BatchService;
+use App\Services\CustomerCreditService;
 use App\utils\helpers;
 use Carbon\Carbon;
 use DB;
@@ -49,7 +50,7 @@ class PosController extends BaseController
 {
     // ------------ Create New  POS --------------\\
 
-    public function CreatePOS(Request $request)
+    public function CreatePOS(Request $request, CustomerCreditService $creditService)
     {
         $this->authorizeForUser($request->user('api'), 'Sales_pos', Sale::class);
 
@@ -95,8 +96,11 @@ class PosController extends BaseController
        
 
         try {
-            $sale = \DB::transaction(function () use ($request, $totalPaid, $saleUuid) {
+            $sale = \DB::transaction(function () use ($request, $totalPaid, $saleUuid, $creditService) {
                 $helpers = new helpers;
+                $clientForCredit = Client::whereKey($request->client_id)->lockForUpdate()->firstOrFail();
+                $requestedCredit = max(0, round((float) $request->GrandTotal - min((float) $request->GrandTotal, (float) $totalPaid), 2));
+                $creditResult = $creditService->assertEligible($clientForCredit, $requestedCredit);
                 $user = Auth::user();
                 // New way: Check user's record_view field (user-level boolean)
                 // Backward compatibility: If record_view is null, fall back to role permission check
@@ -120,6 +124,11 @@ class PosController extends BaseController
                 $order->statut = 'completed';
                 $order->payment_statut = 'unpaid';
                 $order->user_id = Auth::user()->id;
+                if ($requestedCredit > 0) {
+                    $order->credit_days = $creditResult['allowed_credit_days'];
+                    $order->credit_due_date = Carbon::today(config('app.timezone'))
+                        ->addDays($creditResult['allowed_credit_days'])->toDateString();
+                }
                 if (! empty($saleUuid)) {
                     $order->sale_uuid = $saleUuid;
                 }
@@ -968,7 +977,7 @@ class PosController extends BaseController
 
     // ------------ submit_sale_from_draft --------------\\
 
-    public function submit_sale_from_draft(Request $request)
+    public function submit_sale_from_draft(Request $request, CustomerCreditService $creditService)
     {
         $this->authorizeForUser($request->user('api'), 'Sales_pos', Sale::class);
 
@@ -983,8 +992,12 @@ class PosController extends BaseController
         $draft = DraftSale::findOrFail($request['draft_sale_id']);
         if ($draft) {
 
-            $sale = \DB::transaction(function () use ($request, $draft) {
+            $sale = \DB::transaction(function () use ($request, $draft, $creditService) {
                 $helpers = new helpers;
+                $clientForCredit = Client::whereKey($request->client_id)->lockForUpdate()->firstOrFail();
+                $initialPayment = max(0, (float) $request->input('payment.amount', 0));
+                $requestedCredit = max(0, round((float) $request->GrandTotal - min((float) $request->GrandTotal, $initialPayment), 2));
+                $creditResult = $creditService->assertEligible($clientForCredit, $requestedCredit);
                 $user = Auth::user();
                 // New way: Check user's record_view field (user-level boolean)
                 // Backward compatibility: If record_view is null, fall back to role permission check
@@ -1007,6 +1020,11 @@ class PosController extends BaseController
                 $order->statut = 'completed';
                 $order->payment_statut = 'unpaid';
                 $order->user_id = Auth::user()->id;
+                if ($requestedCredit > 0) {
+                    $order->credit_days = $creditResult['allowed_credit_days'];
+                    $order->credit_due_date = Carbon::today(config('app.timezone'))
+                        ->addDays($creditResult['allowed_credit_days'])->toDateString();
+                }
 
                 $order->save();
 

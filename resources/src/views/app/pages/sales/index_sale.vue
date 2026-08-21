@@ -228,6 +228,13 @@
 
             <span v-else-if="props.row.shipping_status == 'cancelled'" class="badge badge-outline-danger">{{$t('Cancelled')}}</span>
           </div>
+          <div v-else-if="props.column.field == 'credit_status'">
+            <span v-if="props.row.credit_status == 'Paid'" class="badge badge-outline-success">Paid</span>
+            <span v-else-if="props.row.credit_status == 'Overdue'" class="badge badge-outline-danger">Overdue</span>
+            <span v-else-if="props.row.credit_status == 'Due Today'" class="badge badge-outline-warning">Due Today</span>
+            <span v-else-if="props.row.credit_status == 'Within Due Date'" class="badge badge-outline-info">Within Due Date</span>
+            <span v-else class="text-muted">—</span>
+          </div>
           <span v-else-if="props.column.field == 'GrandTotal'">
             {{ formatPriceWithSymbol(currentUser.currency, props.row.GrandTotal, 2) }}
           </span>
@@ -331,7 +338,7 @@
             </b-form-group>
           </b-col>
 
-           <!-- Shipping Status  -->
+          <!-- Shipping Status  -->
           <b-col md="12">
             <b-form-group :label="$t('Shipping_status')">
               <v-select
@@ -347,6 +354,21 @@
                         {label: 'Cancelled', value: 'cancelled'},
                       ]"
               ></v-select>
+            </b-form-group>
+          </b-col>
+
+          <b-col md="12">
+            <b-form-group label="Credit Status">
+              <v-select
+                v-model="Filter_credit_status"
+                :reduce="option => option.value"
+                placeholder="Choose credit status"
+                :options="[
+                  {label: 'Overdue Credit', value: 'overdue'},
+                  {label: 'Due Today', value: 'due_today'},
+                  {label: 'Within Due Date', value: 'within_due_date'}
+                ]"
+              />
             </b-form-group>
           </b-col>
 
@@ -1836,6 +1858,7 @@ export default {
       Filter_Payment: "",
       Filter_warehouse: "",
       Filter_shipping:"",
+      Filter_credit_status: "",
       customers: [],
       warehouses: [],
       payment_methods: [],
@@ -2158,6 +2181,20 @@ export default {
           thClass: "text-left"
         },
         {
+          label: "Credit Due Date",
+          field: "credit_due_date",
+          tdClass: "text-left",
+          thClass: "text-left",
+          sortable: false
+        },
+        {
+          label: "Credit Status",
+          field: "credit_status",
+          tdClass: "text-left",
+          thClass: "text-left",
+          sortable: false
+        },
+        {
           label: this.$t("Shipping_status"),
           field: "shipping_status",
           tdClass: "text-left",
@@ -2374,6 +2411,7 @@ export default {
       this.Filter_status = "";
       this.Filter_Payment = "";
       this.Filter_shipping = "";
+      this.Filter_credit_status = "";
       this.Filter_Ref = "";
       this.Filter_date = "";
       this.Filter_warehouse = "";
@@ -3039,9 +3077,10 @@ export default {
         this.Filter_status = "";
       } else if (this.Filter_Payment === null) {
         this.Filter_Payment = "";
-      }else if (this.Filter_shipping === null) {
+      } else if (this.Filter_shipping === null) {
         this.Filter_shipping = "";
       }
+      if (this.Filter_credit_status === null) this.Filter_credit_status = "";
     },
     //----------------------------------------- Get all Sales ------------------------------\\
     Get_Sales(page) {
@@ -3067,6 +3106,8 @@ export default {
             this.Filter_Payment +
             "&shipping_status=" +
             this.Filter_shipping +
+            "&credit_status=" +
+            this.Filter_credit_status +
             "&SortField=" +
             this.serverParams.sort.field +
             "&SortType=" +
@@ -3788,6 +3829,9 @@ export default {
   },
   //----------------------------- Created function-------------------\\
   created() {
+    if (this.$route.query && this.$route.query.credit_status) {
+      this.Filter_credit_status = this.$route.query.credit_status;
+    }
     this.Get_Sales(1);
     this.get_pos_Settings();
 
