@@ -313,6 +313,13 @@ components: { DateRangePicker },
           thClass: "text-left"
         },
         {
+          label: `${this.$t("Customer")} ${this.$t("Phone")}`,
+          field: "client_tele",
+          tdClass: "text-left",
+          thClass: "text-left",
+          sortable: false
+        },
+        {
           label: this.$t("warehouse"),
           field: "warehouse_name",
           tdClass: "text-left",
@@ -656,7 +663,7 @@ components: { DateRangePicker },
     //----------------------------------- Sales PDF ------------------------------\\
     Sales_PDF() {
       var self = this;
-      let pdf = new jsPDF("p", "pt");
+      let pdf = new jsPDF("l", "pt");
 
       const fontPath = "/fonts/Vazirmatn-Bold.ttf";
       try {
@@ -666,8 +673,10 @@ components: { DateRangePicker },
       pdf.setFont("Vazirmatn", "normal");
 
       const headers = [
+        self.$t("date"),
         self.$t("Reference"),
         self.$t("Customer"),
+        `${self.$t("Customer")} ${self.$t("Phone")}`,
         self.$t("warehouse"),
         self.$t("Status"),
         self.$t("Total"),
@@ -678,8 +687,10 @@ components: { DateRangePicker },
       ];
 
       const body = (self.sales || []).map(sale => ([
+        self.formatDisplayDateTime(sale.date, sale.time),
         sale.Ref,
         sale.client_name,
+        sale.client_tele || '---',
         sale.warehouse_name,
         sale.statut,
         sale.GrandTotal,
@@ -696,6 +707,8 @@ components: { DateRangePicker },
 
       const footer = [[
         self.$t("Total"),
+        '',
+        '',
         '',
         '',
         '',
