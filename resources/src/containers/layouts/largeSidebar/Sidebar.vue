@@ -469,7 +469,8 @@
                         || currentUserPermissions.includes('currency')
                         || currentUserPermissions.includes('login_device_management')
                         || currentUserPermissions.includes('system_health_view')
-                        || currentUserPermissions.includes('webhooks_view'))"
+                        || currentUserPermissions.includes('webhooks_view')
+                        || currentUserPermissions.includes('taxes.view'))"
             @mouseenter="toggleSubMenu"
             :class="{ active: selectedParentMenu == 'settings' }"
             class="nav-item"
@@ -1592,6 +1593,13 @@
             </router-link>
           </li>
 
+          <li class="nav-item">
+            <router-link tag="a" class to="/app/settings/tax-management">
+              <lucide-icon class="nav-icon" name="receipt-text" />
+              <span class="item-name">Tax Management</span>
+            </router-link>
+          </li>
+
           <li
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('quickbooks_settings')"
@@ -2108,6 +2116,13 @@
           <router-link tag="a" class :to="{ name: 'tax_summary_report' }">
             <lucide-icon class="nav-icon" name="files" />
             <span class="item-name">{{$t('Tax_Summary_Report')}}</span>
+          </router-link>
+        </li>
+
+        <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('taxes.report')">
+          <router-link tag="a" class :to="{ name: 'managed_tax_report' }">
+            <lucide-icon class="nav-icon" name="receipt-text" />
+            <span class="item-name">Tax Report</span>
           </router-link>
         </li>
 

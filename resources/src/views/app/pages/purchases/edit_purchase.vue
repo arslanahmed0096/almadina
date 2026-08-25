@@ -395,6 +395,10 @@
                           <span>{{currentUser.currency}} {{purchase.TaxNet.toFixed(2)}} ({{formatNumber(purchase.tax_rate ,2)}} %)</span>
                         </td>
                       </tr>
+                      <tr v-if="purchase.withholding_tax > 0">
+                        <td class="bold">WHT (Deductive)</td>
+                        <td>-{{currentUser.currency}} {{purchase.withholding_tax.toFixed(2)}}</td>
+                      </tr>
                       <tr>
                         <td class="bold">{{$t('Discount')}}</td>
                         <td>{{currentUser.currency}} {{purchase.discount.toFixed(2)}}</td>
@@ -701,6 +705,8 @@ export default {
       timer:null,
       highlightTimer: null,
       highlightedDetailId: null,
+      withholding_tax_rate: 0,
+      managed_taxes: [],
       search_input:'',
       product_filter:[],
       isLoading: true,
@@ -745,6 +751,7 @@ export default {
         warehouse_id: "",
         tax_rate: 0,
         TaxNet: 0,
+        withholding_tax: 0,
         shipping: 0,
         discount: 0
       },
@@ -1240,22 +1247,28 @@ export default {
     //-----------------------------------------Calcul Total ------------------------------\\
     Calcul_Total() {
       this.total = 0;
+      let salesTaxTotal = 0;
+      let withholdingTaxTotal = 0;
       for (var i = 0; i < this.details.length; i++) {
-        var tax = this.details[i].taxe * this.details[i].quantity;
+        this.details[i].taxe = (Number(this.details[i].mrp_price || this.details[i].Unit_cost) || 0) * (Number(this.purchase.tax_rate) || 0) / 100;
+        this.details[i].withholding_tax = (Number(this.details[i].Net_cost) || 0) * (Number(this.withholding_tax_rate) || 0) / 100;
+        var tax = (Number(this.details[i].taxe) || 0) * this.details[i].quantity;
+        var wht = (Number(this.details[i].withholding_tax) || 0) * this.details[i].quantity;
         this.details[i].subtotal = parseFloat(
-          this.details[i].quantity * this.details[i].Net_cost + tax
+          this.details[i].quantity * this.details[i].Net_cost + tax - wht
         );
+        salesTaxTotal += tax;
+        withholdingTaxTotal += wht;
         this.total = parseFloat(this.total + this.details[i].subtotal);
       }
 
       const total_without_discount = parseFloat(
         this.total - this.purchase.discount
       );
-      this.purchase.TaxNet = parseFloat(
-        (total_without_discount * this.purchase.tax_rate) / 100
-      );
+      this.purchase.TaxNet = parseFloat(salesTaxTotal.toFixed(2));
+      this.purchase.withholding_tax = parseFloat(withholdingTaxTotal.toFixed(2));
       this.GrandTotal = parseFloat(
-        total_without_discount + this.purchase.TaxNet + this.purchase.shipping
+        total_without_discount + this.purchase.shipping
       );
 
       var grand_total =  this.GrandTotal.toFixed(2);
@@ -1319,6 +1332,7 @@ export default {
             notes: this.purchase.notes,
             tax_rate: this.purchase.tax_rate?this.purchase.tax_rate:0,
             TaxNet: this.purchase.TaxNet?this.purchase.TaxNet:0,
+            withholding_tax: this.purchase.withholding_tax?this.purchase.withholding_tax:0,
             discount: this.purchase.discount?this.purchase.discount:0,
             shipping: this.purchase.shipping?this.purchase.shipping:0,
             GrandTotal: this.GrandTotal,
@@ -1402,6 +1416,9 @@ export default {
           this.details = response.data.details;
           this.suppliers = response.data.suppliers;
           this.warehouses = response.data.warehouses;
+          this.managed_taxes = response.data.managed_taxes || [];
+          const wht = this.managed_taxes.find(t => t.code === 'WHT' && t.calculation_type === 'percentage');
+          this.withholding_tax_rate = wht ? (parseFloat(wht.rate) || 0) : 0;
           this.Get_Products_By_Warehouse(this.purchase.warehouse_id);
           this.Calcul_Total();
           this.isLoading = false;

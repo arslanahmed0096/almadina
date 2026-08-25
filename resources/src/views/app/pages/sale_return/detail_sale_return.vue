@@ -179,6 +179,10 @@
                       <span>{{ formatPriceWithSymbol(currentUser.currency, sale_return.TaxNet, 2) }} ({{formatNumber(sale_return.tax_rate,2)}} %)</span>
                     </td>
                   </tr>
+                  <tr v-for="tax in tax_summary" :key="tax.code">
+                    <td>{{ tax.name }} ({{ tax.code }})</td>
+                    <td>{{ tax.behavior === 'deductive' ? '- ' : '' }}{{ formatPriceWithSymbol(currentUser.currency, tax.amount, 2) }}</td>
+                  </tr>
                   <tr>
                     <td>{{$t('Discount')}}</td>
                     <td>{{ formatPriceWithSymbol(currentUser.currency, sale_return.discount, 2) }}</td>
@@ -253,6 +257,7 @@ export default {
       isLoading: true,
       sale_return: {},
       details: [],
+      tax_summary: [],
       company: {},
       email: {},
       // Optional price format key for frontend display (loaded from system settings/localStorage)
@@ -374,6 +379,7 @@ export default {
           this.sale_return = response.data.sale_Return;
           this.details = response.data.details;
           this.company = response.data.company;
+          this.tax_summary = this.summarizeTaxes(response.data.taxes || []);
           this.isLoading = false;
         })
         .catch(response => {
@@ -381,6 +387,17 @@ export default {
             this.isLoading = false;
           }, 500);
         });
+    },
+
+    summarizeTaxes(taxes) {
+      const summary = {};
+      taxes.forEach(tax => {
+        if (!summary[tax.tax_code]) {
+          summary[tax.tax_code] = { code: tax.tax_code, name: tax.tax_name, behavior: tax.behavior, amount: 0 };
+        }
+        summary[tax.tax_code].amount += Number(tax.tax_amount || 0);
+      });
+      return Object.values(summary);
     },
 
     //---------------------  Delete Return ------------------------\\

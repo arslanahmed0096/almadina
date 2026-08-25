@@ -1995,6 +1995,16 @@ const baseRoutes = [
 
                     // System Settings
                     {
+                        name: "tax_management",
+                        path: "tax-management",
+                        component: () =>
+                            import(
+                                /* webpackChunkName: "TaxManagement" */ "./views/app/pages/settings/tax_management"
+                            )
+                    },
+
+                    // System Settings
+                    {
                         name: "system_settings",
                         path: "System_settings",
                         component: () =>
@@ -2244,6 +2254,16 @@ const baseRoutes = [
                             import(
                                 /* webpackChunkName: "Tax_Summary_Report" */
                                 "./views/app/pages/reports/Tax_Summary_Report"
+                            )
+                    },
+
+                    {
+                        name: "managed_tax_report",
+                        path: "managed_tax_report",
+                        component: () =>
+                            import(
+                                /* webpackChunkName: "Managed_Tax_Report" */
+                                "./views/app/pages/reports/Managed_Tax_Report"
                             )
                     },
 

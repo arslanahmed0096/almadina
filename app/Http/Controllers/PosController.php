@@ -211,6 +211,9 @@ class PosController extends BaseController
 
                 SaleDetail::insert($orderDetails);
 
+                app(\App\Services\Tax\TransactionTaxService::class)
+                    ->snapshotSale($order, array_values($data), $request->user('api'));
+
                 // Pharmacy: for batch-tracked products in the cart, consume batches FEFO.
                 // We keep the bulk insert above for POS speed; only when at least one line is
                 // batch-tracked do we query back the persisted details and invoke BatchService.
@@ -1966,7 +1969,10 @@ class PosController extends BaseController
             'default_client_points' => $default_client_points,
             'default_client_eligible' => $default_client_eligible,
             'point_to_amount_rate' => $settings->point_to_amount_rate,
-            'default_tax' => $settings->default_tax ?? 0,
+            'default_tax' => (float) (\App\Models\TaxDefault::query()
+                ->where('scope_key', 'global')->where('transaction_type', 'pos')
+                ->whereHas('tax', fn ($query) => $query->effective())
+                ->with('tax')->first()?->tax?->rate ?? ($settings->default_tax ?? 0)),
             'default_account_id' => $settings->default_account_id ?? null,
             'default_payment_method_id' => $settings->default_payment_method_id ?? null,
             'pos_settings' => $pos_setting,

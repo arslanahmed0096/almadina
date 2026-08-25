@@ -351,6 +351,9 @@ class SalesController extends BaseController
             }
             SaleDetail::insert($orderDetails);
 
+            app(\App\Services\Tax\TransactionTaxService::class)
+                ->snapshotSale($order, array_values($data), $request->user('api'));
+
             // Apply batch consumption for batch-tracked products (only when completed).
             $batchService = app(BatchService::class);
             if ($batchService->isSupported() && $order->statut === 'completed') {
@@ -933,6 +936,9 @@ class SalesController extends BaseController
                     'earned_points' => $new_earned,
                     'discount_from_points' => $request['discount_from_points'],
                 ]);
+
+                app(\App\Services\Tax\TransactionTaxService::class)
+                    ->snapshotSale($current_Sale->fresh(), array_values($new_sale_details), $request->user('api'));
             }
 
             return $current_Sale;
@@ -1475,6 +1481,7 @@ class SalesController extends BaseController
             'details' => $details,
             'sale' => $sale_details,
             'company' => $company,
+            'taxes' => \App\Models\TransactionTaxSnapshot::where('transaction_type', $sale_data->is_pos ? 'pos' : 'sale_invoice')->where('transaction_id', $id)->orderBy('priority')->get(),
         ]);
 
     }
@@ -1567,6 +1574,18 @@ class SalesController extends BaseController
         // Build signed public invoice URL for barcode scanning
         $invoiceSignature = substr(hash_hmac('sha256', (string) $sale->id, config('app.key')), 0, 32);
         $publicInvoiceUrl = url('/invoice/' . $sale->id . '/' . $invoiceSignature);
+        $taxes = \App\Models\TransactionTaxSnapshot::where('transaction_type', $sale->is_pos ? 'pos' : 'sale_invoice')
+            ->where('transaction_id', $sale->id)->orderBy('priority')->get()
+            ->groupBy(fn ($tax) => $tax->tax_code.'|'.$tax->price_type_code.'|'.$tax->behavior.'|'.$tax->rate)
+            ->map(function ($group) {
+                $tax = $group->first();
+                return [
+                    'name' => $tax->tax_name, 'code' => $tax->tax_code, 'price_type' => $tax->price_type_name,
+                    'rate' => $tax->rate, 'calculation_type' => $tax->calculation_type, 'behavior' => $tax->behavior,
+                    'taxable_base' => $group->sum('taxable_base'), 'amount' => $group->sum('tax_amount'),
+                    'priority' => $tax->priority, 'is_compound' => $tax->is_compound,
+                ];
+            })->values();
 
         return response()->json([
             'symbol' => $symbol,
@@ -2424,6 +2443,7 @@ class SalesController extends BaseController
             'store' => $store,
             'sale' => $sale,
             'details' => $details,
+            'taxes' => \App\Models\TransactionTaxSnapshot::where('transaction_type', $sale_data->is_pos ? 'pos' : 'sale_invoice')->where('transaction_id', $sale_data->id)->orderBy('priority')->get(),
         ])->render();
 
         $arabic = new Arabic;
@@ -2547,6 +2567,7 @@ class SalesController extends BaseController
             'store' => $store,
             'sale' => $sale,
             'details' => $details,
+            'taxes' => \App\Models\TransactionTaxSnapshot::where('transaction_type', $sale_data->is_pos ? 'pos' : 'sale_invoice')->where('transaction_id', $sale_data->id)->orderBy('priority')->get(),
         ])->render();
 
         $arabic = new Arabic;

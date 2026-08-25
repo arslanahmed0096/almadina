@@ -271,6 +271,9 @@ class PurchasesReturnController extends BaseController
                     );
                 }
             }
+
+            app(\App\Services\Tax\TransactionTaxService::class)
+                ->reversePurchaseReturn($order->fresh());
         }, 10);
 
         return response()->json(['success' => true]);
@@ -499,6 +502,9 @@ class PurchasesReturnController extends BaseController
                 'GrandTotal' => $request['GrandTotal'],
                 'payment_statut' => $payment_statut,
             ]);
+
+            app(\App\Services\Tax\TransactionTaxService::class)
+                ->reversePurchaseReturn($current_PurchaseReturn->fresh());
 
         }, 10);
 
@@ -1251,6 +1257,7 @@ class PurchasesReturnController extends BaseController
             'details' => $details,
             'purchase_return' => $return_details,
             'company' => $company,
+            'taxes' => \App\Models\TransactionTaxSnapshot::where('transaction_type', 'purchase_return')->where('transaction_id', $id)->orderBy('priority')->get(),
         ]);
 
     }
@@ -1352,6 +1359,7 @@ class PurchasesReturnController extends BaseController
             'setting' => $settings,
             'return_purchase' => $return_details,
             'details' => $details,
+            'taxes' => \App\Models\TransactionTaxSnapshot::where('transaction_type', 'purchase_return')->where('transaction_id', $Purchase_Return->id)->orderBy('priority')->get(),
         ])->render();
 
         $arabic = new Arabic;

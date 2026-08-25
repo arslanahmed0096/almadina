@@ -442,6 +442,12 @@
                     <td class="invoice-summary-label">Order Tax:</td>
                     <td class="invoice-summary-value">{{ formatPriceWithSymbol(currentUser.currency, purchase.TaxNet, 2) }}</td>
                   </tr>
+                  <tr v-for="tax in tax_summary" :key="tax.code" class="invoice-summary-row-alt">
+                    <td class="invoice-summary-label">{{ tax.name }} ({{ tax.code }}):</td>
+                    <td class="invoice-summary-value">
+                      {{ tax.behavior === 'deductive' ? '- ' : '' }}{{ formatPriceWithSymbol(currentUser.currency, tax.amount, 2) }}
+                    </td>
+                  </tr>
                   <tr class="invoice-summary-row-alt">
                     <td class="invoice-summary-label">Discount:</td>
                     <td class="invoice-summary-discount-value">- {{ formatPriceWithSymbol(currentUser.currency, purchase.discount, 2) }}</td>
@@ -518,6 +524,7 @@ export default {
       isLoading: true,
       purchase: {},
       details: [],
+      tax_summary: [],
       variants: [],
       company: {},
       email: {
@@ -762,6 +769,7 @@ export default {
           this.purchase = response.data.purchase;
           this.details = response.data.details;
           this.company = response.data.company;
+          this.tax_summary = this.summarizeTaxes(response.data.taxes || []);
           this.isLoading = false;
         })
         .catch(response => {
@@ -769,6 +777,22 @@ export default {
             this.isLoading = false;
           }, 500);
         });
+    },
+
+    summarizeTaxes(taxes) {
+      const summary = {};
+      taxes.forEach(tax => {
+        if (!summary[tax.tax_code]) {
+          summary[tax.tax_code] = {
+            code: tax.tax_code,
+            name: tax.tax_name,
+            behavior: tax.behavior,
+            amount: 0
+          };
+        }
+        summary[tax.tax_code].amount += Number(tax.tax_amount || 0);
+      });
+      return Object.values(summary);
     },
 
     //---------------------------------------------------- Purchase Email -------------------------------\\

@@ -250,8 +250,30 @@
                           </td>
                           <td>{{currentUser.currency}} {{formatNumber(detail.Unit_price, 3)}}</td>
                           <td>{{currentUser.currency}} {{formatNumber(detail.DiscountNet * detail.quantity, 2)}}</td>
-                          <td>{{currentUser.currency}} {{formatNumber(detail.taxe  * detail.quantity, 2)}}</td>
-                          <td>{{currentUser.currency}} {{detail.subtotal.toFixed(2)}}</td>
+                          <td>
+                            <b-form-select
+                              v-if="hasManagedTaxConfiguration"
+                              v-model="detail.gst_option"
+                              :options="gstOptionsForLine(detail)"
+                              :disabled="!canOverrideManagedTaxes"
+                              size="sm"
+                              class="line-gst-select mb-1"
+                              @change="onRowGstOptionChange(detail)"
+                            />
+                            <template v-if="managedTaxesForLine(detail).length">
+                              <div v-for="tax in managedTaxesForLine(detail)" :key="tax.tax_id + '-' + tax.price_type_code" class="managed-tax-line">
+                                <strong>{{ tax.tax_code }}</strong>
+                                <span v-if="tax.calculation_type === 'percentage'">{{ formatNumber(Number(tax.rate), 2) }}%</span>
+                                <span v-else>{{ currentUser.currency }} {{ formatNumber(Number(tax.rate), 2) }}</span>
+                                <small class="d-block text-muted">{{ tax.price_type_name }} · {{ tax.behavior }}</small>
+                                <span :class="tax.behavior === 'deductive' ? 'text-danger' : 'text-success'">
+                                  {{ tax.behavior === 'deductive' ? '-' : '' }}{{ currentUser.currency }} {{ formatNumber(Number(tax.tax_amount), 2) }}
+                                </span>
+                              </div>
+                            </template>
+                            <span v-else-if="!hasManagedTaxConfiguration">{{currentUser.currency}} {{formatNumber(detail.taxe * detail.quantity, 2)}}</span>
+                          </td>
+                          <td>{{currentUser.currency}} {{formatNumber(managedLineTotal(detail), 2)}}</td>
                           <td>
                             <lucide-icon class="text-25 text-success cursor-pointer" name="pencil" v-if="currentUserPermissions && currentUserPermissions.includes('edit_product_sale')" @click="Modal_Updat_Detail(detail)" />
                             <lucide-icon class="text-25 text-danger cursor-pointer" name="x" @click="delete_Product_Detail(detail.detail_id)" />
@@ -375,11 +397,28 @@
                 <div class="offset-md-8 col-md-4 mt-4">
                   <table class="table table-striped table-sm">
                     <tbody>
-                      <tr>
+                      <tr v-if="!hasManagedTaxConfiguration">
                         <td class="bold">{{$t('OrderTax')}}</td>
                         <td>
                           <span>{{currentUser.currency}} {{sale.TaxNet.toFixed(2)}} ({{formatNumber(sale.tax_rate,2)}} %)</span>
                         </td>
+                      </tr>
+                      <tr v-for="tax in managedTaxPreview.summary" :key="'summary-' + tax.tax_id + '-' + tax.price_type_code">
+                        <td>
+                          <span class="font-weight-bold">{{ tax.tax_code }} — {{ tax.tax_name }}</span>
+                          <small class="d-block text-muted">
+                            <template v-if="tax.calculation_type === 'percentage'">{{ formatNumber(Number(tax.rate), 2) }}%</template>
+                            <template v-else>Fixed {{ currentUser.currency }} {{ formatNumber(Number(tax.rate), 2) }}</template>
+                            on {{ tax.price_type_name }} · {{ tax.behavior }}
+                          </small>
+                          <small class="d-block text-muted">Taxable base: {{ currentUser.currency }} {{ formatNumber(Number(tax.taxable_base), 2) }}</small>
+                        </td>
+                        <td :class="tax.behavior === 'deductive' ? 'text-danger' : 'text-success'">
+                          {{ tax.behavior === 'deductive' ? '-' : '' }}{{ currentUser.currency }} {{ formatNumber(Number(tax.tax_amount), 2) }}
+                        </td>
+                      </tr>
+                      <tr v-if="managedTaxLoading">
+                        <td colspan="2" class="text-muted"><span class="spinner sm spinner-primary mr-2"></span>Calculating managed taxes…</td>
                       </tr>
                       <tr v-if="getLineDiscountAmount() > 0">
                         <td class="bold">Item Discount</td>
@@ -420,7 +459,7 @@
                 </div>
 
                 <!-- Order Tax  -->
-                <b-col lg="3" md="6" sm="12" class="mb-3" v-if="currentUserPermissions && currentUserPermissions.includes('edit_tax_discount_shipping_sale')">
+                <b-col lg="3" md="6" sm="12" class="mb-3" v-if="!hasManagedTaxConfiguration && currentUserPermissions && currentUserPermissions.includes('edit_tax_discount_shipping_sale')">
                   <validation-provider
                     name="Order Tax"
                     :rules="{ regex: /^\d*\.?\d*$/}"
@@ -731,7 +770,7 @@
 
                 <b-col md="12">
                   <b-form-group>
-                    <b-button variant="primary" :disabled="paymentProcessing || hasMinPriceViolation || (sale.statut === 'completed' && hasBatchValidationErrors)" @click="Submit_Sale">
+                    <b-button variant="primary" :disabled="paymentProcessing || managedTaxLoading || hasMinPriceViolation || (sale.statut === 'completed' && hasBatchValidationErrors)" @click="Submit_Sale">
                       <span v-if="paymentProcessing" class="spinner sm spinner-white mr-2"></span>
                       <lucide-icon v-else class="me-2 font-weight-bold" name="check" />
                       {{ paymentProcessing ? ($t('Saving') || 'Saving...') : $t('submit') }}
@@ -910,46 +949,34 @@
               </validation-provider>
             </b-col>
 
-            <!-- Tax Method -->
+            <!-- Managed tax currently applicable to this sale line -->
             <b-col lg="6" md="6" sm="12">
-              <validation-provider name="Tax Method" :rules="{ required: true}">
-                <b-form-group slot-scope="{ valid, errors }" :label="$t('TaxMethod') + ' ' + '*'">
-                  <v-select
-                    :class="{'is-invalid': !!errors.length}"
-                    :state="errors[0] ? false : (valid ? true : null)"
-                    v-model="detail.tax_method"
-                    :reduce="label => label.value"
-                    :placeholder="$t('Choose_Method')"
-                    :options="
-                           [
-                            {label: 'Exclusive', value: '1'},
-                            {label: 'Inclusive', value: '2'}
-                           ]"
-                  ></v-select>
-                  <b-form-invalid-feedback>{{ errors[0] }}</b-form-invalid-feedback>
-                </b-form-group>
-              </validation-provider>
+              <b-form-group label="Managed Tax">
+                <b-form-input :value="modalGstTax ? modalGstTax.tax_code + ' — ' + modalGstTax.tax_name : 'No GST configured for this price type'" readonly />
+                <small v-if="modalGstTax" class="text-muted">{{ modalGstTax.price_type_name }} · {{ modalGstTax.behavior }}</small>
+              </b-form-group>
             </b-col>
 
-            <!-- Tax Rate -->
+            <!-- Managed GST rate -->
             <b-col lg="6" md="6" sm="12">
-              <validation-provider
-                name="Order Tax"
-                :rules="{ required: true , regex: /^\d*\.?\d*$/}"
-                v-slot="validationContext"
-              >
-                <b-form-group :label="$t('OrderTax') + ' ' + '*'">
-                  <b-input-group append="%">
-                    <b-form-input
-                      label="Order Tax"
-                      v-model="detail.tax_percent"
-                      :state="getValidationState(validationContext)"
-                      aria-describedby="OrderTax-feedback"
-                    ></b-form-input>
-                  </b-input-group>
-                  <b-form-invalid-feedback id="OrderTax-feedback">{{ validationContext.errors[0] }}</b-form-invalid-feedback>
-                </b-form-group>
-              </validation-provider>
+              <b-form-group label="GST Rate">
+                <b-input-group :append="modalGstTax && modalGstTax.calculation_type === 'percentage' ? '%' : currentUser.currency">
+                  <b-form-input :value="modalGstTax ? Number(modalGstTax.rate) : 0" readonly />
+                </b-input-group>
+              </b-form-group>
+            </b-col>
+
+            <!-- Per-line GST selection -->
+            <b-col lg="6" md="6" sm="12">
+              <b-form-group label="GST Applicability *">
+                <b-form-select
+                  v-model="detail.gst_option"
+                  :options="gstApplicabilityOptions"
+                  :disabled="modalManagedTaxLoading || !canOverrideManagedTaxes"
+                />
+                <small v-if="!canOverrideManagedTaxes" class="text-muted">Your role cannot override the automatically applied GST.</small>
+                <small v-else class="text-muted">Choose whether GST applies to this sale item.</small>
+              </b-form-group>
             </b-col>
 
             <!-- Discount Method -->
@@ -1074,6 +1101,20 @@ export default {
       client: {},
       products: [],
       details: [],
+      managedTaxLoading: false,
+      managedTaxPreviewLoaded: false,
+      managedTaxPreviewTimer: null,
+      managedTaxRequestSequence: 0,
+      managedTaxPreview: {
+        rows: [],
+        summary: [],
+        line_totals: {},
+        available_taxes: {},
+        managed_available: false,
+        totals: null,
+      },
+      modalManagedTaxes: [],
+      modalManagedTaxLoading: false,
       detail: {
         detail_id: "",
         sale_unit_id: "",
@@ -1094,7 +1135,8 @@ export default {
         price_type: 'retail',
         retail_unit_price: "",
         wholesale_unit_price: "",
-        min_price: 0
+        min_price: 0,
+        gst_option: 'gst'
       },
       sales: [],
       payment_methods:[],
@@ -1169,6 +1211,7 @@ export default {
         taxe: "",
         tax_percent: "",
         tax_method: "",
+        gst_option: 'gst',
         product_variant_id: "",
         is_imei: "",
         imei_number:"",
@@ -1182,6 +1225,29 @@ export default {
 
   computed: {
     ...mapGetters(["currentUserPermissions","currentUser"]),
+
+    hasManagedTaxes() {
+      return Array.isArray(this.managedTaxPreview.summary) && this.managedTaxPreview.summary.length > 0;
+    },
+
+    hasManagedTaxConfiguration() {
+      return !!this.managedTaxPreview.managed_available;
+    },
+
+    canOverrideManagedTaxes() {
+      return (this.currentUserPermissions || []).includes('taxes.override') || Number(this.currentUser && this.currentUser.role_id) === 1;
+    },
+
+    modalGstTax() {
+      return (this.modalManagedTaxes || []).find(tax => String(tax.code || tax.tax_code).toUpperCase() === 'GST') || null;
+    },
+
+    gstApplicabilityOptions() {
+      const options = [];
+      if (this.modalGstTax) options.push({ value: 'gst', text: 'GST' });
+      options.push({ value: 'no_gst', text: 'Not GST' });
+      return options;
+    },
 
     requestedCreditAmount() {
       if (this.sale.transaction_type !== 'sale' || this.sale.statut !== 'completed') return 0;
@@ -1317,11 +1383,110 @@ export default {
     'sale.discount_Method'(newVal, oldVal) {
       // Ensure totals reflect the new interpretation of sale.discount and discount_from_points
       this.CalculTotal();
+    },
+    'sale.date'() {
+      this.scheduleManagedTaxPreview();
+    },
+    'sale.warehouse_id'() {
+      this.scheduleManagedTaxPreview();
     }
   },
  
 
   methods: {
+
+    managedTaxesForLine(detail) {
+      if (!detail || !Array.isArray(this.managedTaxPreview.rows)) return [];
+      return this.managedTaxPreview.rows.filter(row => String(row.line_key) === String(detail.detail_id));
+    },
+
+    availableManagedTaxesForLine(detail) {
+      if (!detail || !this.managedTaxPreview.available_taxes) return [];
+      return this.managedTaxPreview.available_taxes[String(detail.detail_id)] || [];
+    },
+
+    gstOptionsForLine(detail) {
+      const hasGst = this.availableManagedTaxesForLine(detail).some(tax => String(tax.tax_code || tax.code).toUpperCase() === 'GST');
+      const options = [];
+      if (hasGst) options.push({ value: 'gst', text: 'GST' });
+      options.push({ value: 'no_gst', text: 'Not GST' });
+      return options;
+    },
+
+    onRowGstOptionChange(detail) {
+      if (!detail) return;
+      this.$set(detail, 'gst_option', detail.gst_option || 'no_gst');
+      this.scheduleManagedTaxPreview();
+    },
+
+    managedLineTotal(detail) {
+      if (this.hasManagedTaxConfiguration && this.managedTaxPreview.line_totals) {
+        const total = this.managedTaxPreview.line_totals[String(detail.detail_id)];
+        if (total !== undefined && total !== null) return Number(total) || 0;
+      }
+      return Number(detail && detail.subtotal) || 0;
+    },
+
+    scheduleManagedTaxPreview() {
+      if (this.managedTaxPreviewTimer) clearTimeout(this.managedTaxPreviewTimer);
+      this.managedTaxPreviewTimer = setTimeout(() => this.loadManagedTaxPreview(), 180);
+    },
+
+    loadManagedTaxPreview() {
+      if (!this.sale.warehouse_id || !Array.isArray(this.details) || this.details.length === 0) {
+        this.managedTaxPreview = { rows: [], summary: [], line_totals: {}, available_taxes: {}, managed_available: false, totals: null };
+        this.managedTaxPreviewLoaded = true;
+        this.managedTaxLoading = false;
+        return;
+      }
+
+      const requestSequence = ++this.managedTaxRequestSequence;
+      this.managedTaxLoading = true;
+      const lines = this.details.map(detail => ({
+        line_key: detail.detail_id,
+        price_type: detail.price_type === 'wholesale' ? 'wholesale_price' : 'price',
+        unit_price: Number(detail.Unit_price) || 0,
+        quantity: Number(detail.quantity) || 0,
+        discount: Number(detail.discount) || 0,
+        discount_method: String(detail.discount_Method || '2'),
+        excluded_tax_codes: detail.gst_option === 'no_gst' ? ['GST'] : [],
+      }));
+
+      axios.post('taxes/preview', {
+        transaction_type: 'sale_invoice',
+        warehouse_id: this.sale.warehouse_id,
+        date: this.sale.date,
+        discount: Number(this.sale.discount) || 0,
+        discount_method: String(this.sale.discount_Method || '2'),
+        points_discount: Number(this.discount_from_points) || 0,
+        shipping: Number(this.sale.shipping) || 0,
+        lines,
+      }).then(({ data }) => {
+        if (requestSequence !== this.managedTaxRequestSequence) return;
+        this.managedTaxPreview = {
+          rows: data.rows || [],
+          summary: data.summary || [],
+          line_totals: data.line_totals || {},
+          available_taxes: data.available_taxes || {},
+          managed_available: !!data.managed_available,
+          totals: data.totals || null,
+        };
+        this.managedTaxPreviewLoaded = true;
+
+        if (this.hasManagedTaxConfiguration && data.totals) {
+          this.sale.tax_rate = 0;
+          this.sale.TaxNet = Number(data.totals.additive) || 0;
+          this.GrandTotal = Number(data.totals.grand_total) || 0;
+          this.payment.received_amount = this.formatNumber(this.GrandTotal, 2);
+        }
+      }).catch(() => {
+        if (requestSequence !== this.managedTaxRequestSequence) return;
+        this.managedTaxPreview = { rows: [], summary: [], line_totals: {}, available_taxes: {}, managed_available: false, totals: null };
+        this.managedTaxPreviewLoaded = true;
+      }).finally(() => {
+        if (requestSequence === this.managedTaxRequestSequence) this.managedTaxLoading = false;
+      });
+    },
 
     customerOptionLabel(client) {
       if (!client) return '';
@@ -1771,6 +1936,8 @@ export default {
       this.detail.price_type = detail.price_type || 'retail';
       this.detail.retail_unit_price = detail.retail_unit_price !== undefined ? detail.retail_unit_price : detail.Unit_price;
       this.detail.wholesale_unit_price = detail.wholesale_unit_price !== undefined ? detail.wholesale_unit_price : detail.Unit_price_wholesale;
+      this.detail.gst_option = detail.gst_option || 'gst';
+      this.loadModalManagedTaxes();
 
        setTimeout(() => {
         NProgress.done();
@@ -1823,6 +1990,7 @@ export default {
           }
           this.details[i].tax_percent = this.detail.tax_percent;
           this.details[i].tax_method = this.detail.tax_method;
+          this.$set(this.details[i], 'gst_option', this.detail.gst_option || 'no_gst');
           this.details[i].discount_Method = this.detail.discount_Method;
           this.details[i].discount = this.detail.discount;
           this.details[i].sale_unit_id = this.detail.sale_unit_id;
@@ -1890,6 +2058,42 @@ export default {
         this.detail.price_type = newType;
       }
       this.applyPriceType(this.detail);
+      this.loadModalManagedTaxes();
+    },
+
+    loadModalManagedTaxes() {
+      if (!this.sale.warehouse_id) {
+        this.modalManagedTaxes = [];
+        this.detail.gst_option = 'no_gst';
+        return;
+      }
+      this.modalManagedTaxLoading = true;
+      const priceType = this.detail.price_type === 'wholesale' ? 'wholesale_price' : 'price';
+      axios.get('taxes/applicable', {
+        params: {
+          transaction_type: 'sale_invoice',
+          price_type: priceType,
+          warehouse_id: this.sale.warehouse_id,
+          date: this.sale.date,
+        }
+      }).then(({ data }) => {
+        this.modalManagedTaxes = (data.taxes || []).map(tax => {
+          const matchedPrice = (tax.price_types || []).find(price => price.code === priceType);
+          return {
+            ...tax,
+            tax_id: tax.tax_id || tax.id,
+            tax_code: tax.tax_code || tax.code,
+            tax_name: tax.tax_name || tax.name,
+            price_type_name: matchedPrice ? matchedPrice.name : (priceType === 'wholesale_price' ? 'Wholesale Price' : 'Sale Price')
+          };
+        });
+        if (!this.modalGstTax) this.detail.gst_option = 'no_gst';
+        else if (!this.detail.gst_option) this.detail.gst_option = 'gst';
+      }).catch(() => {
+        this.modalManagedTaxes = [];
+      }).finally(() => {
+        this.modalManagedTaxLoading = false;
+      });
     },
 
 
@@ -2444,6 +2648,7 @@ export default {
       var grand_total =  this.GrandTotal.toFixed(2);
       this.GrandTotal = parseFloat(grand_total);
       this.payment.received_amount = this.formatNumber(this.GrandTotal, 2);
+      this.scheduleManagedTaxPreview();
 
     },
 
@@ -2637,6 +2842,10 @@ export default {
           this.paymentProcessing = true;
           const detailsPayload = this.details.map(d => {
             const out = Object.assign({}, d);
+            if (this.hasManagedTaxConfiguration) {
+              out.subtotal = this.managedLineTotal(d);
+              out.tax_ids = Array.from(new Set(this.managedTaxesForLine(d).map(tax => Number(tax.tax_id))));
+            }
             // Strip helper UI-only fields and pass clean batches
             delete out.available_batches;
             delete out.batches_loading;
@@ -2735,6 +2944,7 @@ export default {
         this.product.taxe = response.data.tax_price;
         this.product.tax_method = response.data.tax_method;
         this.product.tax_percent = response.data.tax_percent;
+        this.$set(this.product, 'gst_option', 'gst');
         this.product.unitSale = response.data.unitSale;
         this.product.fix_price = response.data.fix_price;
         this.product.sale_unit_id = response.data.sale_unit_id;

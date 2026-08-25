@@ -646,6 +646,16 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
     Route::resource('warehouses', 'WarehouseController');
     Route::post('warehouses/delete/by_selection', 'WarehouseController@delete_by_selection');
 
+    // ------------------------------- TAX MANAGEMENT --------------------------\\
+    Route::get('taxes/metadata', 'TaxController@metadata');
+    Route::get('taxes/applicable', 'TaxController@applicable');
+    Route::post('taxes/preview', 'TaxController@preview');
+    Route::get('taxes/defaults', 'TaxController@defaults');
+    Route::put('taxes/defaults', 'TaxController@saveDefaults');
+    Route::patch('taxes/{tax}/toggle', 'TaxController@toggle');
+    Route::get('tax-report', 'TaxReportController@index');
+    Route::resource('taxes', 'TaxController');
+
     // ------------------------------- WAREHOUSE LOCATIONS (Rack/Location) --------------------------\\
     Route::resource('warehouse_locations', 'WarehouseLocationController');
     Route::get('warehouse_locations/by_warehouse/{id}', 'WarehouseLocationController@by_warehouse');

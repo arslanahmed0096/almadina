@@ -309,7 +309,7 @@
                           <td>{{currentUser.currency}} {{formatNumber(detail.DiscountNet * detail.quantity, 2)}}</td>
                           <td>{{currentUser.currency}} {{formatNumber(detail.Net_cost * detail.quantity, 2)}}</td>
                           <td>{{currentUser.currency}} {{formatNumber(detail.taxe * detail.quantity, 2)}}</td>
-                          <td>+{{currentUser.currency}} {{formatNumber(detail.withholding_tax * detail.quantity, 2)}}</td>
+                          <td>-{{currentUser.currency}} {{formatNumber(detail.withholding_tax * detail.quantity, 2)}}</td>
                           <td>{{currentUser.currency}} {{detail.subtotal.toFixed(2)}}</td>
                           <td>
                             <lucide-icon class="text-25 text-success" name="pencil" v-if="currentUserPermissions && currentUserPermissions.includes('edit_product_purchase')" @click="Modal_Updat_Detail(detail)" />
@@ -530,7 +530,7 @@
                       </tr>
                       <tr>
                         <td class="bold">I.Tax WithHold</td>
-                        <td>+{{currentUser.currency}} {{purchase.withholding_tax.toFixed(2)}} ({{formatNumber(withholding_tax_rate, 1)}} %)</td>
+                        <td>-{{currentUser.currency}} {{purchase.withholding_tax.toFixed(2)}} ({{formatNumber(withholding_tax_rate, 2)}} %)</td>
                       </tr>
                       <tr>
                         <td class="bold">{{$t('Discount')}}</td>
@@ -879,7 +879,8 @@ export default {
       Submit_Processing_detail:false,
       warehouses: [],
       suppliers: [],
-      withholding_tax_rate: 0.5,
+      withholding_tax_rate: 0,
+      managed_taxes: [],
       supplier: {
         id: "",
         name: "",
@@ -1398,7 +1399,7 @@ export default {
       detail.tax_method = "1";
       detail.taxe = (mrpPrice * taxRate) / 100;
       detail.withholding_tax = detail.Net_cost * (this.withholding_tax_rate / 100);
-      detail.Total_cost = detail.Net_cost + detail.taxe + detail.withholding_tax;
+      detail.Total_cost = detail.Net_cost + detail.taxe - detail.withholding_tax;
       detail.subtotal = (Number(detail.quantity) || 0) * detail.Total_cost;
     },
 
@@ -1678,7 +1679,11 @@ export default {
         .then(response => {
           this.suppliers = response.data.suppliers;
           this.warehouses = response.data.warehouses;
-          this.purchase.tax_rate = parseFloat(response.data.default_tax) || 0;
+          this.managed_taxes = response.data.managed_taxes || [];
+          const gst = this.managed_taxes.find(t => t.code === 'GST' && t.calculation_type === 'percentage');
+          const wht = this.managed_taxes.find(t => t.code === 'WHT' && t.calculation_type === 'percentage');
+          this.purchase.tax_rate = gst ? (parseFloat(gst.rate) || 0) : 0;
+          this.withholding_tax_rate = wht ? (parseFloat(wht.rate) || 0) : 0;
           this.isLoading = false;
         })
         .catch(response => {

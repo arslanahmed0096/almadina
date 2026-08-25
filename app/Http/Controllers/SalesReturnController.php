@@ -278,6 +278,9 @@ class SalesReturnController extends BaseController
                     );
                 }
             }
+
+            app(\App\Services\Tax\TransactionTaxService::class)
+                ->reverseSaleReturn($order->fresh());
         }, 10);
 
         return response()->json(['success' => true]);
@@ -511,6 +514,9 @@ class SalesReturnController extends BaseController
                 'GrandTotal' => $request['GrandTotal'],
                 'payment_statut' => $payment_statut,
             ]);
+
+            app(\App\Services\Tax\TransactionTaxService::class)
+                ->reverseSaleReturn($current_SaleReturn->fresh());
 
         }, 10);
 
@@ -953,6 +959,7 @@ class SalesReturnController extends BaseController
             'details' => $details,
             'sale_Return' => $return_details,
             'company' => $company,
+            'taxes' => \App\Models\TransactionTaxSnapshot::where('transaction_type', 'sale_return')->where('transaction_id', $id)->orderBy('priority')->get(),
         ]);
     }
 
@@ -1197,6 +1204,7 @@ class SalesReturnController extends BaseController
             'setting' => $settings,
             'return_sale' => $return_details,
             'details' => $details,
+            'taxes' => \App\Models\TransactionTaxSnapshot::where('transaction_type', 'sale_return')->where('transaction_id', $Sale_Return->id)->orderBy('priority')->get(),
         ])->render();
 
         $arabic = new Arabic;

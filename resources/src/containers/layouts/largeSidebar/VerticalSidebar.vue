@@ -1099,8 +1099,13 @@
                 </router-link>
               </li>
 
-             
-             
+              <li class="submenu-item">
+                <router-link to="/app/settings/tax-management" class="submenu-link">
+                  <lucide-icon class="submenu-icon" name="receipt-text" />
+                  <span>Tax Management</span>
+                </router-link>
+              </li>
+
               <li class="submenu-item" v-if="currentUserPermissions && currentUserPermissions.includes('quickbooks_settings')">
                 <router-link to="/app/settings/quickbooks_sync" class="submenu-link">
                   <lucide-icon class="submenu-icon" name="banknote" />

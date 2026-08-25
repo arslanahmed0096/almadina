@@ -287,6 +287,11 @@ class PurchasesController extends BaseController
             }
             PurchaseDetail::insert($orderDetails);
 
+            // Managed tax snapshots are calculated server-side. Legacy aggregate
+            // columns remain dual-written for backward-compatible reports/PDFs.
+            app(\App\Services\Tax\TransactionTaxService::class)
+                ->snapshotPurchase($order, array_values($data), $request->user('api'));
+
             // Pharmacy: link captured batches to the freshly inserted PurchaseDetail rows.
             // Re-fetch in id order so position matches the input array order.
             $batchService = app(BatchService::class);
@@ -553,6 +558,9 @@ class PurchasesController extends BaseController
                     }
                     $batchService->applyForPurchase($current_Purchase, $alignedInput, $aligned);
                 }
+
+                app(\App\Services\Tax\TransactionTaxService::class)
+                    ->snapshotPurchase($current_Purchase->fresh(), array_values($new_purchase_details), $request->user('api'));
             }
 
         }, 10);
@@ -948,6 +956,7 @@ class PurchasesController extends BaseController
             'details' => $details,
             'purchase' => $purchase_data,
             'company' => $company,
+            'taxes' => \App\Models\TransactionTaxSnapshot::where('transaction_type', 'purchase')->where('transaction_id', $id)->orderBy('priority')->get(),
         ]);
 
     }
@@ -1111,6 +1120,7 @@ class PurchasesController extends BaseController
             'setting' => $settings,
             'purchase' => $purchase,
             'details' => $details,
+            'taxes' => \App\Models\TransactionTaxSnapshot::where('transaction_type', 'purchase')->where('transaction_id', $Purchase_data->id)->orderBy('priority')->get(),
         ])->render();
 
         $arabic = new Arabic;
@@ -1226,6 +1236,7 @@ class PurchasesController extends BaseController
             'setting' => $settings,
             'purchase' => $purchase,
             'details' => $details,
+            'taxes' => \App\Models\TransactionTaxSnapshot::where('transaction_type', 'purchase')->where('transaction_id', $Purchase_data->id)->orderBy('priority')->get(),
         ])->render();
 
         $arabic = new Arabic;
@@ -1275,11 +1286,20 @@ class PurchasesController extends BaseController
 
         $suppliers = Provider::where('deleted_at', '=', null)->get(['id', 'name']);
         $settings = Setting::where('deleted_at', '=', null)->first();
+        $managedTaxes = \App\Models\Tax::query()
+            ->with(['priceTypes:id,code,name', 'transactionTypes'])
+            ->effective()->forTransaction('purchase')
+            ->where(function ($query) use ($warehouses) {
+                $query->whereDoesntHave('warehouses')
+                    ->orWhereHas('warehouses', fn ($warehouseQuery) => $warehouseQuery->whereIn('warehouses.id', $warehouses->pluck('id')));
+            })
+            ->orderBy('priority')->get();
 
         return response()->json([
             'warehouses' => $warehouses,
             'suppliers' => $suppliers,
             'default_tax' => (float) ($settings->default_tax ?? 0),
+            'managed_taxes' => $managedTaxes,
         ]);
     }
 
@@ -1353,6 +1373,7 @@ class PurchasesController extends BaseController
             $purchase['delivery_note_no'] = $Purchase_data->delivery_note_no;
             $purchase['tax_rate'] = $Purchase_data->tax_rate;
             $purchase['TaxNet'] = $Purchase_data->TaxNet;
+            $purchase['withholding_tax'] = $Purchase_data->withholding_tax ?? 0;
             $purchase['discount'] = $Purchase_data->discount;
             $purchase['shipping'] = $Purchase_data->shipping;
             $purchase['statut'] = $Purchase_data->statut;
@@ -1440,6 +1461,9 @@ class PurchasesController extends BaseController
 
                 $tax_cost = $detail->TaxNet * (($detail->cost - $data['DiscountNet']) / 100);
                 $data['Unit_cost'] = $detail->cost;
+                $data['company_rb_price'] = $detail->company_rb_price ?: $detail->cost;
+                $data['mrp_price'] = $detail->mrp_price ?: $detail->cost;
+                $data['withholding_tax'] = $detail->withholding_tax ?? 0;
                 $data['tax_percent'] = $detail->TaxNet;
                 $data['tax_method'] = $detail->tax_method;
                 $data['discount'] = $detail->discount;
@@ -1447,8 +1471,8 @@ class PurchasesController extends BaseController
 
                 if ($detail->tax_method == '1') {
                     $data['Net_cost'] = $detail->cost - $data['DiscountNet'];
-                    $data['taxe'] = $tax_cost;
-                    $data['subtotal'] = ($data['Net_cost'] * $data['quantity']) + ($tax_cost * $data['quantity']);
+                    $data['taxe'] = $detail->sales_tax ?? $tax_cost;
+                    $data['subtotal'] = ($data['Net_cost'] + $data['taxe'] - $data['withholding_tax']) * $data['quantity'];
                 } else {
                     $data['Net_cost'] = ($detail->cost - $data['DiscountNet'] - $tax_cost);
                     $data['taxe'] = $detail->cost - $data['Net_cost'] - $data['DiscountNet'];
@@ -1472,12 +1496,16 @@ class PurchasesController extends BaseController
             }
 
             $suppliers = Provider::where('deleted_at', '=', null)->get(['id', 'name']);
+            $managedTaxes = \App\Models\Tax::with(['priceTypes:id,code,name', 'transactionTypes'])
+                ->effective()->forTransaction('purchase')->forWarehouse($Purchase_data->warehouse_id)
+                ->orderBy('priority')->get();
 
             return response()->json([
                 'details' => $details,
                 'purchase' => $purchase,
                 'suppliers' => $suppliers,
                 'warehouses' => $warehouses,
+                'managed_taxes' => $managedTaxes,
             ]);
         }
     }

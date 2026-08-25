@@ -970,6 +970,10 @@
                       {{ formatPriceWithSymbol(invoice_pos.symbol, invoice_pos.sale.taxe ,2) }} ({{formatNumber(invoice_pos.sale.tax_rate,2)}} %)
                     </td>
                   </tr>
+                  <tr v-for="tax in (invoice_pos.taxes || [])" :key="'a4-tax-'+tax.code+'-'+tax.price_type">
+                    <td colspan="3" class="total">{{ tax.code }} on {{ tax.price_type }} ({{ tax.behavior }})</td>
+                    <td style="text-align:right;" class="total">{{ tax.behavior === 'deductive' ? '-' : '+' }}{{ formatPriceWithSymbol(invoice_pos.symbol, tax.amount, 2) }}</td>
+                  </tr>
 
                   <tr style="margin-top:10px" v-show="pos_settings.show_discount">
                     <td colspan="3" class="total">{{$t('Discount')}}</td>
@@ -1151,6 +1155,10 @@
                       {{ formatPriceWithSymbol(invoice_pos.symbol, invoice_pos.sale.taxe ,2) }} ({{formatNumber(invoice_pos.sale.tax_rate,2)}} %)
                     </td>
                   </tr>
+                  <tr v-for="tax in (invoice_pos.taxes || [])" :key="'receipt-tax-'+tax.code+'-'+tax.price_type">
+                    <td class="total">{{ tax.code }} / {{ tax.price_type }}</td>
+                    <td style="text-align:right" class="total">{{ tax.behavior === 'deductive' ? '-' : '+' }}{{ formatPriceWithSymbol(invoice_pos.symbol, tax.amount, 2) }}</td>
+                  </tr>
                   <tr v-show="pos_settings.show_discount">
                     <td class="total">{{$t('Discount')}}</td>
                     <td style="text-align:right" class="total">
@@ -1314,6 +1322,10 @@
                     <td style="text-align:right;" class="total">
                       {{ formatPriceWithSymbol(invoice_pos.symbol, invoice_pos.sale.taxe ,2) }} ({{formatNumber(invoice_pos.sale.tax_rate,2)}} %)
                     </td>
+                  </tr>
+                  <tr v-for="tax in (invoice_pos.taxes || [])" :key="'compact-tax-'+tax.code+'-'+tax.price_type">
+                    <td class="total">{{ tax.code }} ({{ tax.behavior }})</td>
+                    <td style="text-align:right;" class="total">{{ tax.behavior === 'deductive' ? '-' : '+' }}{{ formatPriceWithSymbol(invoice_pos.symbol, tax.amount, 2) }}</td>
                   </tr>
                   <tr v-show="pos_settings.show_discount">
                     <td class="total">{{$t('Discount')}}</td>

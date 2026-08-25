@@ -617,26 +617,16 @@
                         </validation-provider>
                   </b-col>
 
-                      <!-- Default Tax (moved from Tax & Pricing tab) -->
+                      <!-- Managed tax defaults replace the legacy standalone percentage. -->
                       <b-col lg="6" md="6" sm="12" class="mb-3">
-                        <validation-provider
-                          name="Default Tax"
-                          :rules="{ regex: /^\d*\.?\d*$/}"
-                          v-slot="validationContext"
-                        >
-                          <b-form-group :label="$t('Default_Tax') + ' (%)'">
-                            <b-form-input
-                              :state="getValidationState(validationContext)"
-                              aria-describedby="default-tax-feedback"
-                              v-model.number="setting.default_tax"
-                              placeholder="0.00"
-                              type="number"
-                              step="0.01"
-                              min="0"
-                            ></b-form-input>
-                            <b-form-invalid-feedback id="default-tax-feedback">{{ validationContext.errors[0] }}</b-form-invalid-feedback>
-                          </b-form-group>
-                        </validation-provider>
+                        <b-form-group label="Default Taxes">
+                          <div class="border rounded p-3 bg-light">
+                            <div class="text-muted mb-2">Purchase, Sale Invoice, and POS defaults are managed as tax records.</div>
+                            <b-button size="sm" variant="outline-primary" :to="{ name: 'tax_management' }">
+                              Open Tax Management
+                            </b-button>
+                          </div>
+                        </b-form-group>
                       </b-col>
 
                       <!-- Point To Amount Rate (moved from Tax & Pricing tab) -->

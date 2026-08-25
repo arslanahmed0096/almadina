@@ -13,13 +13,13 @@
   ),
   'intervention/image' => 
   array (
-    'aliases' => 
-    array (
-      'Image' => 'Intervention\\Image\\Facades\\Image',
-    ),
     'providers' => 
     array (
       0 => 'Intervention\\Image\\ImageServiceProvider',
+    ),
+    'aliases' => 
+    array (
+      'Image' => 'Intervention\\Image\\Facades\\Image',
     ),
   ),
   'laravel/passport' => 
@@ -49,13 +49,13 @@
   ),
   'macellan/laravel-zip' => 
   array (
-    'aliases' => 
-    array (
-      'Zip' => 'Macellan\\Zip\\ZipFacade',
-    ),
     'providers' => 
     array (
       0 => 'Macellan\\Zip\\ZipServiceProvider',
+    ),
+    'aliases' => 
+    array (
+      'Zip' => 'Macellan\\Zip\\ZipFacade',
     ),
   ),
   'nesbot/carbon' => 
@@ -81,13 +81,13 @@
   ),
   'nwidart/laravel-modules' => 
   array (
-    'aliases' => 
-    array (
-      'Module' => 'Nwidart\\Modules\\Facades\\Module',
-    ),
     'providers' => 
     array (
       0 => 'Nwidart\\Modules\\LaravelModulesServiceProvider',
+    ),
+    'aliases' => 
+    array (
+      'Module' => 'Nwidart\\Modules\\Facades\\Module',
     ),
   ),
   'spatie/laravel-ignition' => 

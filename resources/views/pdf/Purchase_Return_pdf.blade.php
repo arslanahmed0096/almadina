@@ -323,6 +323,7 @@
         </tr>
     </table>
 
+    @include('pdf.partials.tax_breakdown')
     <div style="margin-top: 15px; padding-top: 10px; border-top: 2px solid #e5e7eb; text-align: {{ $isRtl ? 'right' : 'left' }};">
         @if($setting['is_invoice_footer'] && $setting['invoice_footer'] !==null)
             <div style="padding: 8px 10px; background: #fef2f2; border-{{ $isRtl ? 'right' : 'left' }}: 3px solid #ef4444; border-radius: 3px; margin-bottom: 10px;">
