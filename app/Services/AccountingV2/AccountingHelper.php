@@ -49,6 +49,15 @@ class AccountingHelper
             if ($amount <= 0) {
                 return;
             }
+            $gst = ($purchase->invoice_tax_type ?? null) === 'gst' ? min($amount, max(0, (float) ($purchase->TaxNet ?? 0))) : 0.0;
+            $lines = [
+                ['coa_id' => $invCoaId, 'debit' => round($amount - $gst, 6), 'credit' => 0, 'memo' => ! empty($purchase->inventory_already_received) ? 'Inventory received via Gate Pass' : 'Inventory'],
+            ];
+            if ($gst > 0) {
+                $gstCoaId = self::getOrCreateCoa('1210-GST-IN', 'GST Input Tax', 'asset');
+                $lines[] = ['coa_id' => $gstCoaId, 'debit' => $gst, 'credit' => 0, 'memo' => 'Recoverable GST input tax'];
+            }
+            $lines[] = ['coa_id' => $apCoaId, 'debit' => 0, 'credit' => $amount, 'memo' => 'Accounts Payable'];
             self::createBalancedEntry([
                 'journal' => [
                     'date' => self::dateFrom($purchase->date ?? null),
@@ -56,10 +65,7 @@ class AccountingHelper
                     'reference_type' => 'purchase',
                     'reference_id' => $purchase->id ?? null,
                 ],
-                'lines' => [
-                    ['coa_id' => $invCoaId, 'debit' => $amount, 'credit' => 0,       'memo' => 'Inventory'],
-                    ['coa_id' => $apCoaId,  'debit' => 0,       'credit' => $amount, 'memo' => 'Accounts Payable'],
-                ],
+                'lines' => $lines,
             ]);
         });
     }

@@ -93,6 +93,11 @@
             </b-col>
 
             <!-- Opening Balance (Previous Dues) -->
+            <b-col md="4" sm="12"><b-form-group label="Tax status"><b-form-select v-model="provider.tax_status" :options="[{value:'gst',text:'GST Registered'},{value:'non_gst',text:'Non-GST'}]" /></b-form-group></b-col>
+            <b-col v-if="provider.tax_status === 'gst'" md="4" sm="12"><b-form-group label="GST / STRN number"><b-form-input v-model="provider.strn_number" /></b-form-group></b-col>
+            <b-col v-if="provider.tax_status === 'gst'" md="4" sm="12"><b-form-group label="NTN number"><b-form-input v-model="provider.ntn_number" /></b-form-group></b-col>
+
+            <!-- Opening Balance (Previous Dues) -->
             <b-col md="6" sm="12">
                 <b-form-group :label="$t('Opening_Balance_Previous_Dues')">
                   <b-form-input
@@ -177,6 +182,9 @@ export default {
         phone: "",
         email: "",
         tax_number: "",
+        tax_status: "non_gst",
+        strn_number: "",
+        ntn_number: "",
         country: "",
         city: "",
         adresse: "",
@@ -212,6 +220,9 @@ export default {
           email: this.provider.email,
           phone: this.provider.phone,
           tax_number: this.provider.tax_number,
+          tax_status: this.provider.tax_status,
+          strn_number: this.provider.strn_number,
+          ntn_number: this.provider.ntn_number,
           country: this.provider.country,
           city: this.provider.city,
           adresse: this.provider.adresse,
@@ -293,6 +304,9 @@ export default {
       phone: "",
       email: "",
       tax_number: "",
+      tax_status: "non_gst",
+      strn_number: "",
+      ntn_number: "",
       country: "",
       city: "",
       adresse: "",

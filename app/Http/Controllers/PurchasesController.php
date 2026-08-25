@@ -310,6 +310,9 @@ class PurchasesController extends BaseController
 
     public function update(Request $request, $id)
     {
+        if (Purchase::whereKey($id)->whereNotNull('supplier_invoice_id')->exists()) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['purchase' => ['Purchases posted from supplier invoices are immutable. Use the controlled cancellation/reversal workflow.']]);
+        }
         $this->authorizeForUser($request->user('api'), 'update', Purchase::class);
 
         request()->validate([
@@ -573,6 +576,9 @@ class PurchasesController extends BaseController
 
     public function destroy(Request $request, $id)
     {
+        if (Purchase::whereKey($id)->whereNotNull('supplier_invoice_id')->exists()) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['purchase' => ['Posted procurement Purchases cannot be deleted. Use a controlled accounting reversal.']]);
+        }
         $this->authorizeForUser($request->user('api'), 'delete', Purchase::class);
 
         \DB::transaction(function () use ($id, $request) {

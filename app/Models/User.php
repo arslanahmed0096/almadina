@@ -158,6 +158,11 @@ class User extends Authenticatable
         return $this->belongsToMany('App\Models\Warehouse');
     }
 
+    public function canProcurement(string $permission): bool
+    {
+        return $this->isSuperAdmin() || $this->effectivePermissionNames()->contains($permission);
+    }
+
     /**
      * Check if user has record_view permission (user-level boolean with backward compatibility)
      * 

@@ -95,6 +95,11 @@
             </b-col>
 
             <!-- Credit Limit -->
+            <b-col md="4" sm="12"><b-form-group label="Tax status"><b-form-select v-model="provider.tax_status" :options="[{value:'gst',text:'GST Registered'},{value:'non_gst',text:'Non-GST'}]" /></b-form-group></b-col>
+            <b-col v-if="provider.tax_status === 'gst'" md="4" sm="12"><b-form-group label="GST / STRN number"><b-form-input v-model="provider.strn_number" /></b-form-group></b-col>
+            <b-col v-if="provider.tax_status === 'gst'" md="4" sm="12"><b-form-group label="NTN number"><b-form-input v-model="provider.ntn_number" /></b-form-group></b-col>
+
+            <!-- Credit Limit -->
             <b-col md="6" sm="12">
                 <b-form-group :label="$t('Credit_Limit')">
                   <b-form-input
@@ -169,6 +174,9 @@ export default {
         phone: "",
         email: "",
         tax_number: "",
+        tax_status: "non_gst",
+        strn_number: "",
+        ntn_number: "",
         country: "",
         city: "",
         adresse: "",
@@ -202,6 +210,9 @@ export default {
           account_title: this.provider.account_title,
           email: this.provider.email,
           tax_number: this.provider.tax_number,
+          tax_status: this.provider.tax_status,
+          strn_number: this.provider.strn_number,
+          ntn_number: this.provider.ntn_number,
           phone: this.provider.phone,
           country: this.provider.country,
           city: this.provider.city,
@@ -256,6 +267,9 @@ export default {
             email: response.data.provider?.email || "",
             phone: response.data.provider?.phone || "",
             tax_number: response.data.provider?.tax_number || "",
+            tax_status: response.data.provider?.tax_status || "non_gst",
+            strn_number: response.data.provider?.strn_number || "",
+            ntn_number: response.data.provider?.ntn_number || "",
             country: response.data.provider?.country || "",
             city: response.data.provider?.city || "",
             adresse: response.data.provider?.adresse || "",

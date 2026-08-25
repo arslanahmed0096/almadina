@@ -12,6 +12,10 @@ use App\Http\Controllers\Api\Store\SettingsApiController;
 use App\Http\Controllers\Api\Store\SubscriberController;
 use App\Http\Controllers\KnowledgeBaseArticleController;
 use App\Http\Controllers\KnowledgeBaseArticleGroupController;
+use App\Http\Controllers\Procurement\GatePassController;
+use App\Http\Controllers\Procurement\ProcurementReportController;
+use App\Http\Controllers\Procurement\PurchaseOrderController;
+use App\Http\Controllers\Procurement\SupplierInvoiceController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -670,6 +674,35 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
     // ------------------------------------------------------------------\\
 
     Route::resource('purchases', 'PurchasesController');
+
+    // Procurement: physical receipt is posted by Gate Pass; linked Purchases are financial-only.
+    Route::get('procurement/metadata', [PurchaseOrderController::class, 'metadata']);
+    Route::get('procurement/purchase-orders', [PurchaseOrderController::class, 'index']);
+    Route::post('procurement/purchase-orders', [PurchaseOrderController::class, 'store']);
+    Route::get('procurement/purchase-orders/{purchaseOrder}', [PurchaseOrderController::class, 'show']);
+    Route::put('procurement/purchase-orders/{purchaseOrder}', [PurchaseOrderController::class, 'update']);
+    Route::post('procurement/purchase-orders/{purchaseOrder}/issue', [PurchaseOrderController::class, 'issue']);
+    Route::post('procurement/purchase-orders/{purchaseOrder}/cancel', [PurchaseOrderController::class, 'cancel']);
+    Route::get('procurement/purchase-orders/{purchaseOrder}/pdf', [PurchaseOrderController::class, 'pdf']);
+    Route::get('procurement/gate-passes', [GatePassController::class, 'index']);
+    Route::get('procurement/gate-passes-metadata', [GatePassController::class, 'metadata']);
+    Route::post('procurement/gate-passes', [GatePassController::class, 'store']);
+    Route::get('procurement/gate-passes/{gatePass}', [GatePassController::class, 'show']);
+    Route::post('procurement/gate-passes/{gatePass}/confirm', [GatePassController::class, 'confirm']);
+    Route::post('procurement/gate-passes/{gatePass}/reject', [GatePassController::class, 'reject']);
+    Route::post('procurement/gate-passes/{gatePass}/cancel', [GatePassController::class, 'cancel']);
+    Route::post('procurement/gate-passes/{gatePass}/attachment', [GatePassController::class, 'replaceAttachment']);
+    Route::get('procurement/gate-passes/{gatePass}/attachment', [GatePassController::class, 'downloadAttachment']);
+    Route::get('procurement/gate-passes/{gatePass}/invoice-metadata', [SupplierInvoiceController::class, 'metadata']);
+    Route::get('procurement/supplier-invoices', [SupplierInvoiceController::class, 'index']);
+    Route::post('procurement/supplier-invoices', [SupplierInvoiceController::class, 'store']);
+    Route::get('procurement/supplier-invoices/{supplierInvoice}', [SupplierInvoiceController::class, 'show']);
+    Route::post('procurement/supplier-invoices/{supplierInvoice}/record', [SupplierInvoiceController::class, 'record']);
+    Route::post('procurement/supplier-invoices/{supplierInvoice}/create-purchase', [SupplierInvoiceController::class, 'createPurchase']);
+    Route::post('procurement/supplier-invoices/{supplierInvoice}/cancel', [SupplierInvoiceController::class, 'cancel']);
+    Route::post('procurement/supplier-invoices/{supplierInvoice}/attachment', [SupplierInvoiceController::class, 'replaceAttachment']);
+    Route::get('procurement/supplier-invoices/{supplierInvoice}/attachment', [SupplierInvoiceController::class, 'downloadAttachment']);
+    Route::get('procurement/reports/summary', [ProcurementReportController::class, 'summary']);
     Route::get('purchases/{id}/barcodes', 'PurchasesController@get_barcode_products');
     Route::get('get_payments_by_purchase/{id}', 'PurchasesController@Get_Payments');
     Route::post('purchase_send_email', 'PurchasesController@Send_Email');

@@ -29,15 +29,24 @@ return new class extends Migration
                 DB::table('permission_role')->updateOrInsert(['permission_id' => $id, 'role_id' => $roleId]);
             }
 
-            $roleNames = match ($name) {
-                'taxes.view', 'taxes.apply', 'taxes.report' => ['Accountant', 'Branch Manager'],
-                'taxes.create', 'taxes.update', 'taxes.activate', 'taxes.override' => ['Accountant'],
-                default => [],
-            };
-            if ($name === 'taxes.apply') $roleNames = array_merge($roleNames, ['Salesman', 'POS User']);
-            foreach (DB::table('roles')->whereIn('name', $roleNames)->pluck('id') as $roleId) {
-                DB::table('permission_role')->updateOrInsert(['permission_id' => $id, 'role_id' => $roleId]);
-            }
+        }
+
+        // Preserve transaction access according to existing capabilities. Tax
+        // management privileges remain explicitly assignable by Super Admin.
+        $applyId = DB::table('permissions')->where('name', 'taxes.apply')->value('id');
+        $salesPermissionIds = DB::table('permissions')
+            ->whereIn('name', ['Sales_add', 'Pos_view'])
+            ->pluck('id');
+        $salesRoleIds = DB::table('permission_role')
+            ->whereIn('permission_id', $salesPermissionIds)
+            ->pluck('role_id')
+            ->unique();
+
+        foreach ($salesRoleIds as $roleId) {
+            DB::table('permission_role')->updateOrInsert([
+                'permission_id' => $applyId,
+                'role_id' => $roleId,
+            ]);
         }
     }
 

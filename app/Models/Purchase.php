@@ -9,7 +9,9 @@ class Purchase extends Model
     protected $dates = ['deleted_at'];
 
     protected $fillable = [
-        'date', 'Ref', 'sales_tax_invoice_no', 'delivery_note_no', 'provider_id', 'warehouse_id', 'GrandTotal', 'time',
+        'date', 'Ref', 'user_id', 'sales_tax_invoice_no', 'delivery_note_no', 'purchase_order_id', 'gate_pass_id',
+        'supplier_invoice_id', 'invoice_tax_type', 'inventory_already_received', 'posting_status',
+        'provider_id', 'warehouse_id', 'GrandTotal', 'time',
         'discount', 'shipping', 'statut', 'notes', 'TaxNet', 'withholding_tax', 'tax_rate', 'paid_amount',
         'payment_statut', 'created_at', 'updated_at', 'deleted_at',
     ];
@@ -25,6 +27,7 @@ class Purchase extends Model
         'withholding_tax' => 'double',
         'tax_rate' => 'double',
         'paid_amount' => 'double',
+        'inventory_already_received' => 'boolean',
     ];
 
     public function details()
@@ -56,4 +59,8 @@ class Purchase extends Model
     {
         return $this->hasMany('App\Models\PurchaseDocument', 'purchase_id');
     }
+
+    public function purchaseOrder() { return $this->belongsTo(PurchaseOrder::class); }
+    public function gatePass() { return $this->belongsTo(GatePass::class); }
+    public function supplierInvoice() { return $this->belongsTo(SupplierInvoice::class); }
 }

@@ -18,7 +18,9 @@ class TaxModuleMigrationTest extends TestCase
         Schema::create('permission_role', function (Blueprint $t) { $t->unsignedInteger('permission_id'); $t->unsignedInteger('role_id'); $t->unique(['permission_id', 'role_id']); });
         Schema::create('permission_user', function (Blueprint $t) { $t->unsignedInteger('permission_id'); $t->unsignedInteger('user_id'); $t->string('type'); $t->timestamps(); });
         DB::table('settings')->insert(['default_tax' => '17.5']);
-        DB::table('roles')->insert([['id' => 1, 'name' => 'Super Admin'], ['id' => 2, 'name' => 'Accountant'], ['id' => 3, 'name' => 'POS User']]);
+        DB::table('roles')->insert([['id' => 1, 'name' => 'Super Admin'], ['id' => 2, 'name' => 'Accountant'], ['id' => 3, 'name' => 'Cashier']]);
+        $posPermissionId = DB::table('permissions')->insertGetId(['name' => 'Pos_view']);
+        DB::table('permission_role')->insert(['permission_id' => $posPermissionId, 'role_id' => 3]);
 
         $schemaMigration = require database_path('migrations/2026_08_24_000001_create_tax_management_module.php');
         $schemaMigration->up();
@@ -35,5 +37,16 @@ class TaxModuleMigrationTest extends TestCase
         $this->assertSame(8, DB::table('permissions')->where('name', 'like', 'taxes.%')->count());
         $applyId = DB::table('permissions')->where('name', 'taxes.apply')->value('id');
         $this->assertDatabaseHas('permission_role', ['permission_id' => $applyId, 'role_id' => 3]);
+
+        DB::table('permission_role')->where([
+            'permission_id' => $applyId,
+            'role_id' => 3,
+        ])->delete();
+        $backfillMigration = require database_path('migrations/2026_08_25_000003_backfill_tax_apply_for_sales_roles.php');
+        $backfillMigration->up();
+        $this->assertDatabaseHas('permission_role', ['permission_id' => $applyId, 'role_id' => 3]);
+
+        $viewId = DB::table('permissions')->where('name', 'taxes.view')->value('id');
+        $this->assertDatabaseMissing('permission_role', ['permission_id' => $viewId, 'role_id' => 2]);
     }
 }

@@ -1355,6 +1355,90 @@
                   </b-card>
                 </b-col>
 
+                <!-- Tax Management -->
+                <b-col md="4">
+                  <b-card no-body class="ul-card__border-radius">
+                    <b-card-header header-tag="header" class="p-1" role="tab">
+                      <b-button
+                        class="card-title mb-0"
+                        block
+                        href="#"
+                        v-b-toggle.panel-Tax-Management
+                        variant="transparent"
+                      >Tax Management</b-button>
+                    </b-card-header>
+                    <b-collapse
+                      id="panel-Tax-Management"
+                      :visible="true"
+                      accordion="my-accordion-tax-management"
+                      role="tabpanel"
+                    >
+                      <b-card-body>
+                        <b-card-text>
+                          <b-row>
+                            <b-col md="12">
+                              <label class="checkbox checkbox-outline-primary">
+                                <input type="checkbox" v-model="permissions" value="taxes.view">
+                                <span>View tax setup</span>
+                                <span class="checkmark"></span>
+                              </label>
+                            </b-col>
+                            <b-col md="12">
+                              <label class="checkbox checkbox-outline-primary">
+                                <input type="checkbox" v-model="permissions" value="taxes.create">
+                                <span>Create taxes</span>
+                                <span class="checkmark"></span>
+                              </label>
+                            </b-col>
+                            <b-col md="12">
+                              <label class="checkbox checkbox-outline-primary">
+                                <input type="checkbox" v-model="permissions" value="taxes.update">
+                                <span>Update taxes and defaults</span>
+                                <span class="checkmark"></span>
+                              </label>
+                            </b-col>
+                            <b-col md="12">
+                              <label class="checkbox checkbox-outline-primary">
+                                <input type="checkbox" v-model="permissions" value="taxes.delete">
+                                <span>Delete unused taxes</span>
+                                <span class="checkmark"></span>
+                              </label>
+                            </b-col>
+                            <b-col md="12">
+                              <label class="checkbox checkbox-outline-primary">
+                                <input type="checkbox" v-model="permissions" value="taxes.activate">
+                                <span>Activate or deactivate taxes</span>
+                                <span class="checkmark"></span>
+                              </label>
+                            </b-col>
+                            <b-col md="12">
+                              <label class="checkbox checkbox-outline-primary">
+                                <input type="checkbox" v-model="permissions" value="taxes.apply">
+                                <span>Apply approved taxes to transactions</span>
+                                <span class="checkmark"></span>
+                              </label>
+                            </b-col>
+                            <b-col md="12">
+                              <label class="checkbox checkbox-outline-primary">
+                                <input type="checkbox" v-model="permissions" value="taxes.override">
+                                <span>Override automatic taxes</span>
+                                <span class="checkmark"></span>
+                              </label>
+                            </b-col>
+                            <b-col md="12">
+                              <label class="checkbox checkbox-outline-primary">
+                                <input type="checkbox" v-model="permissions" value="taxes.report">
+                                <span>View managed tax reports</span>
+                                <span class="checkmark"></span>
+                              </label>
+                            </b-col>
+                          </b-row>
+                        </b-card-text>
+                      </b-card-body>
+                    </b-collapse>
+                  </b-card>
+                </b-col>
+
                 <!-- Commissions -->
                 <b-col md="4">
                   <b-card no-body class="ul-card__border-radius">

@@ -391,9 +391,14 @@
           <li
             v-show="currentUserPermissions && (
               currentUserPermissions.includes('Purchases_view') ||
-              currentUserPermissions.includes('Purchases_add')
+              currentUserPermissions.includes('Purchases_add') ||
+              currentUserPermissions.includes('purchase_orders_view') ||
+              currentUserPermissions.includes('purchase_orders_create') ||
+              currentUserPermissions.includes('gate_passes_view') ||
+              currentUserPermissions.includes('gate_passes_create') ||
+              currentUserPermissions.includes('supplier_invoices_view')
             )"
-            :class="{ active: isActiveRoute('purchases'), 'has-submenu': true, open: openMenus.includes('purchases') }"
+            :class="{ active: isActiveRoute('purchases') || isActiveRoute('procurement'), 'has-submenu': true, open: openMenus.includes('purchases') }"
             class="nav-item"
           >
             <a href="#" @click.prevent="toggleSubmenu('purchases')" class="nav-link">
@@ -402,6 +407,30 @@
               <lucide-icon class="submenu-arrow" name="chevron-down" v-if="!isCollapsed" />
             </a>
             <ul class="submenu" v-if="openMenus.includes('purchases') && !isCollapsed">
+              <li class="submenu-item" v-if="currentUserPermissions && currentUserPermissions.includes('purchase_orders_view')">
+                <router-link to="/app/procurement/purchase-orders" class="submenu-link">
+                  <lucide-icon class="submenu-icon" name="clipboard-list" />
+                  <span>Purchase Orders</span>
+                </router-link>
+              </li>
+              <li class="submenu-item" v-if="currentUserPermissions && currentUserPermissions.includes('purchase_orders_create')">
+                <router-link to="/app/procurement/purchase-orders/create" class="submenu-link">
+                  <lucide-icon class="submenu-icon" name="file-plus" />
+                  <span>New Purchase Order</span>
+                </router-link>
+              </li>
+              <li class="submenu-item" v-if="currentUserPermissions && currentUserPermissions.includes('gate_passes_view')">
+                <router-link to="/app/procurement/gate-passes" class="submenu-link">
+                  <lucide-icon class="submenu-icon" name="truck" />
+                  <span>Gate Passes</span>
+                </router-link>
+              </li>
+              <li class="submenu-item" v-if="currentUserPermissions && currentUserPermissions.includes('supplier_invoices_view')">
+                <router-link to="/app/procurement/supplier-invoices" class="submenu-link">
+                  <lucide-icon class="submenu-icon" name="receipt" />
+                  <span>Supplier Invoices</span>
+                </router-link>
+              </li>
               <li class="submenu-item" v-if="currentUserPermissions && currentUserPermissions.includes('Purchases_add')">
                 <router-link to="/app/purchases/store" class="submenu-link">
                   <lucide-icon class="submenu-icon" name="file-plus" />
@@ -1759,7 +1788,8 @@ export default {
       const segments = path.split('/').filter(x => x !== '');
       
       if (segments.length >= 2) {
-        const parentMenu = segments[1].toLowerCase();
+        const routeSection = segments[1].toLowerCase();
+        const parentMenu = routeSection === 'procurement' ? 'purchases' : routeSection;
         if (!this.openMenus.includes(parentMenu)) {
           this.openMenus.push(parentMenu);
         }

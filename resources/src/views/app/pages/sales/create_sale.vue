@@ -1235,7 +1235,7 @@ export default {
     },
 
     canOverrideManagedTaxes() {
-      return (this.currentUserPermissions || []).includes('taxes.override') || Number(this.currentUser && this.currentUser.role_id) === 1;
+      return (this.currentUserPermissions || []).includes('taxes.override');
     },
 
     modalGstTax() {

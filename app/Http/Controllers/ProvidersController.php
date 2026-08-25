@@ -141,6 +141,9 @@ class ProvidersController extends BaseController
             $item['name'] = $provider->name;
             $item['phone'] = $provider->phone;
             $item['tax_number'] = $provider->tax_number;
+            $item['tax_status'] = $provider->tax_status ?: 'non_gst';
+            $item['strn_number'] = $provider->strn_number;
+            $item['ntn_number'] = $provider->ntn_number;
             $item['account_title'] = $provider->account_title ?? null;
             $item['code'] = $provider->code;
             $item['email'] = $provider->email;
@@ -171,6 +174,7 @@ class ProvidersController extends BaseController
 
         request()->validate([
             'name' => 'required',
+            'tax_status' => 'nullable|in:gst,non_gst',
         ]);
         $provider = Provider::create([
             'name' => $request['name'],
@@ -182,6 +186,9 @@ class ProvidersController extends BaseController
             'country' => $request['country'],
             'city' => $request['city'],
             'tax_number' => $request['tax_number'],
+            'tax_status' => $request->input('tax_status', 'non_gst'),
+            'strn_number' => $request['strn_number'],
+            'ntn_number' => $request['ntn_number'],
             'opening_balance' => $request['opening_balance'] ?? 0,
             'credit_limit' => $request['credit_limit'] ?? 0,
         ]);
@@ -216,6 +223,7 @@ class ProvidersController extends BaseController
 
         request()->validate([
             'name' => 'required',
+            'tax_status' => 'nullable|in:gst,non_gst',
         ]);
 
         Provider::whereId($id)->update([
@@ -227,6 +235,9 @@ class ProvidersController extends BaseController
             'country' => $request['country'],
             'city' => $request['city'],
             'tax_number' => $request['tax_number'],
+            'tax_status' => $request->input('tax_status', 'non_gst'),
+            'strn_number' => $request['strn_number'],
+            'ntn_number' => $request['ntn_number'],
             'credit_limit' => $request->input('credit_limit', 0),
         ]);
 

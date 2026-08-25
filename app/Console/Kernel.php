@@ -18,6 +18,7 @@ class Kernel extends ConsoleKernel
         'App\Console\Commands\DatabaseBackUp',
         'App\Console\Commands\WooCommerceSync',
         'App\\Console\\Commands\\WooCommercePushProducts',
+        'App\\Console\\Commands\\NotifyOverduePurchaseOrders',
     ];
 
     /**
@@ -35,6 +36,8 @@ class Kernel extends ConsoleKernel
         $schedule->command('invoices:send-overdue-credit-reminders')
             ->dailyAt('08:00')
             ->withoutOverlapping();
+
+        $schedule->command('procurement:notify-overdue')->dailyAt('08:15')->withoutOverlapping();
 
         $schedule->call(function () {
             UserLoginSession::purgeExpiredHistory();

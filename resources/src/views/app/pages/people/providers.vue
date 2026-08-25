@@ -547,6 +547,9 @@
                 <td>{{$t('Tax_Number')}}</td>
                 <th>{{provider.tax_number}}</th>
               </tr>
+              <tr><td>Tax status</td><th>{{ provider.tax_status === 'gst' ? 'GST Registered' : 'Non-GST' }}</th></tr>
+              <tr v-if="provider.strn_number"><td>GST / STRN</td><th>{{ provider.strn_number }}</th></tr>
+              <tr v-if="provider.ntn_number"><td>NTN</td><th>{{ provider.ntn_number }}</th></tr>
                <tr>
                 <!-- Total_Purchase_Due -->
                 <td>{{$t('Total_Purchase_Due')}}</td>

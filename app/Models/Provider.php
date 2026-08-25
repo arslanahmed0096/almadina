@@ -9,7 +9,8 @@ class Provider extends Model
     protected $dates = ['deleted_at'];
 
     protected $fillable = [
-        'name', 'code', 'adresse', 'phone', 'country', 'email', 'city', 'tax_number',
+        'name', 'code', 'adresse', 'phone', 'country', 'email', 'city', 'tax_number', 'tax_status',
+        'strn_number', 'ntn_number',
         'account_title',
         'opening_balance', 'credit_limit',
     ];
@@ -26,5 +27,15 @@ class Provider extends Model
     public function customFieldValues()
     {
         return $this->morphMany(CustomFieldValue::class, 'entity', 'entity_type', 'entity_id');
+    }
+
+    public function purchaseOrders()
+    {
+        return $this->hasMany(PurchaseOrder::class);
+    }
+
+    public function supplierInvoices()
+    {
+        return $this->hasMany(SupplierInvoice::class);
     }
 }
