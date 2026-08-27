@@ -27,31 +27,32 @@ class PurchaseManagedTaxTest extends TestCase
         Schema::create('transaction_tax_snapshots', function (Blueprint $t) { $t->bigIncrements('id'); $t->string('transaction_type'); $t->unsignedInteger('transaction_id'); $t->unsignedInteger('transaction_line_id')->nullable(); $t->unsignedInteger('tax_id')->nullable(); $t->string('tax_name'); $t->string('tax_code'); $t->string('calculation_type'); $t->decimal('rate', 20, 6); $t->string('behavior'); $t->unsignedInteger('price_type_id')->nullable(); $t->string('price_type_code'); $t->string('price_type_name'); $t->decimal('quantity', 20, 6)->default(0); $t->decimal('taxable_base', 20, 6)->default(0); $t->decimal('tax_amount', 20, 6)->default(0); $t->unsignedSmallInteger('priority')->default(100); $t->boolean('is_compound')->default(false); $t->boolean('is_reversal')->default(false); $t->unsignedBigInteger('reversal_of_id')->nullable(); $t->timestamps(); });
     }
 
-    public function test_purchase_uses_mrp_for_gst_and_net_rb_for_deductive_wht(): void
+    public function test_purchase_uses_gross_rb_for_gst_and_net_rb_for_deductive_wht(): void
     {
         Schema::disableForeignKeyConstraints();
         \DB::table('warehouses')->insert(['id' => 1, 'name' => 'Main']);
-        $mrp = TaxPriceType::create(['code' => 'mrp_price', 'name' => 'MRP Price', 'product_field' => 'mrp_price', 'is_purchase' => true, 'is_sale' => true, 'sort_order' => 1, 'is_active' => true]);
+        TaxPriceType::create(['code' => 'mrp_price', 'name' => 'MRP Price', 'product_field' => 'mrp_price', 'is_purchase' => true, 'is_sale' => true, 'sort_order' => 1, 'is_active' => true]);
         $rb = TaxPriceType::create(['code' => 'company_rb_price', 'name' => 'Company/RB Price', 'product_field' => 'company_rb_price', 'is_purchase' => true, 'is_sale' => false, 'sort_order' => 2, 'is_active' => true]);
+        $cost = TaxPriceType::create(['code' => 'cost', 'name' => 'Cost Price', 'product_field' => 'cost', 'is_purchase' => true, 'is_sale' => false, 'sort_order' => 3, 'is_active' => true]);
         $gst = Tax::create($this->tax('GST', '18', 'additive', 10));
         $wht = Tax::create($this->tax('WHT', '4', 'deductive', 20));
         $gst->transactionTypes()->create(['transaction_type' => 'purchase']);
         $wht->transactionTypes()->create(['transaction_type' => 'purchase']);
-        $gst->priceTypes()->attach($mrp->id);
+        $gst->priceTypes()->attach($cost->id);
         $wht->priceTypes()->attach($rb->id);
 
         $purchase = Purchase::create(['warehouse_id' => 1, 'discount' => 0, 'shipping' => 0, 'GrandTotal' => 0]);
-        PurchaseDetail::create(['purchase_id' => $purchase->id, 'cost' => 100, 'company_rb_price' => 100, 'mrp_price' => 120, 'discount' => 10, 'discount_method' => '1', 'quantity' => 2, 'total' => 0]);
+        PurchaseDetail::create(['purchase_id' => $purchase->id, 'cost' => 101, 'company_rb_price' => 101, 'mrp_price' => 120, 'discount' => 10, 'discount_method' => '1', 'quantity' => 2, 'total' => 0]);
         $snapshots = app(TransactionTaxService::class)->snapshotPurchase($purchase, [[]], null);
 
-        $this->assertSame('240.000000', $snapshots->firstWhere('tax_code', 'GST')->taxable_base);
-        $this->assertSame('43.200000', $snapshots->firstWhere('tax_code', 'GST')->tax_amount);
-        $this->assertSame('180.000000', $snapshots->firstWhere('tax_code', 'WHT')->taxable_base);
-        $this->assertSame('7.200000', $snapshots->firstWhere('tax_code', 'WHT')->tax_amount);
-        $this->assertSame(43.2, $purchase->fresh()->TaxNet);
-        $this->assertSame(7.2, $purchase->fresh()->withholding_tax);
-        $this->assertSame(216.0, $purchase->fresh()->GrandTotal);
-        $this->assertSame(216.0, PurchaseDetail::first()->total);
+        $this->assertSame('202.000000', $snapshots->firstWhere('tax_code', 'GST')->taxable_base);
+        $this->assertSame('38.000000', $snapshots->firstWhere('tax_code', 'GST')->tax_amount);
+        $this->assertSame('182.000000', $snapshots->firstWhere('tax_code', 'WHT')->taxable_base);
+        $this->assertSame('8.000000', $snapshots->firstWhere('tax_code', 'WHT')->tax_amount);
+        $this->assertSame(38.0, $purchase->fresh()->TaxNet);
+        $this->assertSame(8.0, $purchase->fresh()->withholding_tax);
+        $this->assertSame(228.0, $purchase->fresh()->GrandTotal);
+        $this->assertSame(228.0, PurchaseDetail::first()->total);
     }
 
     private function tax(string $code, string $rate, string $behavior, int $priority): array

@@ -61,7 +61,7 @@ class PurchaseOrderController extends Controller
         return response()->json([
             'providers' => Provider::whereNull('deleted_at')->orderBy('name')->get(['id', 'name', 'phone', 'email', 'adresse', 'tax_status', 'strn_number', 'ntn_number']),
             'warehouses' => $warehouses->orderBy('name')->get(['id', 'name']),
-            'products' => Product::visibleTo($request->user('api'))->whereNull('deleted_at')->with(['variants:id,product_id,name,code,cost', 'unitPurchase:id,name,ShortName,operator,operator_value'])->orderBy('name')->get(['id', 'name', 'code', 'cost', 'unit_purchase_id', 'is_variant']),
+            'products' => Product::visibleTo($request->user('api'))->whereNull('deleted_at')->with(['variants:id,product_id,name,code,cost,company_rb_price,mrp_price', 'unitPurchase:id,name,ShortName,operator,operator_value'])->orderBy('name')->get(['id', 'name', 'code', 'cost', 'company_rb_price', 'mrp_price', 'unit_purchase_id', 'is_variant']),
             'taxes' => Tax::effective()->forTransaction('purchase')->orderBy('priority')->get(['id', 'name', 'code', 'rate', 'behavior']),
             'statuses' => collect(PurchaseOrderStatus::cases())->map(fn ($case) => $case->value)->values(),
         ]);

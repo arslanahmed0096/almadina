@@ -94,20 +94,19 @@
             <thead class="bg-gray-300">
               <tr>
                 <th>#</th>
-                <th>Code</th>
+                <th>Product Code</th>
                 <th>Product</th>
                 <th>Model</th>
                 <th>Unit</th>
-                <th style="min-width: 145px">Qty</th>
-                <th style="min-width: 130px">Unit price</th>
-                <th style="min-width: 120px">Discount</th>
-                <th style="min-width: 170px">Tax</th>
+                <th style="min-width: 145px">Quantity</th>
+                <th style="min-width: 130px">RB Price</th>
+                <th style="min-width: 130px">MRP Price</th>
                 <th class="text-center"><i class="fa fa-trash"></i></th>
               </tr>
             </thead>
             <tbody>
               <tr v-if="form.items.length === 0">
-                <td colspan="10">No products added. Search or scan a product above.</td>
+                <td colspan="9">No products added. Search or scan a product above.</td>
               </tr>
               <tr
                 v-for="(line, index) in form.items"
@@ -138,19 +137,10 @@
                   </b-input-group>
                 </td>
                 <td>
-                  <b-form-input type="number" step="0.01" min="0" v-model.number="line.unit_price" />
+                  <b-form-input type="number" step="0.01" min="0" v-model.number="line.rb_price" readonly />
                 </td>
                 <td>
-                  <b-form-input type="number" step="0.01" min="0" v-model.number="line.discount" />
-                </td>
-                <td>
-                  <v-select
-                    v-model="line.tax_id"
-                    :reduce="option => option.id"
-                    label="name"
-                    :options="meta.taxes"
-                    placeholder="No tax"
-                  />
+                  <b-form-input type="number" step="0.01" min="0" v-model.number="line.mrp_price" />
                 </td>
                 <td class="text-center">
                   <b-button variant="outline-danger" size="sm" @click="removeLine(index)">
@@ -160,6 +150,13 @@
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <div class="d-flex justify-content-end mt-3">
+          <div class="po-order-total">
+            <span>Total Order Amount (MRP)</span>
+            <strong>{{ formatAmount(mrpOrderTotal) }}</strong>
+          </div>
         </div>
 
         <b-row class="mt-3">
@@ -198,7 +195,7 @@ export default {
       highlightedLineKey: null,
       highlightTimer: null,
       nextLineKey: 1,
-      meta: { providers: [], warehouses: [], products: [], taxes: [] },
+      meta: { providers: [], warehouses: [], products: [] },
       form: {
         order_date: new Date().toISOString().slice(0, 10),
         expected_delivery_date: null,
@@ -220,6 +217,12 @@ export default {
       if (!this.form.warehouse_id) return 'Select destination warehouse first';
       if (this.productsLoading) return 'Loading products…';
       return 'Scan or search product by code, model, or name';
+    },
+
+    mrpOrderTotal() {
+      return this.form.items.reduce((total, line) => {
+        return total + (Number(line.quantity) || 0) * (Number(line.mrp_price) || 0);
+      }, 0);
     }
   },
 
@@ -251,10 +254,8 @@ export default {
             sku: item.sku,
             unit_name: item.unit_name,
             quantity: Number(item.ordered_quantity),
-            unit_price: Number(item.unit_price),
-            discount: Number(item.discount),
-            discount_method: item.discount_method,
-            tax_id: item.tax_id
+            rb_price: Number(item.company_rb_price || this.catalogRbPrice(item.product_id, item.product_variant_id)),
+            mrp_price: Number(item.unit_price)
           }))
         };
       }
@@ -385,10 +386,8 @@ export default {
             sku: result.code || product.code,
             unit_name: product.unitPurchase || product.unit || '',
             quantity: 1,
-            unit_price: Number(product.Unit_cost || 0),
-            discount: 0,
-            discount_method: 'fixed',
-            tax_id: null
+            rb_price: Number(product.company_rb_price || 0),
+            mrp_price: Number(product.mrp_price || 0)
           };
 
           this.form.items.unshift(line);
@@ -433,6 +432,30 @@ export default {
       return product && product.unit_purchase
         ? (product.unit_purchase.ShortName || product.unit_purchase.name)
         : '';
+    },
+
+    catalogRbPrice(productId, variantId) {
+      const product = this.meta.products.find(item => Number(item.id) === Number(productId));
+      if (!product) return 0;
+
+      const variant = variantId && Array.isArray(product.variants)
+        ? product.variants.find(item => Number(item.id) === Number(variantId))
+        : null;
+      let price = Number((variant && variant.company_rb_price) || product.company_rb_price || (variant && variant.cost) || product.cost || 0);
+      const unit = product.unit_purchase;
+      if (unit && Number(unit.operator_value)) {
+        price = unit.operator === '/'
+          ? price / Number(unit.operator_value)
+          : price * Number(unit.operator_value);
+      }
+      return price;
+    },
+
+    formatAmount(value) {
+      return Number(value || 0).toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      });
     },
 
     increment(line) {
@@ -499,9 +522,22 @@ export default {
       }
 
       this.saving = true;
+      const payload = {
+        ...this.form,
+        items: this.form.items.map(line => ({
+          product_id: line.product_id,
+          product_variant_id: line.product_variant_id,
+          unit_id: line.unit_id,
+          quantity: line.quantity,
+          unit_price: line.mrp_price,
+          discount: 0,
+          discount_method: 'fixed',
+          tax_id: null
+        }))
+      };
       const request = this.editing
-        ? axios.put('procurement/purchase-orders/' + this.$route.params.id, this.form)
-        : axios.post('procurement/purchase-orders', this.form);
+        ? axios.put('procurement/purchase-orders/' + this.$route.params.id, payload)
+        : axios.post('procurement/purchase-orders', payload);
 
       request.then(response => {
         this.$router.push('/app/procurement/purchase-orders/' + response.data.purchase_order.id);
@@ -547,6 +583,18 @@ export default {
 
 .po-row-highlight > td {
   animation: po-row-pulse 1.8s ease-out;
+}
+
+.po-order-total {
+  display: flex;
+  justify-content: space-between;
+  gap: 32px;
+  min-width: 320px;
+  padding: 14px 18px;
+  border: 1px solid #d8dee9;
+  border-radius: 6px;
+  background: #f8f9fa;
+  font-size: 16px;
 }
 
 @keyframes po-row-pulse {

@@ -32,23 +32,30 @@ class TransactionTaxService
             $rb = (string) ($detail->company_rb_price ?: $detail->cost);
             $discount = (string) ($detail->discount ?? 0);
             $discountAmount = (string) $detail->discount_method === '2' ? $discount : Decimal::mul($rb, Decimal::div($discount, '100'));
-            $netLine = Decimal::mul(Decimal::sub($rb, $discountAmount), (string) $detail->quantity);
+            $netLine = Decimal::mul(Decimal::ceil(Decimal::sub($rb, $discountAmount)), (string) $detail->quantity);
             $lineTaxes = $snapshots->where('transaction_line_id', $detail->id);
             $lineAdditive = $lineTaxes->where('behavior', 'additive')->reduce(fn ($sum, $row) => Decimal::add($sum, (string) $row->tax_amount), '0');
             $lineDeductive = $lineTaxes->where('behavior', 'deductive')->reduce(fn ($sum, $row) => Decimal::add($sum, (string) $row->tax_amount), '0');
             $detail->update([
-                'sales_tax' => Decimal::round((string) $lineAdditive, 2),
-                'withholding_tax' => Decimal::round((string) $lineDeductive, 2),
-                'total' => Decimal::round(Decimal::sub(Decimal::add($netLine, (string) $lineAdditive), (string) $lineDeductive), 2),
+                'sales_tax' => Decimal::ceil((string) $lineAdditive),
+                'withholding_tax' => Decimal::ceil((string) $lineDeductive),
+                'total' => Decimal::ceil(Decimal::add(Decimal::add($netLine, (string) $lineAdditive), (string) $lineDeductive)),
             ]);
             $subtotal = Decimal::add($subtotal, $netLine);
         }
         $taxRows = $snapshots->map(fn ($snapshot) => ['behavior' => $snapshot->behavior, 'tax_amount' => $snapshot->tax_amount]);
         $totals = $this->calculator->totals($subtotal, (string) $purchase->discount, (string) $purchase->shipping, $taxRows);
+        $purchaseGrandTotal = Decimal::add(
+            Decimal::add(
+                Decimal::add(Decimal::sub($subtotal, (string) $purchase->discount), $totals['additive']),
+                $totals['deductive']
+            ),
+            (string) $purchase->shipping
+        );
         $purchase->update([
-            'TaxNet' => Decimal::round($totals['additive'], 2),
-            'withholding_tax' => Decimal::round($totals['deductive'], 2),
-            'GrandTotal' => $totals['grand_total'],
+            'TaxNet' => Decimal::ceil($totals['additive']),
+            'withholding_tax' => Decimal::ceil($totals['deductive']),
+            'GrandTotal' => Decimal::ceil($purchaseGrandTotal),
         ]);
         return $snapshots;
     }
@@ -148,6 +155,9 @@ class TransactionTaxService
                         $taxes = $taxes->whereIn('id', $selected);
                     }
                     foreach ($this->calculator->calculateLine($unitPrice, $detail->quantity, $taxes) as $row) {
+                        if ($type === 'purchase') {
+                            $row['tax_amount'] = $this->roundUpPurchaseTax($row['tax_amount'], (string) $detail->quantity);
+                        }
                         $created->push(TransactionTaxSnapshot::create($row + [
                             'transaction_type' => $type, 'transaction_id' => $transactionId,
                             'transaction_line_id' => $detail->id, 'price_type_id' => $priceType->id,
@@ -168,7 +178,7 @@ class TransactionTaxService
             $discount = (string) ($detail->discount ?? 0);
             $discountAmount = (string) $detail->discount_method === '2' ? $discount : Decimal::mul($rb, Decimal::div($discount, '100'));
             return [
-                'company_rb_price' => Decimal::sub($rb, $discountAmount),
+                'company_rb_price' => Decimal::ceil(Decimal::sub($rb, $discountAmount)),
                 'mrp_price' => (string) ($detail->mrp_price ?: $detail->cost),
                 'cost' => (string) $detail->cost,
             ];
@@ -179,6 +189,15 @@ class TransactionTaxService
         $discount = (string) ($detail->discount ?? 0);
         $discountAmount = (string) $detail->discount_method === '2' ? $discount : Decimal::mul($price, Decimal::div($discount, '100'));
         return [$priceType => Decimal::sub($price, $discountAmount)];
+    }
+
+    private function roundUpPurchaseTax(string $lineAmount, string $quantity): string
+    {
+        if (bccomp($quantity, '0', 6) !== 1) return '0';
+
+        $roundedUnitAmount = Decimal::ceil(Decimal::div($lineAmount, $quantity));
+
+        return Decimal::ceil(Decimal::mul($roundedUnitAmount, $quantity));
     }
 
     private function reverse(string $returnType, int $returnId, string $sourceType, int $sourceId, Collection $sourceLines, Collection $returnLines): Collection

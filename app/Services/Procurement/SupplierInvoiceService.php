@@ -68,6 +68,9 @@ class SupplierInvoiceService
                 }
                 $already = (string) DB::table('supplier_invoice_items as i')->join('supplier_invoices as s', 's.id', '=', 'i.supplier_invoice_id')
                     ->where('i.gate_pass_item_id', $gateItem->id)->where('s.status', '<>', SupplierInvoiceStatus::Cancelled->value)->sum('i.quantity');
+                $alreadyPurchased = (string) DB::table('purchase_gate_pass_items as i')->join('purchases as p', 'p.id', '=', 'i.purchase_id')
+                    ->where('i.gate_pass_item_id', $gateItem->id)->whereNull('p.deleted_at')->where('p.posting_status', '<>', 'cancelled')->sum('i.quantity');
+                $already = Decimal::add($already, $alreadyPurchased);
                 $remaining = Decimal::sub($gateItem->accepted_quantity, $already);
                 $quantity = (string) $row['quantity'];
                 if (bccomp($quantity, '0', 6) !== 1 || bccomp($quantity, $remaining, 6) === 1) {

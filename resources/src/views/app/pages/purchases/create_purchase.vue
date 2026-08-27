@@ -152,6 +152,7 @@
                         <v-select
                           :class="{'is-invalid': !!errors.length}"
                           :state="errors[0] ? false : (valid ? true : null)"
+                          :disabled="selectedGatePasses.length > 0"
                           v-model="purchase.supplier_id"
                           :reduce="label => label.value"
                           :placeholder="$t('Choose_Supplier')"
@@ -215,6 +216,32 @@
                   </b-form-group>
                 </b-col>
 
+                <b-col lg="12" md="12" sm="12" class="mb-3">
+                  <b-form-group label="Gate Pass">
+                    <b-input-group>
+                      <b-form-input
+                        v-model.trim="gate_pass_search"
+                        :disabled="gatePassLoading"
+                        placeholder="Enter internal or supplier Gate Pass number"
+                        @keyup.enter.prevent="addGatePass"
+                      ></b-form-input>
+                      <b-input-group-append>
+                        <b-button variant="primary" :disabled="gatePassLoading || !gate_pass_search" @click="addGatePass">
+                          <span v-if="gatePassLoading" class="spinner sm spinner-white mr-1"></span>
+                          Add Gate Pass
+                        </b-button>
+                      </b-input-group-append>
+                    </b-input-group>
+                    <small class="text-muted">You can add multiple Gate Passes from the same supplier and warehouse.</small>
+                    <div v-if="selectedGatePasses.length" class="d-flex flex-wrap mt-2">
+                      <span v-for="gatePass in selectedGatePasses" :key="gatePass.id" class="badge badge-light-primary mr-2 mb-2 p-2">
+                        {{ gatePass.number }}<span v-if="gatePass.supplier_gate_pass_number"> ({{ gatePass.supplier_gate_pass_number }})</span>
+                        <button type="button" class="gate-pass-remove ml-2" title="Remove Gate Pass" @click="removeGatePass(gatePass.id)">&times;</button>
+                      </span>
+                    </div>
+                  </b-form-group>
+                </b-col>
+
                 <!-- Product -->
                 <b-col md="12" class="mb-5">
                   <h6>{{$t('ProductName')}}</h6>
@@ -242,18 +269,20 @@
                 <b-col md="12">
                   <h5>{{$t('order_products')}} *</h5>
                   <div class="table-responsive">
-                    <table class="table table-hover">
+                    <table class="table table-hover purchase-products-table">
                       <thead class="bg-gray-300">
                         <tr>
                           <th scope="col">{{$t('ProductName')}}</th>
-                          <th scope="col">{{$t('Qty')}}</th>
-                          <th scope="col">MRP Price</th>
-                          <th scope="col">RP Price (RB in System)</th>
+                          <th scope="col" class="purchase-quantity-column">{{$t('Qty')}}</th>
+                          <th scope="col">RB Price</th>
                           <th scope="col">Trade Discount</th>
                           <th scope="col">Net Value Without Tax</th>
-                          <th scope="col">Sales Tax ({{formatNumber(purchase.tax_rate, 2)}}%)</th>
-                          <th scope="col">I.Tax WithHold ({{formatNumber(withholding_tax_rate, 1)}}%)</th>
+                          <th scope="col">GST Tax ({{formatNumber(purchase.tax_rate, 2)}}%)</th>
                           <th scope="col">Total Value With Tax</th>
+                          <th scope="col">MRP Without Tax</th>
+                          <th scope="col">MRP With Tax</th>
+                          <th scope="col">I.Tax Withholding Amount</th>
+                          <th scope="col">Grand Total</th>
                           <th scope="col" class="text-center">
                             <i class="fa fa-trash"></i>
                           </th>
@@ -261,7 +290,7 @@
                       </thead>
                       <tbody>
                         <tr v-if="details.length <=0">
-                          <td colspan="10">{{$t('NodataAvailable')}}</td>
+                          <td colspan="12">{{$t('NodataAvailable')}}</td>
                         </tr>
                         <template v-for="detail in details">
                         <tr
@@ -279,45 +308,51 @@
                             <div v-if="detail.is_batch_tracked" class="text-info mt-1" style="font-size: 12px;">
                               <i class="fa fa-flask"></i> {{ $t('Track_Batches_Expiry') }}
                             </div>
-                          </td>
-                          <td>
-                            <div class="quantity">
-                              <b-input-group>
-                                <b-input-group-prepend>
-                                  <span
-                                    class="btn btn-primary btn-sm"
-                                    @click="decrement(detail ,detail.detail_id)"
-                                  >-</span>
-                                </b-input-group-prepend>
-                                <input
-                                  class="form-control"
-                                  @keyup="Verified_Qty(detail,detail.detail_id)"
-                                  :min="0.00"
-                                  v-model.number="detail.quantity"
-                                >
-                                <b-input-group-append>
-                                  <span
-                                    class="btn btn-primary btn-sm"
-                                    @click="increment(detail ,detail.detail_id)"
-                                  >+</span>
-                                </b-input-group-append>
-                              </b-input-group>
+                            <div v-if="isGatePassDetail(detail)" class="text-primary mt-1" style="font-size: 12px;">
+                              Gate Pass: <strong>{{ gatePassLabels(detail) }}</strong>
                             </div>
                           </td>
-                          <td>{{currentUser.currency}} {{formatNumber(detail.mrp_price, 2)}}</td>
-                          <td>{{currentUser.currency}} {{formatNumber(detail.company_rb_price, 2)}}</td>
+                          <td class="purchase-quantity-column">
+                            <div class="purchase-quantity-control">
+                              <button
+                                type="button"
+                                class="btn btn-primary purchase-quantity-button"
+                                aria-label="Decrease quantity"
+                                @click="decrement(detail, detail.detail_id)"
+                              >−</button>
+                              <input
+                                type="number"
+                                class="form-control purchase-quantity-input"
+                                @input="Verified_Qty(detail, detail.detail_id)"
+                                :min="1"
+                                :max="detail.gate_pass_max_quantity || null"
+                                :step="isGatePassDetail(detail) ? 1 : 'any'"
+                                v-model.number="detail.quantity"
+                              >
+                              <button
+                                type="button"
+                                class="btn btn-primary purchase-quantity-button"
+                                aria-label="Increase quantity"
+                                @click="increment(detail, detail.detail_id)"
+                              >+</button>
+                            </div>
+                          </td>
+                          <td>{{currentUser.currency}} {{formatNumber(detail.company_rb_price * detail.quantity, 2)}}</td>
                           <td>{{currentUser.currency}} {{formatNumber(detail.DiscountNet * detail.quantity, 2)}}</td>
                           <td>{{currentUser.currency}} {{formatNumber(detail.Net_cost * detail.quantity, 2)}}</td>
                           <td>{{currentUser.currency}} {{formatNumber(detail.taxe * detail.quantity, 2)}}</td>
-                          <td>-{{currentUser.currency}} {{formatNumber(detail.withholding_tax * detail.quantity, 2)}}</td>
                           <td>{{currentUser.currency}} {{detail.subtotal.toFixed(2)}}</td>
-                          <td>
+                          <td>{{currentUser.currency}} {{formatNumber(detail.mrp_price * detail.quantity, 2)}}</td>
+                          <td>{{currentUser.currency}} {{formatNumber(pricingPreview(detail).mrpWithTax * detail.quantity, 2)}}</td>
+                          <td>{{currentUser.currency}} {{formatNumber(detail.withholding_tax * detail.quantity, 2)}}</td>
+                          <td class="font-weight-bold">{{currentUser.currency}} {{formatNumber(pricingPreview(detail).netPayable * detail.quantity, 2)}}</td>
+                          <td class="text-center">
                             <lucide-icon class="text-25 text-success" name="pencil" v-if="currentUserPermissions && currentUserPermissions.includes('edit_product_purchase')" @click="Modal_Updat_Detail(detail)" />
                             <lucide-icon class="text-25 text-danger" name="x" @click="delete_Product_Detail(detail.detail_id)" />
                           </td>
                         </tr>
                         <tr v-if="detail.is_batch_tracked" :key="'batches-'+detail.detail_id" :style="{ background: 'transparent' }">
-                          <td colspan="10" :style="{ padding: '0 8px 16px 8px', border: 'none' }">
+                          <td colspan="12" :style="{ padding: '0 8px 16px 8px', border: 'none' }">
                             <div
                               :style="{
                                 background: 'linear-gradient(135deg, #f0f9ff 0%, #eef2ff 100%)',
@@ -523,6 +558,10 @@
                   <table class="table table-striped table-sm">
                     <tbody>
                       <tr>
+                        <td class="bold">Total Value With Tax</td>
+                        <td>{{currentUser.currency}} {{formatNumber(total, 2)}}</td>
+                      </tr>
+                      <tr>
                         <td class="bold">{{$t('OrderTax')}}</td>
                         <td>
                           <span>{{currentUser.currency}} {{purchase.TaxNet.toFixed(2)}} ({{formatNumber(purchase.tax_rate ,2)}} %)</span>
@@ -530,7 +569,7 @@
                       </tr>
                       <tr>
                         <td class="bold">I.Tax WithHold</td>
-                        <td>-{{currentUser.currency}} {{purchase.withholding_tax.toFixed(2)}} ({{formatNumber(withholding_tax_rate, 2)}} %)</td>
+                        <td>+{{currentUser.currency}} {{purchase.withholding_tax.toFixed(2)}} ({{formatNumber(withholding_tax_rate, 2)}} %)</td>
                       </tr>
                       <tr>
                         <td class="bold">{{$t('Discount')}}</td>
@@ -542,7 +581,7 @@
                       </tr>
                       <tr>
                         <td>
-                          <span class="font-weight-bold">{{$t('Total')}}</span>
+                          <span class="font-weight-bold">Grand Total</span>
                         </td>
                         <td>
                           <span
@@ -553,54 +592,6 @@
                     </tbody>
                   </table>
                 </div>
-
-                 <!-- Order Tax  -->
-                <b-col lg="4" md="4" sm="12" class="mb-3" v-if="currentUserPermissions && currentUserPermissions.includes('edit_tax_discount_shipping_purchase')">
-                  <validation-provider
-                    name="Order Tax"
-                    :rules="{ regex: /^\d*\.?\d*$/}"
-                    v-slot="validationContext"
-                  >
-                    <b-form-group :label="$t('OrderTax')">
-                      <b-input-group append="%">
-                        <b-form-input
-                          :state="getValidationState(validationContext)"
-                          aria-describedby="OrderTax-feedback"
-                          label="Order Tax"
-                          v-model.number="purchase.tax_rate"
-                          @keyup="keyup_OrderTax()"
-                        ></b-form-input>
-                      </b-input-group>
-                      <b-form-invalid-feedback
-                        id="OrderTax-feedback"
-                      >{{ validationContext.errors[0] }}</b-form-invalid-feedback>
-                    </b-form-group>
-                  </validation-provider>
-                </b-col>
-
-                <!-- Discount -->
-                <b-col lg="4" md="4" sm="12" class="mb-3" v-if="currentUserPermissions && currentUserPermissions.includes('edit_tax_discount_shipping_purchase')">
-                  <validation-provider
-                    name="Discount"
-                    :rules="{ regex: /^\d*\.?\d*$/}"
-                    v-slot="validationContext"
-                  >
-                    <b-form-group :label="$t('Discount')">
-                      <b-input-group :append="currentUser.currency">
-                        <b-form-input
-                          :state="getValidationState(validationContext)"
-                          aria-describedby="Discount-feedback"
-                          label="Discount"
-                          v-model.number="purchase.discount"
-                          @keyup="keyup_Discount()"
-                        ></b-form-input>
-                      </b-input-group>
-                      <b-form-invalid-feedback
-                        id="Discount-feedback"
-                      >{{ validationContext.errors[0] }}</b-form-invalid-feedback>
-                    </b-form-group>
-                  </validation-provider>
-                </b-col>
 
                 <!-- Shipping  -->
                 <b-col lg="4" md="4" sm="12" class="mb-3" v-if="currentUserPermissions && currentUserPermissions.includes('edit_tax_discount_shipping_purchase')">
@@ -694,32 +685,19 @@
 
     <!-- Show Modal Update Detail Product -->
     <validation-observer ref="Update_Detail_purchase">
-      <b-modal hide-footer size="lg" id="form_Update_Detail" :title="detail.name">
+      <b-modal hide-footer size="xl" dialog-class="purchase-detail-dialog" id="form_Update_Detail" :title="detail.name">
         <b-form @submit.prevent="submit_Update_Detail">
           <b-row>
-            <!-- MRP Price -->
-            <b-col lg="6" md="6" sm="12">
-              <validation-provider name="MRP Price" :rules="{ required: true , regex: /^\d*\.?\d*$/}" v-slot="validationContext">
-                <b-form-group label="MRP Price *">
-                  <b-form-input
-                    label="MRP Price"
-                    v-model.number="detail.mrp_price"
-                    :state="getValidationState(validationContext)"
-                  ></b-form-input>
-                </b-form-group>
-              </validation-provider>
-            </b-col>
-
-            <!-- RP / Company RB Price -->
+            <!-- RB Price -->
             <b-col lg="6" md="6" sm="12">
               <validation-provider
-                name="RP Price (RB in System)"
+                name="RB Price"
                 :rules="{ required: true , regex: /^\d*\.?\d*$/}"
                 v-slot="validationContext"
               >
-                <b-form-group label="RP Price (RB in System) *" id="cost-input">
+                <b-form-group label="RB Price *" id="cost-input">
                   <b-form-input
-                    label="RP Price (RB in System)"
+                    label="RB Price"
                     v-model.number="detail.Unit_cost"
                     :state="getValidationState(validationContext)"
                     aria-describedby="cost-feedback"
@@ -729,68 +707,146 @@
               </validation-provider>
             </b-col>
 
-            <!-- Trade Discount -->
-            <b-col lg="6" md="6" sm="12">
-              <validation-provider
-                name="Discount Rate"
-                :rules="{ required: true , regex: /^\d*\.?\d*$/}"
-                v-slot="validationContext"
-              >
-                <b-form-group label="Trade Discount *">
-                  <b-form-input
-                    label="Trade Discount"
-                    v-model.number="detail.discount"
-                    :state="getValidationState(validationContext)"
-                    aria-describedby="Discount-feedback"
-                  ></b-form-input>
-                  <b-form-invalid-feedback id="Discount-feedback">{{ validationContext.errors[0] }}</b-form-invalid-feedback>
-                </b-form-group>
-              </validation-provider>
-            </b-col>
-
             <!-- Discount Method -->
             <b-col lg="6" md="6" sm="12">
               <validation-provider name="Discount Method" :rules="{ required: true}">
-                <b-form-group slot-scope="{ valid, errors }" :label="$t('Discount_Method') + ' ' + '*'">
+                <b-form-group slot-scope="{ valid, errors }" label="Discount Type *">
                   <v-select
                     v-model="detail.discount_Method"
+                    @input="discountMethodChanged"
                     :reduce="label => label.value"
-                    :placeholder="$t('Choose_Method')"
+                    placeholder="Choose discount type"
                     :class="{'is-invalid': !!errors.length}"
                     :state="errors[0] ? false : (valid ? true : null)"
-                    :options="
-                           [
-                            {label: 'Percent %', value: '1'},
-                            {label: 'Fixed', value: '2'}
-                           ]"
+                    :options="[
+                      {label: 'Fixed', value: '2'},
+                      {label: 'Percentage', value: '1'}
+                    ]"
                   ></v-select>
                   <b-form-invalid-feedback>{{ errors[0] }}</b-form-invalid-feedback>
                 </b-form-group>
               </validation-provider>
             </b-col>
 
-            <!-- Tax Rate -->
-            <b-col lg="6" md="6" sm="12">
-              <validation-provider
-                name="Order Tax"
-                :rules="{ required: true , regex: /^\d*\.?\d*$/}"
-                v-slot="validationContext"
-              >
-                <b-form-group :label="$t('OrderTax') + ' ' + '*'">
-                  <b-input-group append="%">
-                    <b-form-input readonly
-                      label="Order Tax"
-                      v-model.number="detail.tax_percent"
+            <!-- Percentage rate is only needed for percentage discounts -->
+            <b-col v-if="detail.discount_Method == '1'" lg="6" md="6" sm="12">
+              <validation-provider name="Discount Percentage" :rules="{ required: true, min_value: 0, max_value: 100 }" v-slot="validationContext">
+                <b-form-group label="Discount Percentage *">
+                  <b-input-group append="%" class="discount-percentage-input">
+                    <b-form-input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      v-model.number="detail.discount"
                       :state="getValidationState(validationContext)"
-                      aria-describedby="OrderTax-feedback"
-                    ></b-form-input>
+                    />
                   </b-input-group>
-                  <b-form-invalid-feedback id="OrderTax-feedback">{{ validationContext.errors[0] }}</b-form-invalid-feedback>
+                  <b-form-invalid-feedback :state="getValidationState(validationContext)">{{ validationContext.errors[0] }}</b-form-invalid-feedback>
                 </b-form-group>
               </validation-provider>
             </b-col>
 
-            <!-- Unit Purchase -->
+            <!-- Trade Discount -->
+            <b-col lg="6" md="6" sm="12">
+              <validation-provider v-if="detail.discount_Method == '2'" name="Trade Discount" :rules="{ required: true, min_value: 0 }" v-slot="validationContext">
+                <b-form-group label="Trade Discount *">
+                  <b-input-group :prepend="currentUser.currency">
+                    <b-form-input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      v-model.number="detail.discount"
+                      :state="getValidationState(validationContext)"
+                    />
+                  </b-input-group>
+                  <b-form-invalid-feedback :state="getValidationState(validationContext)">{{ validationContext.errors[0] }}</b-form-invalid-feedback>
+                </b-form-group>
+              </validation-provider>
+              <b-form-group v-else label="Trade Discount">
+                <b-input-group :prepend="currentUser.currency">
+                  <b-form-input :value="formatNumber(pricingPreview(detail).tradeDiscount, 2)" readonly />
+                </b-input-group>
+              </b-form-group>
+            </b-col>
+
+            <!-- Net Value Without Tax -->
+            <b-col lg="6" md="6" sm="12">
+              <b-form-group label="Net Value Without Tax">
+                <b-input-group :prepend="currentUser.currency">
+                  <b-form-input :value="formatNumber(pricingPreview(detail).netValue, 2)" readonly />
+                </b-input-group>
+              </b-form-group>
+            </b-col>
+
+            <!-- Managed GST Amount -->
+            <b-col lg="6" md="6" sm="12">
+              <b-form-group :label="'GST (' + formatNumber(purchase.tax_rate, 2) + '%)'">
+                <b-input-group :prepend="currentUser.currency">
+                  <b-form-input :value="formatNumber(pricingPreview(detail).gstAmount, 2)" readonly />
+                </b-input-group>
+              </b-form-group>
+            </b-col>
+
+            <!-- Total Value With Tax -->
+            <b-col lg="6" md="6" sm="12">
+              <b-form-group label="Total Value With Tax">
+                <b-input-group :prepend="currentUser.currency">
+                  <b-form-input :value="formatNumber(pricingPreview(detail).totalWithTax, 2)" readonly />
+                </b-input-group>
+              </b-form-group>
+            </b-col>
+
+            <!-- Optional MRP Without Tax -->
+            <b-col lg="6" md="6" sm="12">
+              <validation-provider name="MRP Without Tax" :rules="{ regex: /^\d*\.?\d*$/}" v-slot="validationContext">
+                <b-form-group label="MRP Without Tax">
+                  <b-form-input
+                    label="MRP Without Tax"
+                    v-model.number="detail.mrp_price"
+                    :state="getValidationState(validationContext)"
+                  ></b-form-input>
+                </b-form-group>
+              </validation-provider>
+            </b-col>
+
+            <!-- Read-only MRP With Tax -->
+            <b-col lg="6" md="6" sm="12">
+              <b-form-group label="MRP With Tax">
+                <b-input-group :prepend="currentUser.currency">
+                  <b-form-input :value="formatNumber(pricingPreview(detail).mrpWithTax, 2)" readonly />
+                </b-input-group>
+              </b-form-group>
+            </b-col>
+
+            <!-- Managed Withholding Tax Rate -->
+            <b-col lg="6" md="6" sm="12">
+              <b-form-group label="I.Tax Withholding Rate">
+                <b-input-group append="%">
+                  <b-form-input :value="formatNumber(withholding_tax_rate, 2)" readonly />
+                </b-input-group>
+              </b-form-group>
+            </b-col>
+
+            <!-- Withholding calculated on net value after trade discount -->
+            <b-col lg="6" md="6" sm="12">
+              <b-form-group label="I.Tax Withholding Amount">
+                <b-input-group :prepend="currentUser.currency">
+                  <b-form-input :value="formatNumber(pricingPreview(detail).withholdingAmount, 2)" readonly />
+                </b-input-group>
+              </b-form-group>
+            </b-col>
+
+            <!-- Net payable includes withholding tax -->
+            <b-col lg="6" md="6" sm="12">
+              <b-form-group label="Net Payable Including Withholding">
+                <b-input-group :prepend="currentUser.currency">
+                  <b-form-input :value="formatNumber(pricingPreview(detail).netPayable, 2)" readonly />
+                </b-input-group>
+              </b-form-group>
+            </b-col>
+
+            <!-- Unit Purchase (last) -->
             <b-col lg="6" md="6" sm="12">
               <validation-provider name="Unit Purchase" :rules="{ required: true}">
                 <b-form-group slot-scope="{ valid, errors }" :label="$t('UnitPurchase') + ' ' + '*'">
@@ -798,6 +854,7 @@
                     :class="{'is-invalid': !!errors.length}"
                     :state="errors[0] ? false : (valid ? true : null)"
                     v-model="detail.purchase_unit_id"
+                    :disabled="!!detail.gate_pass_item_id"
                     :placeholder="$t('Choose_Unit_Purchase')"
                     :reduce="label => label.value"
                     :options="units.map(units => ({label: units.name, value: units.id}))"
@@ -850,6 +907,11 @@ export default {
       highlightedDetailId: null,
       search_input:'',
       product_filter:[],
+      gate_pass_search: '',
+      gatePassLoading: false,
+      selectedGatePasses: [],
+      productsLoading: false,
+      productsWarehouseId: null,
 
       // ——— Inline styles for batches section ———
       batchThStyle: {
@@ -1051,6 +1113,138 @@ export default {
       });
     },
 
+    gatePassErrorMessage(error, fallback) {
+      const data = error && error.response && error.response.data;
+      if (data && data.errors) {
+        const first = Object.values(data.errors)[0];
+        if (Array.isArray(first) && first[0]) return first[0];
+      }
+      return (data && data.message) || (error && error.message) || fallback;
+    },
+
+    addGatePass() {
+      const number = String(this.gate_pass_search || '').trim();
+      if (!number || this.gatePassLoading) return Promise.resolve();
+      this.gatePassLoading = true;
+      return axios.get('purchase-gate-passes/lookup', { params: { number } })
+        .then(response => this.appendGatePass(response.data.gate_pass))
+        .then(() => { this.gate_pass_search = ''; })
+        .catch(error => this.makeToast('danger', this.gatePassErrorMessage(error, 'Could not add the Gate Pass.'), this.$t('Failed')))
+        .finally(() => { this.gatePassLoading = false; });
+    },
+
+    appendGatePass(gatePass) {
+      if (this.selectedGatePasses.some(selected => Number(selected.id) === Number(gatePass.id))) {
+        return Promise.reject(new Error('This Gate Pass is already added.'));
+      }
+      if (this.purchase.supplier_id && Number(this.purchase.supplier_id) !== Number(gatePass.provider_id)) {
+        return Promise.reject(new Error('All Gate Passes must belong to the selected supplier.'));
+      }
+      if (this.purchase.warehouse_id && Number(this.purchase.warehouse_id) !== Number(gatePass.warehouse_id)) {
+        return Promise.reject(new Error('All Gate Passes must belong to the selected warehouse.'));
+      }
+
+      const lines = gatePass.items.map(item => ({ item, product: item.product_data || {} }));
+      return Promise.resolve().then(() => {
+        this.purchase.supplier_id = gatePass.provider_id;
+        this.purchase.warehouse_id = gatePass.warehouse_id;
+        let nextDetailId = this.details.reduce((highest, detail) => Math.max(highest, Number(detail.detail_id) || 0), 0) + 1;
+
+        lines.forEach(({ item, product }) => {
+          const source = {
+            gate_pass_id: gatePass.id,
+            gate_pass_item_id: item.gate_pass_item_id,
+            gate_pass_number: gatePass.number,
+            quantity: Number(item.quantity) || 0
+          };
+          const detail = this.gatePassPurchaseDetail(item, product, source, nextDetailId++);
+          this.details.unshift(detail);
+        });
+
+        this.selectedGatePasses.push({
+          id: gatePass.id,
+          number: gatePass.number,
+          supplier_gate_pass_number: gatePass.supplier_gate_pass_number,
+          provider_id: gatePass.provider_id,
+          warehouse_id: gatePass.warehouse_id
+        });
+        this.Calcul_Total();
+      });
+    },
+
+    gatePassPurchaseDetail(item, product, source, detailId) {
+      const detail = {
+        detail_id: detailId,
+        gate_pass_item_id: Number(item.gate_pass_item_id),
+        gate_pass_max_quantity: source.quantity,
+        product_id: Number(item.product_id),
+        product_variant_id: item.product_variant_id ? Number(item.product_variant_id) : null,
+        purchase_unit_id: Number(item.unit_id || product.purchase_unit_id),
+        code: item.sku || product.code,
+        name: product.name || [item.model, item.product].filter(Boolean).join(' '),
+        quantity: source.quantity,
+        stock: product.qte,
+        fix_stock: product.qte,
+        discount: Number(product.discount) || 0,
+        DiscountNet: Number(product.DiscountNet) || 0,
+        discount_Method: product.discount_method,
+        unitPurchase: product.unitPurchase,
+        fix_cost: product.fix_cost,
+        Unit_cost: Number(product.company_rb_price) || 0,
+        company_rb_price: Number(product.company_rb_price) || 0,
+        mrp_price: Number(product.mrp_price) || 0,
+        Net_cost: 0,
+        Total_cost: 0,
+        subtotal: 0,
+        taxe: 0,
+        withholding_tax: 0,
+        tax_percent: Number(this.purchase.tax_rate) || 0,
+        tax_method: '1',
+        is_imei: product.is_imei,
+        imei_number: '',
+        is_batch_tracked: false,
+        batches: [],
+        warehouse_location: product.warehouse_location
+          ? (product.warehouse_location.name
+              ? `${product.warehouse_location.code} - ${product.warehouse_location.name}`
+              : product.warehouse_location.code)
+          : null,
+        gate_pass_items: [source]
+      };
+      this.recalculatePurchaseDetail(detail);
+      return detail;
+    },
+
+    isGatePassDetail(detail) {
+      return Array.isArray(detail.gate_pass_items) && detail.gate_pass_items.length > 0;
+    },
+
+    gatePassLabels(detail) {
+      return [...new Set((detail.gate_pass_items || []).map(source => source.gate_pass_number))].join(', ');
+    },
+
+    gatePassIdsFromDetails() {
+      const ids = this.details.reduce((all, detail) => all.concat((detail.gate_pass_items || []).map(source => Number(source.gate_pass_id))), []);
+      return [...new Set(ids)];
+    },
+
+    removeGatePass(gatePassId) {
+      this.details = this.details.filter(detail => {
+        if (!this.isGatePassDetail(detail)) return true;
+        const removed = detail.gate_pass_items
+          .filter(source => Number(source.gate_pass_id) === Number(gatePassId))
+          .reduce((total, source) => total + (Number(source.quantity) || 0), 0);
+        if (!removed) return true;
+        detail.gate_pass_items = detail.gate_pass_items.filter(source => Number(source.gate_pass_id) !== Number(gatePassId));
+        detail.quantity = Math.max(0, (Number(detail.quantity) || 0) - removed);
+        if (!detail.gate_pass_items.length || detail.quantity <= 0) return false;
+        this.recalculatePurchaseDetail(detail);
+        return true;
+      });
+      this.selectedGatePasses = this.selectedGatePasses.filter(gatePass => Number(gatePass.id) !== Number(gatePassId));
+      this.Calcul_Total();
+    },
+
     //---------------------- get_units ------------------------------\\
     get_units(value) {
       axios
@@ -1062,24 +1256,26 @@ export default {
     Modal_Updat_Detail(detail) {
       NProgress.start();
       NProgress.set(0.1);
-      this.detail = {};
-      this.detail.name = detail.name;
       this.get_units(detail.product_id);
-      this.detail.detail_id = detail.detail_id;
-      this.detail.purchase_unit_id = detail.purchase_unit_id;
-      this.detail.Unit_cost = detail.Unit_cost;
-      this.detail.company_rb_price = detail.company_rb_price;
-      this.detail.mrp_price = detail.mrp_price;
-      this.detail.tax_method = detail.tax_method;
-      this.detail.fix_cost = detail.fix_cost;
-      this.detail.fix_stock = detail.fix_stock;
-      this.detail.stock = detail.stock;
-      this.detail.discount_Method = detail.discount_Method;
-      this.detail.discount = detail.discount;
-      this.detail.quantity = detail.quantity;
-      this.detail.tax_percent = detail.tax_percent;
-      this.detail.is_imei = detail.is_imei;
-      this.detail.imei_number = detail.imei_number;
+      this.detail = {
+        name: detail.name,
+        detail_id: detail.detail_id,
+        gate_pass_item_id: detail.gate_pass_item_id || null,
+        purchase_unit_id: detail.purchase_unit_id,
+        Unit_cost: detail.Unit_cost,
+        company_rb_price: detail.company_rb_price,
+        mrp_price: detail.mrp_price,
+        tax_method: detail.tax_method,
+        fix_cost: detail.fix_cost,
+        fix_stock: detail.fix_stock,
+        stock: detail.stock,
+        discount_Method: detail.discount_Method,
+        discount: detail.discount,
+        quantity: detail.quantity,
+        tax_percent: detail.tax_percent,
+        is_imei: detail.is_imei,
+        imei_number: detail.imei_number
+      };
       
       setTimeout(() => {
         NProgress.done();
@@ -1136,7 +1332,10 @@ export default {
 
 
     handleFocus() {
-      this.focused = true
+      this.focused = true;
+      if (this.purchase.warehouse_id && Number(this.productsWarehouseId) !== Number(this.purchase.warehouse_id)) {
+        this.Get_Products_By_Warehouse(this.purchase.warehouse_id, false);
+      }
     },
 
     handleBlur() {
@@ -1223,23 +1422,33 @@ export default {
     Selected_Warehouse(value) {
       this.search_input= '';
       this.product_filter = [];
-      this.Get_Products_By_Warehouse(value);
+      this.products = [];
+      this.productsWarehouseId = null;
+      if (this.focused && value) this.Get_Products_By_Warehouse(value, false);
     },
 
     //------------------------------------ Get Products By Warehouse -------------------------\\
 
-    Get_Products_By_Warehouse(id) {
-      // Start the progress bar.
+    Get_Products_By_Warehouse(id, showProgress = true) {
+      if (!id) return Promise.resolve();
+      if (Number(this.productsWarehouseId) === Number(id) && this.products.length) return Promise.resolve(this.products);
+      if (this.productsLoading) return Promise.resolve();
+      this.productsLoading = true;
+      if (showProgress) {
         NProgress.start();
         NProgress.set(0.1);
-      axios
+      }
+      return axios
         .get("get_Products_by_warehouse/" + id + "?stock=" + 0 + "&product_service=" + 0)
          .then(response => {
             this.products = response.data;
-             NProgress.done();
-
-            })
-          .catch(error => {
+            this.productsWarehouseId = id;
+            if (this.search_input.length >= 2) this.search();
+          })
+          .catch(() => {})
+          .finally(() => {
+            this.productsLoading = false;
+            if (showProgress) NProgress.done();
           });
     },
 
@@ -1329,6 +1538,10 @@ export default {
           if (isNaN(detail.quantity)) {
             this.details[i].quantity = 1;
           }
+          if (this.isGatePassDetail(detail) && Number(detail.quantity) > Number(detail.gate_pass_max_quantity)) {
+            this.details[i].quantity = Number(detail.gate_pass_max_quantity);
+            this.makeToast('warning', `Quantity cannot exceed the remaining Gate Pass quantity of ${detail.gate_pass_max_quantity}.`, this.$t('Warning'));
+          }
           this.Calcul_Total();
           this.$forceUpdate();
         }
@@ -1340,6 +1553,10 @@ export default {
     increment(detail, id) {
       for (var i = 0; i < this.details.length; i++) {
         if (this.details[i].detail_id == id) {
+          if (this.isGatePassDetail(detail) && Number(this.details[i].quantity) + 1 > Number(detail.gate_pass_max_quantity)) {
+            this.makeToast('warning', `Quantity cannot exceed the remaining Gate Pass quantity of ${detail.gate_pass_max_quantity}.`, this.$t('Warning'));
+            return;
+          }
           this.formatNumber(this.details[i].quantity++, 2);
         }
       }
@@ -1376,13 +1593,56 @@ export default {
       return `${value[0]}.${formated}`;
     },
 
+    // Purchase currency amounts are charged in whole rupees. Keep the values
+    // numeric for calculations; formatNumber() adds the required .00 display.
+    roundUpMoney(value) {
+      const amount = Number(value) || 0;
+      return Math.ceil(Number(amount.toFixed(6)));
+    },
+
+    discountMethodChanged() {
+      this.detail.discount = 0;
+    },
+
+    pricingPreview(detail) {
+      const rbPrice = Math.max(Number(detail && detail.Unit_cost) || 0, 0);
+      const mrpWithoutTax = Math.max(Number(detail && detail.mrp_price) || 0, 0);
+      const discountValue = Math.max(Number(detail && detail.discount) || 0, 0);
+      const gstRate = Math.max(Number(this.purchase.tax_rate) || 0, 0);
+      const withholdingRate = Math.max(Number(this.withholding_tax_rate) || 0, 0);
+      let tradeDiscount = detail && detail.discount_Method == "1"
+        ? (rbPrice * discountValue) / 100
+        : discountValue;
+      tradeDiscount = Math.min(tradeDiscount, rbPrice);
+      const netValue = this.roundUpMoney(rbPrice - tradeDiscount);
+      const gstBase = rbPrice;
+      const gstAmount = this.roundUpMoney((gstBase * gstRate) / 100);
+      const totalWithTax = this.roundUpMoney(netValue + gstAmount);
+      const mrpWithTax = mrpWithoutTax > 0
+        ? this.roundUpMoney(mrpWithoutTax + (mrpWithoutTax * gstRate) / 100)
+        : 0;
+      const withholdingAmount = this.roundUpMoney((netValue * withholdingRate) / 100);
+
+      return {
+        rbPrice,
+        tradeDiscount,
+        netValue,
+        gstAmount,
+        totalWithTax,
+        mrpWithoutTax,
+        mrpWithTax,
+        withholdingAmount,
+        netPayable: this.roundUpMoney(totalWithTax + withholdingAmount)
+      };
+    },
+
     // Purchase invoice calculation:
-    // RB less trade discount = net value; sales tax is based on MRP.
+    // RB less trade discount = net value. Purchase GST is calculated on
+    // the full RB value before discount; MRP tax remains a display reference.
     recalculatePurchaseDetail(detail) {
       const rbPrice = Math.max(Number(detail.company_rb_price !== undefined
         ? detail.company_rb_price
         : detail.Unit_cost) || 0, 0);
-      const mrpPrice = Math.max(Number(detail.mrp_price) || 0, 0);
       const discountValue = Math.max(Number(detail.discount) || 0, 0);
       const taxRate = Math.max(Number(this.purchase.tax_rate) || 0, 0);
 
@@ -1394,12 +1654,15 @@ export default {
       detail.company_rb_price = rbPrice;
       detail.Unit_cost = rbPrice;
       detail.DiscountNet = tradeDiscount;
-      detail.Net_cost = rbPrice - tradeDiscount;
+      detail.Net_cost = this.roundUpMoney(rbPrice - tradeDiscount);
       detail.tax_percent = taxRate;
       detail.tax_method = "1";
-      detail.taxe = (mrpPrice * taxRate) / 100;
-      detail.withholding_tax = detail.Net_cost * (this.withholding_tax_rate / 100);
-      detail.Total_cost = detail.Net_cost + detail.taxe - detail.withholding_tax;
+      const salesTaxBase = rbPrice;
+      detail.taxe = this.roundUpMoney((salesTaxBase * taxRate) / 100);
+      detail.withholding_tax = this.roundUpMoney(
+        detail.Net_cost * (this.withholding_tax_rate / 100)
+      );
+      detail.Total_cost = this.roundUpMoney(detail.Net_cost + detail.taxe);
       detail.subtotal = (Number(detail.quantity) || 0) * detail.Total_cost;
     },
 
@@ -1416,14 +1679,11 @@ export default {
       }
 
       const total_after_discount = this.total - (Number(this.purchase.discount) || 0);
-      this.purchase.TaxNet = parseFloat(salesTaxTotal.toFixed(2));
-      this.purchase.withholding_tax = parseFloat(withholdingTaxTotal.toFixed(2));
-      this.GrandTotal = parseFloat(
-        total_after_discount + (Number(this.purchase.shipping) || 0)
+      this.purchase.TaxNet = this.roundUpMoney(salesTaxTotal);
+      this.purchase.withholding_tax = this.roundUpMoney(withholdingTaxTotal);
+      this.GrandTotal = this.roundUpMoney(
+        total_after_discount + withholdingTaxTotal + (Number(this.purchase.shipping) || 0)
       );
-
-      var grand_total =  this.GrandTotal.toFixed(2);
-      this.GrandTotal = parseFloat(grand_total);
     },
 
     //-----------------------------------Delete Detail Product ------------------------------\\
@@ -1431,6 +1691,8 @@ export default {
       for (var i = 0; i < this.details.length; i++) {
         if (id === this.details[i].detail_id) {
           this.details.splice(i, 1);
+          const usedGatePassIds = new Set(this.gatePassIdsFromDetails());
+          this.selectedGatePasses = this.selectedGatePasses.filter(gatePass => usedGatePassIds.has(Number(gatePass.id)));
           this.Calcul_Total();
         }
       }
@@ -1525,6 +1787,7 @@ export default {
             discount: this.purchase.discount?this.purchase.discount:0,
             shipping: this.purchase.shipping?this.purchase.shipping:0,
             GrandTotal: this.GrandTotal,
+            gate_pass_ids: this.gatePassIdsFromDetails(),
             details: this.details
           })
           .then(response => {
@@ -1674,7 +1937,7 @@ export default {
 
     //---------------------------------------Get Elements Purchase ------------------------------\\
     GetElements() {
-      axios
+      return axios
         .get("purchases/create")
         .then(response => {
           this.suppliers = response.data.suppliers;
@@ -1696,7 +1959,12 @@ export default {
 
   //-----------------------------  Created function-------------------
   created() {
-    this.GetElements();
+    this.GetElements().then(() => {
+      const gatePassNumber = String(this.$route.query.gate_pass || '').trim();
+      if (!gatePassNumber) return;
+      this.gate_pass_search = gatePassNumber;
+      return this.addGatePass();
+    });
   },
 
   beforeDestroy() {
@@ -1707,6 +1975,11 @@ export default {
 </script>
 
 <style>
+  .purchase-detail-dialog {
+    width: calc(100% - 32px);
+    max-width: 1200px !important;
+  }
+
 
   .input-with-icon {
     display: flex;
@@ -1722,6 +1995,69 @@ export default {
 
   .purchase-row-highlight > td {
     animation: purchase-row-pulse 1.8s ease-out;
+  }
+
+  .gate-pass-remove {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    padding: 0;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .purchase-products-table {
+    min-width: 1760px;
+  }
+
+  .purchase-products-table .purchase-quantity-column {
+    width: 126px;
+    min-width: 126px;
+  }
+
+  .purchase-quantity-control {
+    display: grid;
+    grid-template-columns: 32px minmax(54px, 1fr) 32px;
+    width: 118px;
+    overflow: hidden;
+    border-radius: 5px;
+  }
+
+  .purchase-quantity-control .purchase-quantity-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 36px !important;
+    min-width: 32px;
+    padding: 0;
+    border-radius: 0;
+    font-size: 18px;
+    line-height: 1;
+  }
+
+  .purchase-quantity-control .purchase-quantity-input {
+    width: 100%;
+    min-width: 0;
+    height: 36px;
+    padding: 4px 6px;
+    border-radius: 0;
+    text-align: center;
+  }
+
+  .purchase-quantity-control .purchase-quantity-input::-webkit-outer-spin-button,
+  .purchase-quantity-control .purchase-quantity-input::-webkit-inner-spin-button {
+    margin: 0;
+    appearance: none;
+  }
+
+  .purchase-quantity-control .purchase-quantity-input[type='number'] {
+    -moz-appearance: textfield;
+  }
+
+  .discount-percentage-input {
+    max-width: 210px;
   }
 
   @keyframes purchase-row-pulse {

@@ -5,7 +5,7 @@ import {
   // files / folders
   FilePlus, Files, Folder, FileText, ClipboardList, Copy,
   // commerce
-  ShoppingCart, ShoppingBasket, ShoppingBag, Store, CreditCard, Wallet,
+  ShoppingCart, ShoppingBasket, ShoppingBag, Store, CreditCard, Wallet, Truck,
   Banknote, DollarSign, Receipt, ReceiptText, Tag, Ticket, Barcode,
   // people
   User, UserPlus, UserMinus, Users, IdCard, BriefcaseBusiness, ShieldCheck,
@@ -71,6 +71,7 @@ const REGISTRY = {
   'tag': Tag,
   'ticket': Ticket,
   'barcode': Barcode,
+  'truck': Truck,
   // people
   'user': User,
   'user-plus': UserPlus,

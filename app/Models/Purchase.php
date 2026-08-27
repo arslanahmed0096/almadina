@@ -62,5 +62,6 @@ class Purchase extends Model
 
     public function purchaseOrder() { return $this->belongsTo(PurchaseOrder::class); }
     public function gatePass() { return $this->belongsTo(GatePass::class); }
+    public function gatePasses() { return $this->belongsToMany(GatePass::class, 'purchase_gate_pass')->withTimestamps(); }
     public function supplierInvoice() { return $this->belongsTo(SupplierInvoice::class); }
 }

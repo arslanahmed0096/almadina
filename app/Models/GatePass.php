@@ -39,4 +39,9 @@ class GatePass extends Model
     {
         return $this->hasMany(SupplierInvoice::class);
     }
+
+    public function purchases()
+    {
+        return $this->belongsToMany(Purchase::class, 'purchase_gate_pass')->withTimestamps();
+    }
 }

@@ -40,6 +40,16 @@ final class Decimal
         return bcadd($normalized, $increment, $scale);
     }
 
+    public static function ceil(string|int|float $value): string
+    {
+        $normalized = self::normalize($value);
+        $whole = bcadd($normalized, '0', 0);
+
+        return bccomp($normalized, $whole, self::SCALE) === 1
+            ? bcadd($whole, '1', 0)
+            : $whole;
+    }
+
     private static function normalize(string|int|float $value, int $scale = self::SCALE): string
     {
         if (is_float($value)) return number_format($value, $scale, '.', '');

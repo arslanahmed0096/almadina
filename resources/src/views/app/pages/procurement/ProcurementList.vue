@@ -15,7 +15,11 @@
               <td v-for="column in columns" :key="column.key"><span v-if="column.key === 'status'" class="badge badge-light-primary">{{ label(value(row, column.key)) }}</span><span v-else>{{ value(row, column.key) }}</span></td>
               <td>
                 <router-link class="btn btn-sm btn-outline-primary" :to="detailUrl(row)"><lucide-icon name="eye" /> View</router-link>
-                <router-link v-if="kind === 'gates' && can('supplier_invoices_create') && ['accepted', 'partially_accepted'].includes(row.status)" class="btn btn-sm btn-outline-success ml-1" :to="'/app/procurement/gate-passes/' + row.id + '/invoice'"><lucide-icon name="file-plus" /> Invoice</router-link>
+                <router-link
+                  v-if="kind === 'gates' && can('Purchases_add') && ['accepted', 'partially_accepted'].includes(row.status)"
+                  class="btn btn-sm btn-outline-success ml-1"
+                  :to="{ path: '/app/purchases/store', query: { gate_pass: row.number } }"
+                ><lucide-icon name="file-plus" /> Invoice</router-link>
               </td>
             </tr>
             <tr v-if="!rows.length"><td :colspan="columns.length + 1" class="text-center text-muted py-5">No records found</td></tr>

@@ -29,12 +29,16 @@ class GatePassService
     {
         $warehouseId = $order?->warehouse_id ?? (int) $data['warehouse_id'];
         $this->assertWarehouse($user, $warehouseId);
-        if ($order && ! in_array($order->status, ['issued', 'partially_received', 'fully_received', 'partially_invoiced', 'fully_invoiced', 'partially_purchased'], true)) {
-            throw ValidationException::withMessages(['purchase_order_id' => ['Gate Passes can only be recorded against an issued Purchase Order.']]);
-        }
 
         return DB::transaction(function () use ($order, $data, $user) {
             $order = $order ? PurchaseOrder::lockForUpdate()->findOrFail($order->id) : null;
+            if ($order && ! in_array($order->status, ['draft', 'issued', 'partially_received', 'fully_received', 'partially_invoiced', 'fully_invoiced', 'partially_purchased'], true)) {
+                throw ValidationException::withMessages(['purchase_order_id' => ['Gate Passes can only be recorded against an open Purchase Order.']]);
+            }
+            if ($order?->status === 'draft') {
+                $order->update(['status' => 'issued', 'issued_at' => now(), 'issued_by' => $user->id]);
+                $this->audit->record($order, 'issued', ['status' => 'draft'], ['status' => 'issued'], 'Automatically issued when the first Gate Pass was recorded.');
+            }
             $gatePass = GatePass::create([
                 'number' => 'PENDING-'.Str::uuid(), 'supplier_gate_pass_number' => $data['supplier_gate_pass_number'] ?? null,
                 'purchase_order_id' => $order?->id, 'receipt_type' => $order ? 'purchase_order' : 'direct',
@@ -161,6 +165,9 @@ class GatePassService
             }
             if ($gatePass->supplierInvoices()->where('status', '<>', 'cancelled')->exists()) {
                 throw ValidationException::withMessages(['status' => ['Cancel linked supplier invoices before reversing this Gate Pass.']]);
+            }
+            if ($gatePass->purchases()->whereNull('purchases.deleted_at')->exists()) {
+                throw ValidationException::withMessages(['status' => ['This Gate Pass is linked to a Purchase and cannot be cancelled.']]);
             }
             foreach (ProcurementStockMovement::where('gate_pass_id', $gatePass->id)->whereNull('reversed_at')->lockForUpdate()->get() as $movement) {
                 $stockQuery = product_warehouse::whereNull('deleted_at')->where('warehouse_id', $movement->warehouse_id)->where('product_id', $movement->product_id);

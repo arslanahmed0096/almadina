@@ -5,7 +5,11 @@
     <b-card v-if="viewing && gate">
       <div class="d-flex mb-3">
         <b-button v-if="['draft', 'pending_verification'].includes(gate.status) && can('gate_passes_confirm')" variant="success" class="mr-2" @click="confirm">Confirm receipt</b-button>
-        <router-link v-if="['accepted', 'partially_accepted'].includes(gate.status) && can('supplier_invoices_create')" class="btn btn-primary" :to="'/app/procurement/gate-passes/' + gate.id + '/invoice'">Record supplier invoice</router-link>
+        <router-link
+          v-if="['accepted', 'partially_accepted'].includes(gate.status) && can('Purchases_add')"
+          class="btn btn-primary"
+          :to="{ path: '/app/purchases/store', query: { gate_pass: gate.number } }"
+        >Invoice</router-link>
         <a v-if="gate.attachment_path" class="btn btn-outline-secondary ml-2" :href="api + 'procurement/gate-passes/' + gate.id + '/attachment'">Attachment</a>
       </div>
       <b-row>
@@ -24,8 +28,8 @@
       </b-row>
       <div class="table-responsive mt-3">
         <table class="table">
-          <thead><tr><th>Product</th><th>Delivered</th><th>Accepted</th><th>Rejected</th><th>Short</th></tr></thead>
-          <tbody><tr v-for="item in gate.items" :key="item.id"><td>{{ displayProduct(item) }}</td><td>{{ item.delivered_quantity }}</td><td>{{ item.accepted_quantity }}</td><td>{{ item.rejected_quantity }}</td><td>{{ item.short_quantity }}</td></tr></tbody>
+          <thead><tr><th>Product</th><th>Code</th><th>Qty</th></tr></thead>
+          <tbody><tr v-for="item in gate.items" :key="item.id"><td>{{ displayProduct(item) }}</td><td>{{ item.sku || '-' }}</td><td>{{ formatQty(item.delivered_quantity) }}</td></tr></tbody>
         </table>
       </div>
     </b-card>
@@ -39,14 +43,19 @@
         <template v-if="hasPurchaseOrder">
           <b-row>
             <b-col md="6">
+              <b-form-group label="Supplier *">
+                <v-select v-model="form.provider_id" :reduce="option => option.id" label="name" :options="meta.providers" placeholder="Choose supplier" @input="supplierChanged" />
+              </b-form-group>
+            </b-col>
+            <b-col md="6">
               <b-form-group label="Purchase Order *">
-                <v-select v-model="form.purchase_order_id" :reduce="option => option.id" label="label" :options="meta.purchase_orders" placeholder="Choose purchase order" @input="purchaseOrderChanged" />
+                <v-select v-model="form.purchase_order_id" :reduce="option => option.id" label="label" :options="filteredPurchaseOrders" :disabled="!form.provider_id" placeholder="Choose purchase order" @input="purchaseOrderChanged" />
               </b-form-group>
             </b-col>
           </b-row>
           <b-alert v-if="loadingPurchaseOrder" show variant="light">Loading Purchase Order...</b-alert>
           <b-alert v-else-if="order" show variant="light">Receiving against <strong>{{ order.number }}</strong> from <strong>{{ order.provider.name }}</strong> into <strong>{{ order.warehouse.name }}</strong>.</b-alert>
-          <b-alert v-else show variant="light">Select a Purchase Order to load its receivable products.</b-alert>
+          <b-alert v-else show variant="light">{{ form.provider_id ? 'Select an incomplete Purchase Order to load its receivable products.' : 'Select a supplier to see its incomplete Purchase Orders.' }}</b-alert>
         </template>
 
         <b-row v-else>
@@ -81,16 +90,13 @@
         </template>
 
         <div class="table-responsive"><table class="table table-hover">
-          <thead><tr><th>Product</th><th v-if="direct">Code</th><th v-if="!direct">Ordered</th><th v-if="!direct">Received</th><th v-if="!direct">Remaining</th><th>Delivered</th><th>Accepted</th><th>Rejected</th><th v-if="direct">Unit cost</th><th v-if="direct"></th></tr></thead>
+          <thead><tr><th>Product</th><th>Code</th><th v-if="!direct">Ordered Quantity</th><th>Receiving Quantity</th><th v-if="direct"></th></tr></thead>
           <tbody>
-            <tr v-if="!lines.length"><td :colspan="direct ? 7 : 7">{{ direct ? 'No products added. Search or scan a product above.' : (order ? 'No receivable products remain.' : 'Select a Purchase Order to load products.') }}</td></tr>
+            <tr v-if="!lines.length"><td colspan="4">{{ direct ? 'No products added. Search or scan a product above.' : (order ? 'No receivable products remain.' : 'Select a Purchase Order to load products.') }}</td></tr>
             <tr v-for="(line, index) in lines" :key="line.line_key || line.purchase_order_item_id">
-              <td>{{ line.product }} {{ line.model || '' }}</td><td v-if="direct">{{ line.sku || '-' }}</td>
-              <td v-if="!direct">{{ line.ordered }}</td><td v-if="!direct">{{ line.received }}</td><td v-if="!direct">{{ line.remaining }}</td>
-              <td><b-form-input type="number" step="0.000001" min="0" v-model.number="line.delivered_quantity" /></td>
-              <td><b-form-input type="number" step="0.000001" min="0" v-model.number="line.accepted_quantity" /></td>
-              <td><b-form-input type="number" step="0.000001" min="0" v-model.number="line.rejected_quantity" /></td>
-              <td v-if="direct"><b-form-input type="number" step="0.000001" min="0" v-model.number="line.unit_cost" /></td>
+              <td>{{ line.product }} {{ line.model || '' }}</td><td>{{ line.sku || '-' }}</td>
+              <td v-if="!direct">{{ formatQty(line.ordered) }}</td>
+              <td><b-form-input type="number" step="1" min="0" v-model.number="line.delivered_quantity" /></td>
               <td v-if="direct"><b-button size="sm" variant="outline-danger" @click="lines.splice(index, 1)"><lucide-icon name="x" /></b-button></td>
             </tr>
           </tbody>
@@ -123,6 +129,10 @@ export default {
     ...mapGetters(['currentUserPermissions']),
     viewing() { return this.$route.name === 'procurement_gate_detail'; },
     direct() { return !this.hasPurchaseOrder; },
+    filteredPurchaseOrders() {
+      if (!this.form.provider_id) return [];
+      return this.meta.purchase_orders.filter(order => Number(order.provider_id) === Number(this.form.provider_id));
+    },
     pageTitle() {
       if (this.viewing) return this.gate ? this.gate.number : 'Gate Pass';
       return 'Add Gate Pass';
@@ -150,6 +160,7 @@ export default {
       const source = item.purchase_order_item || item;
       return [source.product_name || ('Product #' + item.product_id), source.variant_name].filter(Boolean).join(' ');
     },
+    formatQty(value) { return Number(value || 0).toFixed(0); },
     errorMessage(error, fallback) {
       const data = error && error.response && error.response.data;
       if (data && data.errors) {
@@ -176,7 +187,7 @@ export default {
         this.order = data.purchase_order;
         this.form.provider_id = this.order.provider_id;
         this.form.warehouse_id = this.order.warehouse_id;
-        this.lines = data.progress.lines.map(line => ({ ...line, delivered_quantity: 0, accepted_quantity: 0, rejected_quantity: 0 }));
+        this.lines = data.progress.lines.map(line => ({ ...line, delivered_quantity: 0 }));
       }
     },
     loadMetadata(purchaseOrderId = null) {
@@ -195,10 +206,16 @@ export default {
       this.warehouseProducts = [];
       this.clearSearch();
     },
+    supplierChanged(providerId) {
+      if (this.order && Number(this.order.provider_id) === Number(providerId)) return;
+      this.order = null;
+      this.lines = [];
+      this.form.purchase_order_id = null;
+      this.form.warehouse_id = null;
+    },
     purchaseOrderChanged(purchaseOrderId) {
       this.order = null;
       this.lines = [];
-      this.form.provider_id = null;
       this.form.warehouse_id = null;
       if (!purchaseOrderId) return;
       this.loadingPurchaseOrder = true;
@@ -244,8 +261,7 @@ export default {
           line_key: this.nextLineKey++, product_id: Number(result.id), product_variant_id: variantId ? Number(variantId) : null,
           unit_id: product.purchase_unit_id || product.unit_id || null,
           product: String(product.name || result.name || '').replace(/^\[[^\]]+]\s*/, ''), model: modelMatch ? modelMatch[1] : '',
-          sku: result.code || product.code || '', unit_cost: Number(product.Unit_cost || product.fix_cost || 0),
-          delivered_quantity: 1, accepted_quantity: 1, rejected_quantity: 0
+          sku: result.code || product.code || '', delivered_quantity: 1
         });
         this.clearSearch();
         this.$nextTick(() => this.$refs.product_autocomplete && this.$refs.product_autocomplete.focus());
@@ -260,13 +276,14 @@ export default {
     onScan(decodedText) { this.searchInput = String(decodedText || ''); this.$bvModal.hide('gate_pass_product_scan'); this.searchProducts(true); },
     clearSearch() { this.searchInput = ''; this.productFilter = []; if (this.$refs.product_autocomplete) this.$refs.product_autocomplete.value = ''; },
     validateForm() {
+      if (this.hasPurchaseOrder && !this.form.provider_id) return 'Select a supplier.';
       if (this.hasPurchaseOrder && !this.form.purchase_order_id) return 'Select a Purchase Order.';
       if (this.hasPurchaseOrder && !this.order) return 'Wait for the Purchase Order to finish loading.';
       if (this.direct && !this.form.provider_id) return 'Select a supplier.';
       if (this.direct && !this.form.warehouse_id) return 'Select a destination warehouse.';
       const items = this.lines.filter(line => Number(line.delivered_quantity) > 0);
-      if (!items.length) return 'Add at least one product with a delivered quantity.';
-      if (items.some(line => Number(line.accepted_quantity || 0) + Number(line.rejected_quantity || 0) > Number(line.delivered_quantity || 0))) return 'Accepted plus rejected quantity cannot exceed delivered quantity.';
+      if (!items.length) return 'Add at least one product with a quantity greater than zero.';
+      if (items.some(line => !Number.isInteger(Number(line.delivered_quantity)))) return 'Quantity must be a whole number.';
       if (this.direct && items.some(line => !line.unit_id)) return 'A purchase unit is missing for one of the selected products.';
       return null;
     },
@@ -274,11 +291,11 @@ export default {
       const validationError = this.validateForm();
       if (validationError) { this.toast(validationError); return; }
       const items = this.lines.filter(line => Number(line.delivered_quantity) > 0).map(line => this.direct ? {
-        product_id: line.product_id, product_variant_id: line.product_variant_id, unit_id: line.unit_id, unit_cost: line.unit_cost,
-        delivered_quantity: line.delivered_quantity, accepted_quantity: line.accepted_quantity, rejected_quantity: line.rejected_quantity
+        product_id: line.product_id, product_variant_id: line.product_variant_id, unit_id: line.unit_id,
+        delivered_quantity: line.delivered_quantity, accepted_quantity: line.delivered_quantity, rejected_quantity: 0
       } : {
         purchase_order_item_id: line.purchase_order_item_id, delivered_quantity: line.delivered_quantity,
-        accepted_quantity: line.accepted_quantity, rejected_quantity: line.rejected_quantity
+        accepted_quantity: line.delivered_quantity, rejected_quantity: 0
       });
       const payload = { ...this.form, receipt_type: this.direct ? 'direct' : 'purchase_order', purchase_order_id: this.direct ? null : this.order.id, submit_for_verification: 1 };
       const formData = new FormData();
@@ -286,7 +303,7 @@ export default {
       formData.append('items', JSON.stringify(items));
       if (this.file) formData.append('attachment', this.file);
       this.saving = true;
-      axios.post('procurement/gate-passes', formData).then(response => { this.$router.push('/app/procurement/gate-passes/' + response.data.gate_pass.id); })
+      axios.post('procurement/gate-passes', formData).then(() => { this.$router.push('/app/procurement/gate-passes'); })
         .catch(error => this.toast(this.errorMessage(error, 'Could not record the Gate Pass.'), 'danger')).finally(() => { this.saving = false; });
     },
     confirm() {

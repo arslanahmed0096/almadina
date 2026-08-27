@@ -38,7 +38,14 @@ class ProcurementWorkflowTest extends TestCase
         $this->legacySchema();
         (require database_path('migrations/2026_08_25_000001_create_procurement_workflow.php'))->up();
         (require database_path('migrations/2026_08_25_000002_support_direct_gate_passes.php'))->up();
+        (require database_path('migrations/2026_08_25_000003_link_purchases_to_gate_passes.php'))->up();
+        (require database_path('migrations/2026_08_25_000004_track_purchase_gate_pass_quantities.php'))->up();
         $this->user = User::create(['username' => 'admin', 'email' => 'admin@example.test', 'password' => bcrypt('secret'), 'role_id' => 1, 'statut' => 1, 'is_all_warehouses' => 1]);
+        \DB::table('role_user')->insert(['user_id' => $this->user->id, 'role_id' => 1]);
+        $purchasePermissionId = \DB::table('permissions')->insertGetId(['name' => 'Purchases_add', 'label' => 'Add Purchases']);
+        \DB::table('permission_role')->insert(['permission_id' => $purchasePermissionId, 'role_id' => 1]);
+        $purchaseEditPermissionId = \DB::table('permissions')->insertGetId(['name' => 'Purchases_edit', 'label' => 'Edit Purchases']);
+        \DB::table('permission_role')->insert(['permission_id' => $purchaseEditPermissionId, 'role_id' => 1]);
         $this->provider = Provider::create(['name' => 'Nasgas', 'code' => 1, 'email' => '', 'phone' => '', 'country' => '', 'city' => '', 'adresse' => '', 'tax_status' => 'non_gst']);
         $this->warehouse = Warehouse::create(['name' => 'Main Warehouse']);
         $this->unit = Unit::create(['name' => 'Piece', 'ShortName' => 'pc', 'operator' => '*', 'operator_value' => 1, 'is_active' => 1]);
@@ -111,6 +118,27 @@ class ProcurementWorkflowTest extends TestCase
         app(GatePassService::class)->confirm($gate, $this->user);
     }
 
+    public function test_first_gate_pass_automatically_issues_an_open_draft_purchase_order(): void
+    {
+        $product = Product::create([
+            'name' => 'Draft PO Product', 'code' => 'DRAFT-PO-1', 'cost' => 100,
+            'unit_id' => $this->unit->id, 'unit_purchase_id' => $this->unit->id,
+            'is_variant' => 0, 'is_active' => 1,
+        ]);
+        $order = app(PurchaseOrderService::class)->create([
+            'order_date' => '2026-08-27', 'provider_id' => $this->provider->id, 'warehouse_id' => $this->warehouse->id,
+            'items' => [['product_id' => $product->id, 'unit_id' => $this->unit->id, 'quantity' => 10, 'unit_price' => 100]],
+        ], $this->user);
+
+        $gatePass = app(GatePassService::class)->create($order, [
+            'delivered_at' => '2026-08-27 12:00:00', 'submit_for_verification' => true,
+            'items' => [['purchase_order_item_id' => $order->items[0]->id, 'delivered_quantity' => 4, 'accepted_quantity' => 4, 'rejected_quantity' => 0]],
+        ], $this->user);
+
+        $this->assertSame('issued', $order->fresh()->status);
+        $this->assertSame('pending_verification', $gatePass->status);
+    }
+
     public function test_direct_gate_pass_can_receive_stock_and_flow_to_supplier_invoice_without_purchase_order(): void
     {
         $product = Product::create([
@@ -159,6 +187,135 @@ class ProcurementWorkflowTest extends TestCase
             'product_id' => $product->id,
             'quantity' => 4,
         ]);
+    }
+
+    public function test_create_purchase_can_partially_use_and_reuse_multiple_gate_passes_without_receiving_stock_twice(): void
+    {
+        $products = collect([['Gate Product A', 'GP-A', 3], ['Gate Product B', 'GP-B', 4]])
+            ->map(fn ($row) => Product::create([
+                'name' => $row[0], 'code' => $row[1], 'cost' => 100,
+                'unit_id' => $this->unit->id, 'unit_purchase_id' => $this->unit->id,
+                'is_variant' => 0, 'is_active' => 1,
+            ])->setAttribute('gate_qty', $row[2]));
+
+        $gates = $products->map(function ($product, $index) {
+            $gate = app(GatePassService::class)->create(null, [
+                'provider_id' => $this->provider->id,
+                'warehouse_id' => $this->warehouse->id,
+                'delivered_at' => '2026-08-25 12:00:00',
+                'supplier_gate_pass_number' => 'MULTI-GP-'.($index + 1),
+                'items' => [[
+                    'product_id' => $product->id,
+                    'unit_id' => $this->unit->id,
+                    'delivered_quantity' => $product->gate_qty,
+                    'accepted_quantity' => $product->gate_qty,
+                    'rejected_quantity' => 0,
+                ]],
+            ], $this->user);
+            app(GatePassService::class)->confirm($gate, $this->user);
+
+            return $gate->fresh('items');
+        });
+
+        $this->actingAs($this->user, 'api');
+        $this->getJson('/api/purchase-gate-passes/lookup?number='.urlencode($gates[0]->supplier_gate_pass_number))
+            ->assertOk()
+            ->assertJsonPath('gate_pass.items.0.quantity', 3)
+            ->assertJsonPath('gate_pass.items.0.product_data.company_rb_price', 100);
+
+        $details = $gates->map(function ($gate) {
+            $item = $gate->items->first();
+
+            return [
+                'product_id' => $item->product_id,
+                'product_variant_id' => null,
+                'purchase_unit_id' => $item->unit_id,
+                'gate_pass_item_id' => $item->id,
+                'quantity' => 2,
+                'Unit_cost' => 100,
+                'company_rb_price' => 100,
+                'mrp_price' => 100,
+                'tax_percent' => 0,
+                'taxe' => 0,
+                'withholding_tax' => 0,
+                'tax_method' => '1',
+                'discount' => 0,
+                'discount_Method' => '2',
+                'subtotal' => 200,
+                'imei_number' => '',
+            ];
+        })->all();
+
+        $this->postJson('/api/purchases', [
+            'date' => '2026-08-25',
+            'supplier_id' => $this->provider->id,
+            'warehouse_id' => $this->warehouse->id,
+            'statut' => 'received',
+            'tax_rate' => 0,
+            'TaxNet' => 0,
+            'withholding_tax' => 0,
+            'discount' => 0,
+            'shipping' => 0,
+            'GrandTotal' => 400,
+            'gate_pass_ids' => $gates->pluck('id')->all(),
+            'details' => $details,
+        ])->assertOk();
+
+        $purchaseId = (int) \DB::table('purchases')->max('id');
+        $this->assertDatabaseHas('purchases', ['id' => $purchaseId, 'inventory_already_received' => 1]);
+        $this->assertSame(2, \DB::table('purchase_gate_pass')->where('purchase_id', $purchaseId)->count());
+        $this->assertSame(2, \DB::table('purchase_gate_pass_items')->where('purchase_id', $purchaseId)->count());
+
+        $editResponse = $this->getJson("/api/purchases/{$purchaseId}/edit")
+            ->assertOk()
+            ->assertJsonCount(2, 'gate_passes')
+            ->assertJsonPath('details.0.is_gate_pass_item', true)
+            ->json();
+        $editDetails = $editResponse['details'];
+        $editDetails[0]['Unit_cost'] = 125;
+        $editDetails[0]['company_rb_price'] = 125;
+        $this->putJson("/api/purchases/{$purchaseId}", [
+            'date' => '2026-08-25',
+            'supplier_id' => $this->provider->id,
+            'warehouse_id' => $this->warehouse->id,
+            'sales_tax_invoice_no' => 'EDIT-GP-1',
+            'delivery_note_no' => 'EDIT-DN-1',
+            'tax_rate' => 0,
+            'TaxNet' => 0,
+            'withholding_tax' => 0,
+            'discount' => 0,
+            'shipping' => 0,
+            'GrandTotal' => 450,
+            'details' => $editDetails,
+        ])->assertOk();
+        $this->assertSame(125.0, (float) \DB::table('purchase_details')->where('id', $editDetails[0]['id'])->value('cost'));
+
+        $firstGateItem = $gates[0]->items->first();
+        $this->getJson('/api/purchase-gate-passes/lookup?number='.urlencode($gates[0]->number))
+            ->assertOk()->assertJsonPath('gate_pass.items.0.quantity', 1);
+        $secondDetail = $details[0];
+        $secondDetail['quantity'] = 1;
+        $secondDetail['subtotal'] = 100;
+        $this->postJson('/api/purchases', [
+            'date' => '2026-08-26',
+            'supplier_id' => $this->provider->id,
+            'warehouse_id' => $this->warehouse->id,
+            'statut' => 'received',
+            'tax_rate' => 0,
+            'TaxNet' => 0,
+            'withholding_tax' => 0,
+            'discount' => 0,
+            'shipping' => 0,
+            'GrandTotal' => 100,
+            'gate_pass_ids' => [$gates[0]->id],
+            'details' => [$secondDetail],
+        ])->assertOk();
+        $this->assertSame(3.0, (float) \DB::table('purchase_gate_pass_items')->where('gate_pass_item_id', $firstGateItem->id)->sum('quantity'));
+        $this->getJson('/api/purchase-gate-passes/lookup?number='.urlencode($gates[0]->number))->assertStatus(422);
+
+        foreach ($products as $product) {
+            $this->assertSame((float) $product->gate_qty, (float) product_warehouse::where('product_id', $product->id)->value('qte'));
+        }
     }
 
     public function test_invoice_cannot_exceed_accepted_quantity_or_create_duplicate_purchase(): void
@@ -482,6 +639,12 @@ class ProcurementWorkflowTest extends TestCase
             $t->timestamps();
             $t->softDeletes();
         });
+        Schema::create('purchase_returns', function (Blueprint $t) {
+            $t->increments('id');
+            $t->integer('purchase_id');
+            $t->timestamps();
+            $t->softDeletes();
+        });
         Schema::create('purchase_details', function (Blueprint $t) {
             $t->increments('id');
             $t->decimal('cost', 20, 6);
@@ -497,6 +660,7 @@ class ProcurementWorkflowTest extends TestCase
             $t->integer('purchase_unit_id')->nullable();
             $t->integer('product_id');
             $t->integer('product_variant_id')->nullable();
+            $t->string('imei_number')->nullable();
             $t->decimal('total', 20, 6);
             $t->decimal('quantity', 20, 6);
             $t->timestamps();

@@ -673,6 +673,7 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
     // ------------------------------- PURCHASES --------------------------\\
     // ------------------------------------------------------------------\\
 
+    Route::get('purchase-gate-passes/lookup', 'PurchasesController@gatePassLookup');
     Route::resource('purchases', 'PurchasesController');
 
     // Procurement: physical receipt is posted by Gate Pass; linked Purchases are financial-only.

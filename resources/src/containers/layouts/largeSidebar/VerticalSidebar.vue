@@ -395,8 +395,7 @@
               currentUserPermissions.includes('purchase_orders_view') ||
               currentUserPermissions.includes('purchase_orders_create') ||
               currentUserPermissions.includes('gate_passes_view') ||
-              currentUserPermissions.includes('gate_passes_create') ||
-              currentUserPermissions.includes('supplier_invoices_view')
+              currentUserPermissions.includes('gate_passes_create')
             )"
             :class="{ active: isActiveRoute('purchases') || isActiveRoute('procurement'), 'has-submenu': true, open: openMenus.includes('purchases') }"
             class="nav-item"
@@ -413,28 +412,10 @@
                   <span>Purchase Orders</span>
                 </router-link>
               </li>
-              <li class="submenu-item" v-if="currentUserPermissions && currentUserPermissions.includes('purchase_orders_create')">
-                <router-link to="/app/procurement/purchase-orders/create" class="submenu-link">
-                  <lucide-icon class="submenu-icon" name="file-plus" />
-                  <span>New Purchase Order</span>
-                </router-link>
-              </li>
               <li class="submenu-item" v-if="currentUserPermissions && currentUserPermissions.includes('gate_passes_view')">
                 <router-link to="/app/procurement/gate-passes" class="submenu-link">
                   <lucide-icon class="submenu-icon" name="truck" />
                   <span>Gate Passes</span>
-                </router-link>
-              </li>
-              <li class="submenu-item" v-if="currentUserPermissions && currentUserPermissions.includes('supplier_invoices_view')">
-                <router-link to="/app/procurement/supplier-invoices" class="submenu-link">
-                  <lucide-icon class="submenu-icon" name="receipt" />
-                  <span>Supplier Invoices</span>
-                </router-link>
-              </li>
-              <li class="submenu-item" v-if="currentUserPermissions && currentUserPermissions.includes('Purchases_add')">
-                <router-link to="/app/purchases/store" class="submenu-link">
-                  <lucide-icon class="submenu-icon" name="file-plus" />
-                  <span>{{ $t('AddPurchase') }}</span>
                 </router-link>
               </li>
               <li class="submenu-item" v-if="currentUserPermissions && currentUserPermissions.includes('Purchases_view')">

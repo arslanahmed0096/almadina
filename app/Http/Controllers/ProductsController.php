@@ -1951,7 +1951,7 @@ class ProductsController extends BaseController
     {
         $data = [];
         $user = $request->user('api');
-        $product_warehouse_data = product_warehouse::with('warehouse', 'product', 'productVariant')
+        $product_warehouse_data = product_warehouse::with(['product.unitSale', 'product.unitPurchase', 'productVariant'])
             ->where(function ($query) use ($request, $id, $user) {
                 return $query->where('warehouse_id', $id)
                     ->where('deleted_at', '=', null)

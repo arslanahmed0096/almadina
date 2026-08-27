@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use App\Mail\CustomEmail;
 use App\Models\Account;
 use App\Models\EmailMessage;
+use App\Models\GatePass;
 use App\Models\PaymentMethod;
 use App\Models\PaymentPurchase;
 use App\Models\Product;
+use App\Models\ProductWarehouseLocation;
 use App\Models\product_warehouse;
 use App\Models\ProductVariant;
 use App\Models\Provider;
@@ -32,7 +34,9 @@ use GuzzleHttp\Client as Client_termi;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Infobip\Api\SendSmsApi;
 use Infobip\Configuration;
 use Infobip\Model\SmsAdvancedTextualRequest;
@@ -191,6 +195,121 @@ class PurchasesController extends BaseController
         ]);
     }
 
+    public function gatePassLookup(Request $request)
+    {
+        $this->authorizeForUser($request->user('api'), 'create', Purchase::class);
+        $data = $request->validate(['number' => 'required|string|max:100']);
+        $number = trim($data['number']);
+        $query = GatePass::with([
+            'provider:id,name',
+            'warehouse:id,name',
+            'items' => fn ($items) => $items->where('accepted_quantity', '>', 0),
+            'items.product.unitPurchase',
+            'items.variant',
+            'items.unit',
+        ]);
+        $this->scopeGatePassesToUser($query, $request->user('api'));
+
+        $gatePass = (clone $query)->where('number', $number)->first();
+        if (! $gatePass) {
+            $matches = (clone $query)->where('supplier_gate_pass_number', $number)->limit(2)->get();
+            if ($matches->count() > 1) {
+                throw ValidationException::withMessages(['number' => ['More than one Gate Pass uses this supplier number. Enter the internal GP number instead.']]);
+            }
+            $gatePass = $matches->first();
+        }
+        if (! $gatePass) {
+            throw ValidationException::withMessages(['number' => ['Gate Pass not found.']]);
+        }
+        if (! in_array($gatePass->status, ['accepted', 'partially_accepted'], true)) {
+            throw ValidationException::withMessages(['number' => ['Confirm the Gate Pass before adding it to a Purchase.']]);
+        }
+        if ($gatePass->items->isEmpty()) {
+            throw ValidationException::withMessages(['number' => ['This Gate Pass has no accepted product quantity.']]);
+        }
+        $used = $this->gatePassItemUsedQuantities($gatePass->items->pluck('id'));
+        $productIds = $gatePass->items->pluck('product_id')->filter()->unique()->values();
+        $stocks = product_warehouse::where('warehouse_id', $gatePass->warehouse_id)
+            ->whereNull('deleted_at')->whereIn('product_id', $productIds)
+            ->get(['product_id', 'product_variant_id', 'qte'])
+            ->keyBy(fn ($stock) => $stock->product_id.':'.($stock->product_variant_id ?: 0));
+        $locations = collect();
+        if (Schema::hasTable('product_warehouse_locations')) {
+            $locations = ProductWarehouseLocation::with('location:id,code,name,is_active')
+                ->where('warehouse_id', $gatePass->warehouse_id)->whereIn('product_id', $productIds)
+                ->get()->keyBy('product_id');
+        }
+
+        $items = $gatePass->items->map(function ($item) use ($used, $stocks, $locations) {
+            $previouslyUsed = (float) ($used[$item->id] ?? 0);
+            $remaining = max(0, (float) $item->accepted_quantity - $previouslyUsed);
+            $product = $item->product;
+            $variant = $item->variant;
+            $unit = $item->unit ?: $product?->unitPurchase;
+            $baseCost = (float) ($variant?->cost ?? $product?->cost ?? 0);
+            $rbPrice = (float) ($variant?->company_rb_price ?: $product?->company_rb_price ?: $baseCost);
+            $mrpPrice = (float) ($variant?->mrp_price ?: $product?->mrp_price ?: $variant?->price ?: $product?->price ?: 0);
+            if ($unit && (float) $unit->operator_value > 0) {
+                if ($unit->operator === '/') {
+                    $rbPrice /= (float) $unit->operator_value;
+                    $mrpPrice /= (float) $unit->operator_value;
+                } else {
+                    $rbPrice *= (float) $unit->operator_value;
+                    $mrpPrice *= (float) $unit->operator_value;
+                }
+            }
+            $location = $locations->get($item->product_id)?->location;
+            $stock = $stocks->get($item->product_id.':'.($item->product_variant_id ?: 0));
+
+            return [
+                'gate_pass_item_id' => $item->id,
+                'product_id' => $item->product_id,
+                'product_variant_id' => $item->product_variant_id,
+                'unit_id' => $item->unit_id,
+                'product' => $item->product_name,
+                'model' => $item->variant_name,
+                'sku' => $item->sku,
+                'accepted_quantity' => (float) $item->accepted_quantity,
+                'previously_used' => $previouslyUsed,
+                'quantity' => $remaining,
+                'product_data' => [
+                    'id' => $item->product_id,
+                    'code' => $item->sku,
+                    'name' => ($item->variant_name ? '['.$item->variant_name.']' : '').$item->product_name,
+                    'purchase_unit_id' => $item->unit_id ?: $product?->unit_purchase_id,
+                    'unitPurchase' => $unit?->ShortName ?: $unit?->name,
+                    'qte' => (float) ($stock?->qte ?? 0),
+                    'fix_cost' => $baseCost,
+                    'company_rb_price' => $rbPrice,
+                    'mrp_price' => $mrpPrice,
+                    'discount' => (float) ($product?->discount ?? 0),
+                    'DiscountNet' => 0,
+                    'discount_method' => $product?->discount_method ?: '2',
+                    'is_imei' => (bool) ($product?->is_imei ?? false),
+                    'is_batch_tracked' => (bool) ($product?->is_batch_tracked ?? false),
+                    'warehouse_location' => $location ? [
+                        'id' => $location->id, 'code' => $location->code,
+                        'name' => $location->name, 'is_active' => (bool) $location->is_active,
+                    ] : null,
+                ],
+            ];
+        })->filter(fn ($item) => $item['quantity'] > 0)->values();
+        if ($items->isEmpty()) {
+            throw ValidationException::withMessages(['number' => ['This Gate Pass has already been fully used on Purchases or Supplier Invoices.']]);
+        }
+
+        return response()->json(['gate_pass' => [
+            'id' => $gatePass->id,
+            'number' => $gatePass->number,
+            'supplier_gate_pass_number' => $gatePass->supplier_gate_pass_number,
+            'provider_id' => $gatePass->provider_id,
+            'provider' => $gatePass->provider,
+            'warehouse_id' => $gatePass->warehouse_id,
+            'warehouse' => $gatePass->warehouse,
+            'items' => $items,
+        ]]);
+    }
+
     // ------ Store new Purchase -------------\\
 
     public function store(Request $request)
@@ -202,11 +321,23 @@ class PurchasesController extends BaseController
             'warehouse_id' => 'required',
             'sales_tax_invoice_no' => 'nullable|string|max:100',
             'delivery_note_no' => 'nullable|string|max:100',
+            'gate_pass_ids' => 'nullable|array|max:100',
+            'gate_pass_ids.*' => 'integer|distinct|exists:gate_passes,id',
+            'details.*.gate_pass_item_id' => 'nullable|integer|exists:gate_pass_items,id',
         ]);
 
         $this->assertProductsSelectable($request->user('api'), $request->input('details', []));
 
         \DB::transaction(function () use ($request) {
+            $gatePassData = $this->resolveGatePassesForPurchase(
+                $request->input('gate_pass_ids', []),
+                (int) $request->supplier_id,
+                (int) $request->warehouse_id,
+                $request->input('details', []),
+                $request->user('api')
+            );
+            $gatePasses = $gatePassData['gate_passes'];
+            $gatePassAllocations = $gatePassData['allocations'];
             $order = new Purchase;
 
             $order->date = $request->date;
@@ -226,8 +357,25 @@ class PurchasesController extends BaseController
             $order->payment_statut = 'unpaid';
             $order->notes = $request->notes;
             $order->user_id = Auth::user()->id;
+            if ($gatePasses->isNotEmpty()) {
+                $order->gate_pass_id = $gatePasses->first()->id;
+                $purchaseOrderIds = $gatePasses->pluck('purchase_order_id')->filter()->unique();
+                $order->purchase_order_id = $purchaseOrderIds->count() === 1 ? $purchaseOrderIds->first() : null;
+                $order->inventory_already_received = true;
+            }
 
             $order->save();
+            if ($gatePasses->isNotEmpty()) {
+                $order->gatePasses()->attach($gatePasses->pluck('id')->all());
+                $now = now();
+                DB::table('purchase_gate_pass_items')->insert($gatePassAllocations->map(fn ($quantity, $gatePassItemId) => [
+                    'purchase_id' => $order->id,
+                    'gate_pass_item_id' => $gatePassItemId,
+                    'quantity' => $quantity,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ])->values()->all());
+            }
 
             $data = $request['details'];
             foreach ($data as $key => $value) {
@@ -251,7 +399,7 @@ class PurchasesController extends BaseController
                     'imei_number' => $value['imei_number'],
                 ];
 
-                if ($order->statut == 'received') {
+                if ($order->statut == 'received' && ! $order->inventory_already_received) {
                     if ($value['product_variant_id'] !== null) {
                         $product_warehouse = product_warehouse::where('deleted_at', '=', null)
                             ->where('warehouse_id', $order->warehouse_id)
@@ -295,7 +443,7 @@ class PurchasesController extends BaseController
             // Pharmacy: link captured batches to the freshly inserted PurchaseDetail rows.
             // Re-fetch in id order so position matches the input array order.
             $batchService = app(BatchService::class);
-            if ($batchService->isSupported() && $order->statut == 'received') {
+            if ($batchService->isSupported() && $order->statut == 'received' && ! $order->inventory_already_received) {
                 $persisted = PurchaseDetail::where('purchase_id', $order->id)
                     ->orderBy('id', 'asc')
                     ->get();
@@ -306,12 +454,117 @@ class PurchasesController extends BaseController
         return response()->json(['success' => true, 'message' => 'Purchase Created !!']);
     }
 
+    private function resolveGatePassesForPurchase(array $ids, int $providerId, int $warehouseId, array $details, $user)
+    {
+        $ids = collect($ids)->map(fn ($id) => (int) $id)->filter()->unique()->values();
+        $submittedLines = collect($details)->filter(fn ($detail) => ! empty($detail['gate_pass_item_id']));
+        if ($ids->isEmpty()) {
+            if ($submittedLines->isNotEmpty()) {
+                throw ValidationException::withMessages(['gate_pass_ids' => ['Gate Pass item lines require their Gate Pass reference.']]);
+            }
+
+            return ['gate_passes' => collect(), 'allocations' => collect()];
+        }
+
+        $query = GatePass::with('items')->whereIn('id', $ids)->lockForUpdate();
+        $this->scopeGatePassesToUser($query, $user);
+        $gatePasses = $query->get();
+        if ($gatePasses->count() !== $ids->count()) {
+            throw ValidationException::withMessages(['gate_pass_ids' => ['One or more Gate Passes are unavailable or outside your warehouse access.']]);
+        }
+        if ($gatePasses->contains(fn ($gatePass) => ! in_array($gatePass->status, ['accepted', 'partially_accepted'], true))) {
+            throw ValidationException::withMessages(['gate_pass_ids' => ['Every Gate Pass must be confirmed before creating the Purchase.']]);
+        }
+        if ($gatePasses->contains(fn ($gatePass) => (int) $gatePass->provider_id !== $providerId)) {
+            throw ValidationException::withMessages(['gate_pass_ids' => ['All Gate Passes must belong to the selected supplier.']]);
+        }
+        if ($gatePasses->contains(fn ($gatePass) => (int) $gatePass->warehouse_id !== $warehouseId)) {
+            throw ValidationException::withMessages(['gate_pass_ids' => ['All Gate Passes must belong to the selected warehouse.']]);
+        }
+        $acceptedItems = $gatePasses->flatMap->items
+            ->filter(fn ($item) => (float) $item->accepted_quantity > 0)
+            ->keyBy('id');
+        if ($acceptedItems->isEmpty()) {
+            throw ValidationException::withMessages(['gate_pass_ids' => ['The selected Gate Passes have no accepted product quantity.']]);
+        }
+        if ($submittedLines->isEmpty()) {
+            throw ValidationException::withMessages(['details' => ['Add at least one Gate Pass product quantity.']]);
+        }
+
+        $representedGatePassIds = $submittedLines->map(function ($detail) use ($acceptedItems) {
+            return (int) optional($acceptedItems->get((int) $detail['gate_pass_item_id']))->gate_pass_id;
+        })->filter()->unique()->sort()->values();
+        if ($representedGatePassIds->all() !== $ids->sort()->values()->all()) {
+            throw ValidationException::withMessages(['gate_pass_ids' => ['Each selected Gate Pass must contribute at least one product line.']]);
+        }
+
+        $used = $this->gatePassItemUsedQuantities($acceptedItems->keys());
+        $allocations = $submittedLines->groupBy(fn ($detail) => (int) $detail['gate_pass_item_id'])
+            ->map(function ($lines, $gatePassItemId) use ($acceptedItems, $used) {
+                $item = $acceptedItems->get((int) $gatePassItemId);
+                if (! $item) {
+                    throw ValidationException::withMessages(['details' => ['A submitted product does not belong to the selected Gate Passes.']]);
+                }
+                foreach ($lines as $line) {
+                    $sameProduct = (int) ($line['product_id'] ?? 0) === (int) $item->product_id;
+                    $sameVariant = (int) (($line['product_variant_id'] ?? null) ?: 0) === (int) ($item->product_variant_id ?: 0);
+                    $sameUnit = (int) ($line['purchase_unit_id'] ?? 0) === (int) $item->unit_id;
+                    if (! $sameProduct || ! $sameVariant || ! $sameUnit) {
+                        throw ValidationException::withMessages(['details' => ['A Gate Pass product or unit was changed. Reload the Gate Pass and try again.']]);
+                    }
+                }
+                $quantity = (float) $lines->sum(fn ($line) => (float) ($line['quantity'] ?? 0));
+                $remaining = max(0, (float) $item->accepted_quantity - (float) ($used[$item->id] ?? 0));
+                if ($quantity <= 0 || $quantity - $remaining > 0.000001) {
+                    throw ValidationException::withMessages(['details' => ["Purchase quantity must be positive and cannot exceed the remaining {$remaining} for {$item->sku}."]]);
+                }
+
+                return $quantity;
+            });
+
+        return ['gate_passes' => $gatePasses, 'allocations' => $allocations];
+    }
+
+    private function gatePassItemUsedQuantities($gatePassItemIds)
+    {
+        $ids = collect($gatePassItemIds)->map(fn ($id) => (int) $id)->filter()->unique()->values();
+        if ($ids->isEmpty()) {
+            return collect();
+        }
+        $supplierInvoiceQuantities = DB::table('supplier_invoice_items as i')
+            ->join('supplier_invoices as s', 's.id', '=', 'i.supplier_invoice_id')
+            ->whereIn('i.gate_pass_item_id', $ids)->where('s.status', '<>', 'cancelled')
+            ->selectRaw('i.gate_pass_item_id, SUM(i.quantity) as quantity')
+            ->groupBy('i.gate_pass_item_id')->pluck('quantity', 'gate_pass_item_id');
+        $purchaseQuantities = DB::table('purchase_gate_pass_items as i')
+            ->join('purchases as p', 'p.id', '=', 'i.purchase_id')
+            ->whereIn('i.gate_pass_item_id', $ids)->whereNull('p.deleted_at')
+            ->where('p.posting_status', '<>', 'cancelled')
+            ->selectRaw('i.gate_pass_item_id, SUM(i.quantity) as quantity')
+            ->groupBy('i.gate_pass_item_id')->pluck('quantity', 'gate_pass_item_id');
+
+        return $ids->mapWithKeys(fn ($id) => [
+            $id => (float) ($supplierInvoiceQuantities[$id] ?? 0) + (float) ($purchaseQuantities[$id] ?? 0),
+        ]);
+    }
+
+    private function scopeGatePassesToUser($query, $user): void
+    {
+        if (! $user->isSuperAdmin() && ! $user->is_all_warehouses) {
+            $query->whereIn('warehouse_id', UserWarehouse::where('user_id', $user->id)->pluck('warehouse_id'));
+        }
+    }
+
     // --------- Update Purchase  -------------\\
 
     public function update(Request $request, $id)
     {
-        if (Purchase::whereKey($id)->whereNotNull('supplier_invoice_id')->exists()) {
-            throw \Illuminate\Validation\ValidationException::withMessages(['purchase' => ['Purchases posted from supplier invoices are immutable. Use the controlled cancellation/reversal workflow.']]);
+        $linkedPurchase = Purchase::findOrFail($id);
+        if ($linkedPurchase->supplier_invoice_id) {
+            throw ValidationException::withMessages(['purchase' => ['Purchases linked to Supplier Invoices are immutable. Use the controlled cancellation/reversal workflow.']]);
+        }
+        if ($linkedPurchase->inventory_already_received) {
+            return $this->updateGatePassPurchase($request, $linkedPurchase);
         }
         $this->authorizeForUser($request->user('api'), 'update', Purchase::class);
 
@@ -572,12 +825,87 @@ class PurchasesController extends BaseController
 
     }
 
+    private function updateGatePassPurchase(Request $request, Purchase $purchase)
+    {
+        $this->authorizeForUser($request->user('api'), 'update', Purchase::class);
+        $validated = $request->validate([
+            'date' => 'required|date',
+            'supplier_id' => 'required|integer',
+            'warehouse_id' => 'required|integer',
+            'sales_tax_invoice_no' => 'nullable|string|max:100',
+            'delivery_note_no' => 'nullable|string|max:100',
+            'details' => 'required|array|min:1',
+            'details.*.id' => 'required|integer',
+            'details.*.quantity' => 'required|numeric|min:0.000001',
+        ]);
+
+        if ((int) $validated['supplier_id'] !== (int) $purchase->provider_id
+            || (int) $validated['warehouse_id'] !== (int) $purchase->warehouse_id) {
+            throw ValidationException::withMessages(['purchase' => ['The supplier and warehouse cannot be changed for a Gate Pass Purchase.']]);
+        }
+
+        DB::transaction(function () use ($request, $purchase) {
+            $purchase = Purchase::lockForUpdate()->findOrFail($purchase->id);
+            $persisted = PurchaseDetail::where('purchase_id', $purchase->id)->orderBy('id')->get()->keyBy('id');
+            $submitted = collect($request->input('details', []))->keyBy(fn ($detail) => (int) ($detail['id'] ?? 0));
+
+            if ($persisted->keys()->sort()->values()->all() !== $submitted->keys()->sort()->values()->all()) {
+                throw ValidationException::withMessages(['details' => ['Gate Pass Purchase products cannot be added or removed.']]);
+            }
+
+            foreach ($persisted as $id => $detail) {
+                $row = $submitted->get($id);
+                if (abs((float) $detail->quantity - (float) ($row['quantity'] ?? 0)) > 0.000001
+                    || (int) $detail->product_id !== (int) ($row['product_id'] ?? 0)
+                    || (int) ($detail->product_variant_id ?: 0) !== (int) (($row['product_variant_id'] ?? null) ?: 0)
+                    || (int) ($detail->purchase_unit_id ?: 0) !== (int) (($row['purchase_unit_id'] ?? null) ?: 0)) {
+                    throw ValidationException::withMessages(['details' => ['Gate Pass Purchase products, units, and quantities cannot be changed.']]);
+                }
+
+                $detail->update([
+                    'cost' => $row['Unit_cost'],
+                    'company_rb_price' => $row['company_rb_price'] ?? $row['Unit_cost'],
+                    'mrp_price' => $row['mrp_price'] ?? 0,
+                    'TaxNet' => $row['tax_percent'] ?? 0,
+                    'sales_tax' => $row['taxe'] ?? 0,
+                    'withholding_tax' => $row['withholding_tax'] ?? 0,
+                    'tax_method' => $row['tax_method'] ?? '1',
+                    'discount' => $row['discount'] ?? 0,
+                    'discount_method' => $row['discount_Method'] ?? '2',
+                    'total' => $row['subtotal'] ?? 0,
+                ]);
+            }
+
+            $grandTotal = (float) $request->input('GrandTotal', 0);
+            $due = $grandTotal - (float) $purchase->paid_amount;
+            $paymentStatus = $due <= 0 ? 'paid' : ($due < $grandTotal ? 'partial' : 'unpaid');
+            $purchase->update([
+                'date' => $request->date,
+                'sales_tax_invoice_no' => $request->input('sales_tax_invoice_no'),
+                'delivery_note_no' => $request->input('delivery_note_no'),
+                'notes' => $request->input('notes'),
+                'tax_rate' => $request->input('tax_rate', 0),
+                'TaxNet' => $request->input('TaxNet', 0),
+                'withholding_tax' => $request->input('withholding_tax', 0),
+                'discount' => $request->input('discount', 0),
+                'shipping' => $request->input('shipping', 0),
+                'GrandTotal' => $grandTotal,
+                'payment_statut' => $paymentStatus,
+            ]);
+
+            app(\App\Services\Tax\TransactionTaxService::class)
+                ->snapshotPurchase($purchase->fresh(), array_values($request->input('details', [])), $request->user('api'));
+        }, 10);
+
+        return response()->json(['success' => true, 'message' => 'Purchase Updated !!']);
+    }
+
     // ------ Delete Purchase -------------\\
 
     public function destroy(Request $request, $id)
     {
-        if (Purchase::whereKey($id)->whereNotNull('supplier_invoice_id')->exists()) {
-            throw \Illuminate\Validation\ValidationException::withMessages(['purchase' => ['Posted procurement Purchases cannot be deleted. Use a controlled accounting reversal.']]);
+        if (Purchase::whereKey($id)->where(fn ($query) => $query->whereNotNull('supplier_invoice_id')->orWhere('inventory_already_received', true))->exists()) {
+            throw ValidationException::withMessages(['purchase' => ['Posted procurement Purchases cannot be deleted. Use a controlled accounting reversal.']]);
         }
         $this->authorizeForUser($request->user('api'), 'delete', Purchase::class);
 
@@ -723,6 +1051,9 @@ class PurchasesController extends BaseController
                 } else {
 
                     $current_Purchase = Purchase::findOrFail($purchase_id);
+                    if ($current_Purchase->inventory_already_received) {
+                        throw ValidationException::withMessages(['purchase' => ['Purchases linked to Gate Passes or Supplier Invoices cannot be deleted in bulk.']]);
+                    }
 
                     /**
                      * Warehouses restriction
@@ -846,7 +1177,15 @@ class PurchasesController extends BaseController
         // New way: Check user's record_view field (user-level boolean)
         // Backward compatibility: If record_view is null, fall back to role permission check
         $view_records = $user->hasRecordView();
-        $purchase = Purchase::with('details.product.unitPurchase', 'details.batches.batch')
+        $purchase = Purchase::with(
+            'details.product.unitPurchase',
+            'details.batches.batch',
+            'purchaseOrder:id,number',
+            'gatePass:id,number,purchase_order_id',
+            'gatePass.purchaseOrder:id,number',
+            'gatePasses:id,number,purchase_order_id',
+            'gatePasses.purchaseOrder:id,number'
+        )
             ->where('deleted_at', '=', null)
             ->findOrFail($id);
 
@@ -860,6 +1199,7 @@ class PurchasesController extends BaseController
 
         $purchase_data['Ref'] = $purchase->Ref;
         $purchase_data['date'] = $purchase->date.' '.$purchase->time;
+        $purchase_data['sales_tax_invoice_no'] = $purchase->sales_tax_invoice_no;
         $purchase_data['statut'] = $purchase->statut;
         $purchase_data['note'] = $purchase->notes;
         $purchase_data['discount'] = $purchase->discount;
@@ -876,6 +1216,7 @@ class PurchasesController extends BaseController
         $purchase_data['paid_amount'] = number_format($purchase->paid_amount, 2, '.', '');
         $purchase_data['due'] = number_format($purchase_data['GrandTotal'] - $purchase_data['paid_amount'], 2, '.', '');
         $purchase_data['payment_status'] = $purchase->payment_statut;
+        $purchase_data = array_merge($purchase_data, $this->purchaseProcurementReferences($purchase));
 
         if (PurchaseReturn::where('purchase_id', $id)->where('deleted_at', '=', null)->exists()) {
             $PurchaseReturn = PurchaseReturn::where('purchase_id', $id)->where('deleted_at', '=', null)->first();
@@ -1000,6 +1341,23 @@ class PurchasesController extends BaseController
 
     // --------------- Reference Number of Purchase ----------------\\
 
+    private function purchaseProcurementReferences(Purchase $purchase): array
+    {
+        $gatePasses = collect($purchase->gatePasses);
+        if ($purchase->gatePass && ! $gatePasses->contains('id', $purchase->gatePass->id)) {
+            $gatePasses->push($purchase->gatePass);
+        }
+
+        $purchaseOrderNumbers = collect([$purchase->purchaseOrder?->number])
+            ->merge($gatePasses->map(fn ($gatePass) => $gatePass->purchaseOrder?->number))
+            ->filter()->unique()->values();
+
+        return [
+            'purchase_order_number' => $purchaseOrderNumbers->implode(', '),
+            'gate_pass_number' => $gatePasses->pluck('number')->filter()->unique()->values()->implode(', '),
+        ];
+    }
+
     public function getNumberOrder()
     {
         // Get prefix from settings, fallback to 'PR' if not set
@@ -1037,7 +1395,14 @@ class PurchasesController extends BaseController
     {
         $details = [];
         $helpers = new helpers;
-        $Purchase_data = Purchase::with('details.product.unitPurchase')
+        $Purchase_data = Purchase::with(
+            'details.product.unitPurchase',
+            'purchaseOrder:id,number',
+            'gatePass:id,number,purchase_order_id',
+            'gatePass.purchaseOrder:id,number',
+            'gatePasses:id,number,purchase_order_id',
+            'gatePasses.purchaseOrder:id,number'
+        )
             ->where('deleted_at', '=', null)
             ->findOrFail($id);
 
@@ -1055,10 +1420,12 @@ class PurchasesController extends BaseController
         $purchase['statut'] = $Purchase_data->statut;
         $purchase['Ref'] = $Purchase_data->Ref;
         $purchase['date'] = $Purchase_data->date.' '.$Purchase_data->time;
+        $purchase['sales_tax_invoice_no'] = $Purchase_data->sales_tax_invoice_no;
         $purchase['GrandTotal'] = number_format($Purchase_data->GrandTotal, 2, '.', '');
         $purchase['paid_amount'] = number_format($Purchase_data->paid_amount, 2, '.', '');
         $purchase['due'] = number_format($purchase['GrandTotal'] - $purchase['paid_amount'], 2, '.', '');
         $purchase['payment_status'] = $Purchase_data->payment_statut;
+        $purchase = array_merge($purchase, $this->purchaseProcurementReferences($Purchase_data));
 
         $detail_id = 0;
         foreach ($Purchase_data['details'] as $detail) {
@@ -1153,7 +1520,14 @@ class PurchasesController extends BaseController
     {
         $details = [];
         $helpers = new helpers;
-        $Purchase_data = Purchase::with('details.product.unitPurchase')
+        $Purchase_data = Purchase::with(
+            'details.product.unitPurchase',
+            'purchaseOrder:id,number',
+            'gatePass:id,number,purchase_order_id',
+            'gatePass.purchaseOrder:id,number',
+            'gatePasses:id,number,purchase_order_id',
+            'gatePasses.purchaseOrder:id,number'
+        )
             ->where('deleted_at', '=', null)
             ->findOrFail($id);
 
@@ -1171,10 +1545,12 @@ class PurchasesController extends BaseController
         $purchase['statut'] = $Purchase_data->statut;
         $purchase['Ref'] = $Purchase_data->Ref;
         $purchase['date'] = $Purchase_data->date.' '.$Purchase_data->time;
+        $purchase['sales_tax_invoice_no'] = $Purchase_data->sales_tax_invoice_no;
         $purchase['GrandTotal'] = number_format($Purchase_data->GrandTotal, 2, '.', '');
         $purchase['paid_amount'] = number_format($Purchase_data->paid_amount, 2, '.', '');
         $purchase['due'] = number_format($purchase['GrandTotal'] - $purchase['paid_amount'], 2, '.', '');
         $purchase['payment_status'] = $Purchase_data->payment_statut;
+        $purchase = array_merge($purchase, $this->purchaseProcurementReferences($Purchase_data));
 
         $detail_id = 0;
         foreach ($Purchase_data['details'] as $detail) {
@@ -1322,7 +1698,11 @@ class PurchasesController extends BaseController
             // New way: Check user's record_view field (user-level boolean)
             // Backward compatibility: If record_view is null, fall back to role permission check
             $view_records = $user->hasRecordView();
-            $Purchase_data = Purchase::with('details.product.unitPurchase')
+            $Purchase_data = Purchase::with([
+                'details.product.unitPurchase',
+                'gatePasses:id,number,supplier_gate_pass_number,purchase_order_id',
+                'gatePass:id,number,supplier_gate_pass_number,purchase_order_id',
+            ])
                 ->where('deleted_at', '=', null)
                 ->findOrFail($id);
 
@@ -1388,6 +1768,15 @@ class PurchasesController extends BaseController
             // Pharmacy: prefetch batch links keyed by purchase_detail_id.
             $batchService = app(BatchService::class);
             $batchesByDetail = $batchService->batchesForPurchaseDetails($Purchase_data['details']);
+            $gatePassAllocations = DB::table('purchase_gate_pass_items as allocation')
+                ->join('gate_pass_items as item', 'item.id', '=', 'allocation.gate_pass_item_id')
+                ->join('gate_passes as gate_pass', 'gate_pass.id', '=', 'item.gate_pass_id')
+                ->where('allocation.purchase_id', $Purchase_data->id)
+                ->get([
+                    'item.id as gate_pass_item_id', 'item.product_id', 'item.product_variant_id', 'item.unit_id',
+                    'gate_pass.number as gate_pass_number',
+                ])
+                ->keyBy(fn ($allocation) => $allocation->product_id.'|'.($allocation->product_variant_id ?: 0).'|'.($allocation->unit_id ?: 0));
 
             $detail_id = 0;
             foreach ($Purchase_data['details'] as $detail) {
@@ -1455,6 +1844,11 @@ class PurchasesController extends BaseController
                 $data['product_id'] = $detail->product_id;
                 $data['unitPurchase'] = $unit->ShortName;
                 $data['purchase_unit_id'] = $unit->id;
+                $allocationKey = $detail->product_id.'|'.($detail->product_variant_id ?: 0).'|'.($unit->id ?: 0);
+                $gatePassAllocation = $gatePassAllocations->get($allocationKey);
+                $data['gate_pass_item_id'] = $gatePassAllocation?->gate_pass_item_id;
+                $data['gate_pass_number'] = $gatePassAllocation?->gate_pass_number;
+                $data['is_gate_pass_item'] = (bool) $gatePassAllocation;
 
                 $data['is_imei'] = $detail['product']['is_imei'];
                 $data['imei_number'] = $detail->imei_number;
@@ -1478,7 +1872,7 @@ class PurchasesController extends BaseController
                 if ($detail->tax_method == '1') {
                     $data['Net_cost'] = $detail->cost - $data['DiscountNet'];
                     $data['taxe'] = $detail->sales_tax ?? $tax_cost;
-                    $data['subtotal'] = ($data['Net_cost'] + $data['taxe'] - $data['withholding_tax']) * $data['quantity'];
+                    $data['subtotal'] = ($data['Net_cost'] + $data['taxe']) * $data['quantity'];
                 } else {
                     $data['Net_cost'] = ($detail->cost - $data['DiscountNet'] - $tax_cost);
                     $data['taxe'] = $detail->cost - $data['Net_cost'] - $data['DiscountNet'];
@@ -1509,6 +1903,13 @@ class PurchasesController extends BaseController
             return response()->json([
                 'details' => $details,
                 'purchase' => $purchase,
+                'gate_passes' => $Purchase_data->gatePasses
+                    ->merge($Purchase_data->gatePass ? collect([$Purchase_data->gatePass]) : collect())
+                    ->unique('id')->values()->map(fn ($gatePass) => [
+                        'id' => $gatePass->id,
+                        'number' => $gatePass->number,
+                        'supplier_gate_pass_number' => $gatePass->supplier_gate_pass_number,
+                    ]),
                 'suppliers' => $suppliers,
                 'warehouses' => $warehouses,
                 'managed_taxes' => $managedTaxes,

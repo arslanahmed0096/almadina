@@ -47,6 +47,7 @@
                       <v-select
                         :class="{'is-invalid': !!errors.length}"
                         :state="errors[0] ? false : (valid ? true : null)"
+                        :disabled="linked_gate_passes.length > 0"
                         v-model="purchase.supplier_id"
                         :reduce="label => label.value"
                         :placeholder="$t('Choose_Supplier')"
@@ -76,6 +77,36 @@
                   </validation-provider>
                 </b-col>
 
+                <b-col lg="6" md="6" sm="12" class="mb-3">
+                  <b-form-group label="Sales Tax Invoice No.">
+                    <b-form-input
+                      v-model.trim="purchase.sales_tax_invoice_no"
+                      maxlength="100"
+                      placeholder="Enter sales tax invoice number"
+                    />
+                  </b-form-group>
+                </b-col>
+
+                <b-col lg="6" md="6" sm="12" class="mb-3">
+                  <b-form-group label="Delivery Note No.">
+                    <b-form-input
+                      v-model.trim="purchase.delivery_note_no"
+                      maxlength="100"
+                      placeholder="Enter delivery note number"
+                    />
+                  </b-form-group>
+                </b-col>
+
+                <b-col v-if="linked_gate_passes.length" lg="12" md="12" sm="12" class="mb-3">
+                  <b-form-group label="Gate Pass">
+                    <div class="d-flex flex-wrap">
+                      <span v-for="gatePass in linked_gate_passes" :key="gatePass.id" class="badge badge-light-primary mr-2 mb-2 p-2">
+                        {{ gatePass.number }}<span v-if="gatePass.supplier_gate_pass_number"> ({{ gatePass.supplier_gate_pass_number }})</span>
+                      </span>
+                    </div>
+                  </b-form-group>
+                </b-col>
+
                 <!-- Product -->
                 <b-col md="12" class="mb-5">
                   <h6>{{$t('ProductName')}}</h6>
@@ -85,6 +116,7 @@
                       <img src="/assets_setup/scan.png" alt="Scan" class="scan-icon" @click="showModal">
                     <input 
                      :placeholder="$t('Scan_Search_Product_by_Code_Name')"
+                      :disabled="linked_gate_passes.length > 0"
                       @input='e => search_input = e.target.value' 
                       @keyup="search(search_input)"
                       @focus="handleFocus"
@@ -102,17 +134,20 @@
                 <b-col md="12">
                   <h5>{{$t('order_products')}} *</h5>
                   <div class="table-responsive">
-                    <table class="table table-hover">
+                    <table class="table table-hover purchase-products-table">
                       <thead class="bg-gray-300">
                         <tr>
-                          <th scope="col">#</th>
                           <th scope="col">{{$t('ProductName')}}</th>
-                          <th scope="col">{{$t('Net_Unit_Cost')}}</th>
-                          <th scope="col">{{$t('CurrentStock')}}</th>
-                          <th scope="col">{{$t('Qty')}}</th>
-                          <th scope="col">{{$t('Discount')}}</th>
-                          <th scope="col">{{$t('Tax')}}</th>
-                          <th scope="col">{{$t('SubTotal')}}</th>
+                          <th scope="col" class="purchase-quantity-column">{{$t('Qty')}}</th>
+                          <th scope="col">RB Price</th>
+                          <th scope="col">Trade Discount</th>
+                          <th scope="col">Net Value Without Tax</th>
+                          <th scope="col">GST Tax ({{formatNumber(purchase.tax_rate, 2)}}%)</th>
+                          <th scope="col">Total Value With Tax</th>
+                          <th scope="col">MRP Without Tax</th>
+                          <th scope="col">MRP With Tax</th>
+                          <th scope="col">I.Tax Withholding Amount</th>
+                          <th scope="col">Grand Total</th>
                           <th scope="col" class="text-center">
                             <i class="fa fa-trash"></i>
                           </th>
@@ -120,7 +155,7 @@
                       </thead>
                       <tbody>
                         <tr v-if="details.length <=0">
-                          <td colspan="9">{{$t('NodataAvailable')}}</td>
+                          <td colspan="12">{{$t('NodataAvailable')}}</td>
                         </tr>
                         <template v-for="detail in details">
                         <tr
@@ -131,60 +166,51 @@
                             'purchase-row-highlight': highlightedDetailId === detail.detail_id
                           }"
                         >
-                          <td>{{detail.detail_id}}</td>
                           <td>
-                            <span>{{detail.code}}</span>
+                            <strong>{{detail.name}}</strong>
                             <br>
-                            <span class="badge badge-success">{{detail.name}}</span>
+                            <span class="badge badge-success">{{detail.code}}</span>
                             <div v-if="detail.warehouse_location" class="text-muted mt-1" style="font-size: 12px;">
                               {{ $t('Warehouse_Locations') }}: <strong>{{ detail.warehouse_location }}</strong>
                             </div>
                             <div v-if="detail.is_batch_tracked" class="text-info mt-1" style="font-size: 12px;">
                               <i class="fa fa-flask"></i> {{ $t('Track_Batches_Expiry') }}
                             </div>
-                          </td>
-                          <td>{{currentUser.currency}} {{formatNumber(detail.Net_cost, 3)}}</td>
-                          <td>
-                            <span
-                              class="badge badge-outline-warning"
-                            >{{detail.stock}} {{detail.unitPurchase}}</span>
-                          </td>
-                          <td>
-                            <div class="quantity">
-                              <b-input-group>
-                                <b-input-group-prepend>
-                                  <span v-show="detail.no_unit !== 0"
-                                    class="btn btn-primary btn-sm"
-                                    @click="decrement(detail ,detail.detail_id)"
-                                  >-</span>
-                                </b-input-group-prepend>
-                                <input
-                                  class="form-control"
-                                  @keyup="Verified_Qty(detail,detail.detail_id)"
-                                  :min="0.00"
-                                  v-model.number="detail.quantity"
-                                  :disabled="detail.del === 1 || detail.no_unit === 0"
-                                >
-                                <b-input-group-append>
-                                  <span v-show="detail.no_unit !== 0"
-                                    class="btn btn-primary btn-sm"
-                                    @click="increment(detail ,detail.detail_id)"
-                                  >+</span>
-                                </b-input-group-append>
-                              </b-input-group>
+                            <div v-if="detail.gate_pass_number" class="text-primary mt-1" style="font-size: 12px;">
+                              Gate Pass: <strong>{{detail.gate_pass_number}}</strong>
                             </div>
                           </td>
+                          <td class="purchase-quantity-column">
+                            <div class="purchase-quantity-control">
+                              <button type="button" class="btn btn-primary purchase-quantity-button" :disabled="detail.is_gate_pass_item" @click="decrement(detail, detail.detail_id)">−</button>
+                              <input
+                                type="number"
+                                class="form-control purchase-quantity-input"
+                                @input="Verified_Qty(detail, detail.detail_id)"
+                                :min="1"
+                                v-model.number="detail.quantity"
+                                :disabled="detail.del === 1 || detail.no_unit === 0 || detail.is_gate_pass_item"
+                              >
+                              <button type="button" class="btn btn-primary purchase-quantity-button" :disabled="detail.is_gate_pass_item" @click="increment(detail, detail.detail_id)">+</button>
+                            </div>
+                          </td>
+                          <td>{{currentUser.currency}} {{formatNumber(detail.company_rb_price * detail.quantity, 2)}}</td>
                           <td>{{currentUser.currency}} {{formatNumber(detail.DiscountNet * detail.quantity, 2)}}</td>
+                          <td>{{currentUser.currency}} {{formatNumber(detail.Net_cost * detail.quantity, 2)}}</td>
                           <td>{{currentUser.currency}} {{formatNumber(detail.taxe * detail.quantity, 2)}}</td>
                           <td>{{currentUser.currency}} {{detail.subtotal.toFixed(2)}}</td>
-                          <td v-show="detail.no_unit !== 0">
+                          <td>{{currentUser.currency}} {{formatNumber(detail.mrp_price * detail.quantity, 2)}}</td>
+                          <td>{{currentUser.currency}} {{formatNumber(pricingPreview(detail).mrpWithTax * detail.quantity, 2)}}</td>
+                          <td>{{currentUser.currency}} {{formatNumber(detail.withholding_tax * detail.quantity, 2)}}</td>
+                          <td class="font-weight-bold">{{currentUser.currency}} {{formatNumber(pricingPreview(detail).netPayable * detail.quantity, 2)}}</td>
+                          <td v-show="detail.no_unit !== 0" class="text-center">
                             <lucide-icon class="text-25 text-success" name="pencil" v-if="currentUserPermissions && currentUserPermissions.includes('edit_product_purchase')" @click="Modal_Updat_Detail(detail)" />
-                            <lucide-icon class="text-25 text-danger" name="x" @click="delete_Product_Detail(detail.detail_id)" />
+                            <lucide-icon v-if="!detail.is_gate_pass_item" class="text-25 text-danger" name="x" @click="delete_Product_Detail(detail.detail_id)" />
                           </td>
                         </tr>
                         <tr v-if="detail.is_batch_tracked && detail.no_unit !== 0 && detail.del !== 1"
                             :key="'batches-'+detail.detail_id" :style="{ background: 'transparent' }">
-                          <td colspan="9" :style="{ padding: '0 8px 16px 8px', border: 'none' }">
+                          <td colspan="12" :style="{ padding: '0 8px 16px 8px', border: 'none' }">
                             <div
                               :style="{
                                 background: 'linear-gradient(135deg, #f0f9ff 0%, #eef2ff 100%)',
@@ -390,14 +416,18 @@
                   <table class="table table-striped table-sm">
                     <tbody>
                       <tr>
+                        <td class="bold">Total Value With Tax</td>
+                        <td>{{currentUser.currency}} {{formatNumber(total, 2)}}</td>
+                      </tr>
+                      <tr>
                         <td class="bold">{{$t('OrderTax')}}</td>
                         <td>
                           <span>{{currentUser.currency}} {{purchase.TaxNet.toFixed(2)}} ({{formatNumber(purchase.tax_rate ,2)}} %)</span>
                         </td>
                       </tr>
-                      <tr v-if="purchase.withholding_tax > 0">
-                        <td class="bold">WHT (Deductive)</td>
-                        <td>-{{currentUser.currency}} {{purchase.withholding_tax.toFixed(2)}}</td>
+                      <tr>
+                        <td class="bold">I.Tax WithHold</td>
+                        <td>+{{currentUser.currency}} {{purchase.withholding_tax.toFixed(2)}} ({{formatNumber(withholding_tax_rate, 2)}} %)</td>
                       </tr>
                       <tr>
                         <td class="bold">{{$t('Discount')}}</td>
@@ -409,7 +439,7 @@
                       </tr>
                       <tr>
                         <td>
-                          <span class="font-weight-bold">{{$t('Total')}}</span>
+                          <span class="font-weight-bold">Grand Total</span>
                         </td>
                         <td>
                           <span
@@ -420,54 +450,6 @@
                     </tbody>
                   </table>
                 </div>
-
-                 <!-- Order Tax  -->
-                <b-col lg="4" md="4" sm="12" class="mb-3" v-if="currentUserPermissions && currentUserPermissions.includes('edit_tax_discount_shipping_purchase')">
-                  <validation-provider
-                    name="Order Tax"
-                    :rules="{ regex: /^\d*\.?\d*$/}"
-                    v-slot="validationContext"
-                  >
-                    <b-form-group :label="$t('OrderTax')">
-                      <b-input-group append="%">
-                        <b-form-input
-                          :state="getValidationState(validationContext)"
-                          aria-describedby="OrderTax-feedback"
-                          label="Order Tax"
-                          v-model.number="purchase.tax_rate"
-                          @keyup="keyup_OrderTax()"
-                        ></b-form-input>
-                      </b-input-group>
-                      <b-form-invalid-feedback
-                        id="OrderTax-feedback"
-                      >{{ validationContext.errors[0] }}</b-form-invalid-feedback>
-                    </b-form-group>
-                  </validation-provider>
-                </b-col>
-
-                <!-- Discount -->
-                <b-col lg="4" md="4" sm="12" class="mb-3" v-if="currentUserPermissions && currentUserPermissions.includes('edit_tax_discount_shipping_purchase')">
-                  <validation-provider
-                    name="Discount"
-                    :rules="{ regex: /^\d*\.?\d*$/}"
-                    v-slot="validationContext"
-                  >
-                    <b-form-group :label="$t('Discount')">
-                      <b-input-group :append="currentUser.currency">
-                        <b-form-input
-                          :state="getValidationState(validationContext)"
-                          aria-describedby="Discount-feedback"
-                          label="Discount"
-                          v-model.number="purchase.discount"
-                          @keyup="keyup_Discount()"
-                        ></b-form-input>
-                      </b-input-group>
-                      <b-form-invalid-feedback
-                        id="Discount-feedback"
-                      >{{ validationContext.errors[0] }}</b-form-invalid-feedback>
-                    </b-form-group>
-                  </validation-provider>
-                </b-col>
 
                 <!-- Shipping  -->
                 <b-col lg="4" md="4" sm="12" class="mb-3" v-if="currentUserPermissions && currentUserPermissions.includes('edit_tax_discount_shipping_purchase')">
@@ -501,6 +483,7 @@
                         :class="{'is-invalid': !!errors.length}"
                         :state="errors[0] ? false : (valid ? true : null)"
                         v-model="purchase.statut"
+                        :disabled="linked_gate_passes.length > 0"
                         :reduce="label => label.value"
                         :placeholder="$t('Choose_Status')"
                         :options="
@@ -561,127 +544,95 @@
 
     <!-- Show Modal Update Detail Product -->
     <validation-observer ref="Update_Detail_purchase">
-      <b-modal hide-footer size="lg" id="form_Update_Detail" :title="detail.name">
+      <b-modal hide-footer size="xl" dialog-class="purchase-detail-dialog" id="form_Update_Detail" :title="detail.name">
         <b-form @submit.prevent="submit_Update_Detail">
           <b-row>
-            <!-- Unit Cost -->
-             <b-col lg="6" md="6" sm="12">
-              <validation-provider
-                name="Product Cost"
-                :rules="{ required: true , regex: /^\d*\.?\d*$/}"
-                v-slot="validationContext"
-              >
-                <b-form-group :label="$t('ProductCost') + ' ' + '*'" id="cost-input">
-                  <b-form-input
-                    label="Product Cost"
-                    v-model.number="detail.Unit_cost"
-                    :state="getValidationState(validationContext)"
-                    aria-describedby="cost-feedback"
-                  ></b-form-input>
-                  <b-form-invalid-feedback id="cost-feedback">{{ validationContext.errors[0] }}</b-form-invalid-feedback>
+            <b-col lg="6" md="6" sm="12">
+              <validation-provider name="RB Price" :rules="{ required: true, regex: /^\d*\.?\d*$/}" v-slot="validationContext">
+                <b-form-group label="RB Price *">
+                  <b-form-input v-model.number="detail.Unit_cost" :state="getValidationState(validationContext)" />
                 </b-form-group>
               </validation-provider>
             </b-col>
 
-            <!-- Tax Method -->
-              <b-col lg="6" md="6" sm="12">
-              <validation-provider name="Tax Method" :rules="{ required: true}">
-                <b-form-group slot-scope="{ valid, errors }" :label="$t('TaxMethod') + ' ' + '*'">
-                  <v-select
-                    :class="{'is-invalid': !!errors.length}"
-                    :state="errors[0] ? false : (valid ? true : null)"
-                    v-model="detail.tax_method"
-                    :reduce="label => label.value"
-                    :placeholder="$t('Choose_Method')"
-                    :options="
-                           [
-                            {label: 'Exclusive', value: '1'},
-                            {label: 'Inclusive', value: '2'}
-                           ]"
-                  ></v-select>
-                  <b-form-invalid-feedback>{{ errors[0] }}</b-form-invalid-feedback>
-                </b-form-group>
-              </validation-provider>
-            </b-col>
-
-            <!-- Tax Rate -->
-              <b-col lg="6" md="6" sm="12">
-              <validation-provider
-                name="Order Tax"
-                :rules="{ required: true , regex: /^\d*\.?\d*$/}"
-                v-slot="validationContext"
-              >
-                <b-form-group :label="$t('OrderTax') + ' ' + '*'">
-                  <b-input-group append="%">
-                    <b-form-input
-                      label="Order Tax"
-                      v-model.number="detail.tax_percent"
-                      :state="getValidationState(validationContext)"
-                      aria-describedby="OrderTax-feedback"
-                    ></b-form-input>
-                  </b-input-group>
-                  <b-form-invalid-feedback id="OrderTax-feedback">{{ validationContext.errors[0] }}</b-form-invalid-feedback>
-                </b-form-group>
-              </validation-provider>
-            </b-col>
-
-            <!-- Discount Method -->
-              <b-col lg="6" md="6" sm="12">
+            <b-col lg="6" md="6" sm="12">
               <validation-provider name="Discount Method" :rules="{ required: true}">
-                <b-form-group slot-scope="{ valid, errors }" :label="$t('Discount_Method') + ' ' + '*'">
+                <b-form-group slot-scope="{ valid, errors }" label="Discount Type *">
                   <v-select
                     v-model="detail.discount_Method"
+                    @input="discountMethodChanged"
                     :reduce="label => label.value"
-                    :placeholder="$t('Choose_Method')"
+                    placeholder="Choose discount type"
                     :class="{'is-invalid': !!errors.length}"
                     :state="errors[0] ? false : (valid ? true : null)"
-                    :options="
-                           [
-                            {label: 'Percent %', value: '1'},
-                            {label: 'Fixed', value: '2'}
-                           ]"
-                  ></v-select>
-                  <b-form-invalid-feedback>{{ errors[0] }}</b-form-invalid-feedback>
+                    :options="[{label: 'Fixed', value: '2'}, {label: 'Percentage', value: '1'}]"
+                  />
                 </b-form-group>
               </validation-provider>
             </b-col>
 
-            <!-- Discount Rate -->
-             <b-col lg="6" md="6" sm="12">
-              <validation-provider
-                name="Discount Rate"
-                :rules="{ required: true , regex: /^\d*\.?\d*$/}"
-                v-slot="validationContext"
-              >
-                <b-form-group :label="$t('Discount') + ' ' + '*'">
-                  <b-form-input
-                    label="Discount"
-                    v-model.number="detail.discount"
-                    :state="getValidationState(validationContext)"
-                    aria-describedby="Discount-feedback"
-                  ></b-form-input>
-                  <b-form-invalid-feedback id="Discount-feedback">{{ validationContext.errors[0] }}</b-form-invalid-feedback>
+            <b-col v-if="detail.discount_Method == '1'" lg="6" md="6" sm="12">
+              <validation-provider name="Discount Percentage" :rules="{ required: true, min_value: 0, max_value: 100 }" v-slot="validationContext">
+                <b-form-group label="Discount Percentage *">
+                  <b-input-group append="%" class="discount-percentage-input">
+                    <b-form-input type="number" min="0" max="100" step="0.01" v-model.number="detail.discount" :state="getValidationState(validationContext)" />
+                  </b-input-group>
                 </b-form-group>
               </validation-provider>
             </b-col>
 
-             <!-- Imei or serial numbers -->
-              <b-col lg="12" md="12" sm="12" v-show="detail.is_imei">
-                <b-form-group :label="$t('Add_product_IMEI_Serial_number')">
-                  <b-form-input
-                    label="Add_product_IMEI_Serial_number"
-                    v-model="detail.imei_number"
-                    :placeholder="$t('Add_product_IMEI_Serial_number')"
-                  ></b-form-input>
+            <b-col lg="6" md="6" sm="12">
+              <validation-provider v-if="detail.discount_Method == '2'" name="Trade Discount" :rules="{ required: true, min_value: 0 }" v-slot="validationContext">
+                <b-form-group label="Trade Discount *">
+                  <b-input-group :prepend="currentUser.currency">
+                    <b-form-input type="number" min="0" step="0.01" v-model.number="detail.discount" :state="getValidationState(validationContext)" />
+                  </b-input-group>
                 </b-form-group>
+              </validation-provider>
+              <b-form-group v-else label="Trade Discount">
+                <b-input-group :prepend="currentUser.currency">
+                  <b-form-input :value="formatNumber(pricingPreview(detail).tradeDiscount, 2)" readonly />
+                </b-input-group>
+              </b-form-group>
             </b-col>
 
+            <b-col lg="6" md="6" sm="12">
+              <b-form-group label="Net Value Without Tax"><b-input-group :prepend="currentUser.currency"><b-form-input :value="formatNumber(pricingPreview(detail).netValue, 2)" readonly /></b-input-group></b-form-group>
+            </b-col>
+            <b-col lg="6" md="6" sm="12">
+              <b-form-group :label="'GST (' + formatNumber(purchase.tax_rate, 2) + '%)'"><b-input-group :prepend="currentUser.currency"><b-form-input :value="formatNumber(pricingPreview(detail).gstAmount, 2)" readonly /></b-input-group></b-form-group>
+            </b-col>
+            <b-col lg="6" md="6" sm="12">
+              <b-form-group label="Total Value With Tax"><b-input-group :prepend="currentUser.currency"><b-form-input :value="formatNumber(pricingPreview(detail).totalWithTax, 2)" readonly /></b-input-group></b-form-group>
+            </b-col>
+
+            <b-col lg="6" md="6" sm="12">
+              <validation-provider name="MRP Without Tax" :rules="{ regex: /^\d*\.?\d*$/}" v-slot="validationContext">
+                <b-form-group label="MRP Without Tax"><b-form-input v-model.number="detail.mrp_price" :state="getValidationState(validationContext)" /></b-form-group>
+              </validation-provider>
+            </b-col>
+            <b-col lg="6" md="6" sm="12">
+              <b-form-group label="MRP With Tax"><b-input-group :prepend="currentUser.currency"><b-form-input :value="formatNumber(pricingPreview(detail).mrpWithTax, 2)" readonly /></b-input-group></b-form-group>
+            </b-col>
+            <b-col lg="6" md="6" sm="12">
+              <b-form-group label="I.Tax Withholding Rate"><b-input-group append="%"><b-form-input :value="formatNumber(withholding_tax_rate, 2)" readonly /></b-input-group></b-form-group>
+            </b-col>
+            <b-col lg="6" md="6" sm="12">
+              <b-form-group label="I.Tax Withholding Amount"><b-input-group :prepend="currentUser.currency"><b-form-input :value="formatNumber(pricingPreview(detail).withholdingAmount, 2)" readonly /></b-input-group></b-form-group>
+            </b-col>
+            <b-col lg="6" md="6" sm="12">
+              <b-form-group label="Net Payable Including Withholding"><b-input-group :prepend="currentUser.currency"><b-form-input :value="formatNumber(pricingPreview(detail).netPayable, 2)" readonly /></b-input-group></b-form-group>
+            </b-col>
+            <b-col lg="6" md="6" sm="12">
+              <b-form-group label="Purchase Unit *"><b-form-input :value="detail.unitPurchase" readonly /></b-form-group>
+            </b-col>
+
+            <b-col lg="12" md="12" sm="12" v-show="detail.is_imei">
+              <b-form-group :label="$t('Add_product_IMEI_Serial_number')"><b-form-input v-model="detail.imei_number" :placeholder="$t('Add_product_IMEI_Serial_number')" /></b-form-group>
+            </b-col>
             <b-col md="12">
-               <b-form-group>
-                <b-button variant="primary" type="submit" :disabled="Submit_Processing_detail"><lucide-icon class="me-2 font-weight-bold" name="check" /> {{$t('submit')}}</b-button>
-                <div v-once class="typo__p" v-if="Submit_Processing_detail">
-                  <div class="spinner sm spinner-primary mt-3"></div>
-                </div>
+              <b-form-group>
+                <b-button variant="primary" type="submit" :disabled="Submit_Processing_detail">{{$t('submit')}}</b-button>
               </b-form-group>
             </b-col>
           </b-row>
@@ -707,6 +658,7 @@ export default {
       highlightedDetailId: null,
       withholding_tax_rate: 0,
       managed_taxes: [],
+      linked_gate_passes: [],
       search_input:'',
       product_filter:[],
       isLoading: true,
@@ -749,6 +701,8 @@ export default {
         notes: "",
         supplier_id: "",
         warehouse_id: "",
+        sales_tax_invoice_no: "",
+        delivery_note_no: "",
         tax_rate: 0,
         TaxNet: 0,
         withholding_tax: 0,
@@ -772,6 +726,8 @@ export default {
         Net_cost: "",
         Total_cost: "",
         Unit_cost: "",
+        company_rb_price: "",
+        mrp_price: "",
         subtotal: "",
         product_id: "",
         detail_id: "",
@@ -899,17 +855,23 @@ export default {
     Modal_Updat_Detail(detail) {
       NProgress.start();
       NProgress.set(0.1);
-      this.detail = {};
-      this.detail.name = detail.name;
-      this.detail.detail_id = detail.detail_id;
-      this.detail.Unit_cost = detail.Unit_cost;
-      this.detail.tax_method = detail.tax_method;
-      this.detail.discount_Method = detail.discount_Method;
-      this.detail.discount = detail.discount;
-      this.detail.quantity = detail.quantity;
-      this.detail.tax_percent = detail.tax_percent;
-      this.detail.is_imei = detail.is_imei;
-      this.detail.imei_number = detail.imei_number;
+      this.detail = {
+        name: detail.name,
+        detail_id: detail.detail_id,
+        gate_pass_item_id: detail.gate_pass_item_id || null,
+        Unit_cost: detail.Unit_cost,
+        company_rb_price: detail.company_rb_price,
+        mrp_price: detail.mrp_price,
+        unitPurchase: detail.unitPurchase,
+        purchase_unit_id: detail.purchase_unit_id,
+        tax_method: detail.tax_method,
+        discount_Method: detail.discount_Method,
+        discount: detail.discount,
+        quantity: detail.quantity,
+        tax_percent: detail.tax_percent,
+        is_imei: detail.is_imei,
+        imei_number: detail.imei_number
+      };
 
       setTimeout(() => {
         NProgress.done();
@@ -927,46 +889,15 @@ export default {
         if (this.details[i].detail_id === this.detail.detail_id) {
           this.details[i].tax_percent = this.detail.tax_percent;
           this.details[i].Unit_cost = this.detail.Unit_cost;
+          this.details[i].company_rb_price = this.detail.Unit_cost;
+          this.details[i].mrp_price = this.detail.mrp_price;
           this.details[i].quantity = this.detail.quantity;
           this.details[i].tax_method = this.detail.tax_method;
           this.details[i].discount_Method = this.detail.discount_Method;
           this.details[i].discount = this.detail.discount;
           this.details[i].imei_number = this.detail.imei_number;
 
-          if (this.details[i].discount_Method == "2") {
-            //Fixed
-            this.details[i].DiscountNet = this.detail.discount;
-          } else {
-            //Percentage %
-            this.details[i].DiscountNet = parseFloat(
-              (this.detail.Unit_cost * this.details[i].discount) / 100
-            );
-          }
-
-          if (this.details[i].tax_method == "1") {
-            //Exclusive
-            this.details[i].Net_cost = parseFloat(
-              this.detail.Unit_cost - this.details[i].DiscountNet
-            );
-
-            this.details[i].taxe = parseFloat(
-              (this.detail.tax_percent *
-                (this.detail.Unit_cost - this.details[i].DiscountNet)) /
-                100
-            );
-          } else {
-            //Inclusive
-            this.details[i].taxe = parseFloat(
-              (this.detail.Unit_cost - this.details[i].DiscountNet) *
-                (this.detail.tax_percent / 100)
-            );
-
-            this.details[i].Net_cost = parseFloat(
-              this.detail.Unit_cost -
-                this.details[i].taxe -
-                this.details[i].DiscountNet
-            );
-          }
+          this.recalculatePurchaseDetail(this.details[i]);
 
           this.$forceUpdate();
         }
@@ -1169,6 +1100,7 @@ export default {
     //-----------------------------------increment QTY ------------------------------\\
 
     increment(detail, id) {
+      if (detail.is_gate_pass_item) return;
       for (var i = 0; i < this.details.length; i++) {
         if (this.details[i].detail_id == id) {
           this.formatNumber(this.details[i].quantity++, 2);
@@ -1181,6 +1113,7 @@ export default {
     //-----------------------------------decrement QTY ------------------------------\\
 
     decrement(detail, id) {
+      if (detail.is_gate_pass_item) return;
       for (var i = 0; i < this.details.length; i++) {
         if (this.details[i].detail_id == id) {
           if (detail.quantity - 1 > 0) {
@@ -1232,6 +1165,7 @@ export default {
 
     //------------------------------Formetted Numbers -------------------------\\
     formatNumber(number, dec) {
+      number = Number(number) || 0;
       const value = (typeof number === "string"
         ? number
         : number.toString()
@@ -1244,18 +1178,78 @@ export default {
       return `${value[0]}.${formated}`;
     },
 
+    roundUpMoney(value) {
+      const amount = Number(value) || 0;
+      return Math.ceil(Number(amount.toFixed(6)));
+    },
+
+    discountMethodChanged() {
+      this.detail.discount = 0;
+    },
+
+    pricingPreview(detail) {
+      const rbPrice = Math.max(Number(detail && detail.Unit_cost) || 0, 0);
+      const mrpWithoutTax = Math.max(Number(detail && detail.mrp_price) || 0, 0);
+      const discountValue = Math.max(Number(detail && detail.discount) || 0, 0);
+      const gstRate = Math.max(Number(this.purchase.tax_rate) || 0, 0);
+      const withholdingRate = Math.max(Number(this.withholding_tax_rate) || 0, 0);
+      let tradeDiscount = detail && detail.discount_Method == "1"
+        ? (rbPrice * discountValue) / 100
+        : discountValue;
+      tradeDiscount = Math.min(tradeDiscount, rbPrice);
+      const netValue = this.roundUpMoney(rbPrice - tradeDiscount);
+      const gstAmount = this.roundUpMoney((rbPrice * gstRate) / 100);
+      const totalWithTax = this.roundUpMoney(netValue + gstAmount);
+      const mrpWithTax = mrpWithoutTax > 0
+        ? this.roundUpMoney(mrpWithoutTax + (mrpWithoutTax * gstRate) / 100)
+        : 0;
+      const withholdingAmount = this.roundUpMoney((netValue * withholdingRate) / 100);
+
+      return {
+        tradeDiscount,
+        netValue,
+        gstAmount,
+        totalWithTax,
+        mrpWithTax,
+        withholdingAmount,
+        netPayable: this.roundUpMoney(totalWithTax + withholdingAmount)
+      };
+    },
+
+    recalculatePurchaseDetail(detail) {
+      const rbPrice = Math.max(Number(detail.company_rb_price !== undefined
+        ? detail.company_rb_price
+        : detail.Unit_cost) || 0, 0);
+      const discountValue = Math.max(Number(detail.discount) || 0, 0);
+      const taxRate = Math.max(Number(this.purchase.tax_rate) || 0, 0);
+      let tradeDiscount = detail.discount_Method == "1"
+        ? (rbPrice * discountValue) / 100
+        : discountValue;
+      tradeDiscount = Math.min(tradeDiscount, rbPrice);
+
+      detail.company_rb_price = rbPrice;
+      detail.Unit_cost = rbPrice;
+      detail.DiscountNet = tradeDiscount;
+      detail.Net_cost = this.roundUpMoney(rbPrice - tradeDiscount);
+      detail.tax_percent = taxRate;
+      detail.tax_method = "1";
+      detail.taxe = this.roundUpMoney((rbPrice * taxRate) / 100);
+      detail.withholding_tax = this.roundUpMoney(detail.Net_cost * (this.withholding_tax_rate / 100));
+      detail.Total_cost = this.roundUpMoney(detail.Net_cost + detail.taxe);
+      detail.subtotal = (Number(detail.quantity) || 0) * detail.Total_cost;
+    },
+
     //-----------------------------------------Calcul Total ------------------------------\\
     Calcul_Total() {
       this.total = 0;
       let salesTaxTotal = 0;
       let withholdingTaxTotal = 0;
       for (var i = 0; i < this.details.length; i++) {
-        this.details[i].taxe = (Number(this.details[i].mrp_price || this.details[i].Unit_cost) || 0) * (Number(this.purchase.tax_rate) || 0) / 100;
-        this.details[i].withholding_tax = (Number(this.details[i].Net_cost) || 0) * (Number(this.withholding_tax_rate) || 0) / 100;
+        this.recalculatePurchaseDetail(this.details[i]);
         var tax = (Number(this.details[i].taxe) || 0) * this.details[i].quantity;
         var wht = (Number(this.details[i].withholding_tax) || 0) * this.details[i].quantity;
         this.details[i].subtotal = parseFloat(
-          this.details[i].quantity * this.details[i].Net_cost + tax - wht
+          this.details[i].quantity * this.details[i].Net_cost + tax
         );
         salesTaxTotal += tax;
         withholdingTaxTotal += wht;
@@ -1265,14 +1259,11 @@ export default {
       const total_without_discount = parseFloat(
         this.total - this.purchase.discount
       );
-      this.purchase.TaxNet = parseFloat(salesTaxTotal.toFixed(2));
-      this.purchase.withholding_tax = parseFloat(withholdingTaxTotal.toFixed(2));
-      this.GrandTotal = parseFloat(
-        total_without_discount + this.purchase.shipping
+      this.purchase.TaxNet = this.roundUpMoney(salesTaxTotal);
+      this.purchase.withholding_tax = this.roundUpMoney(withholdingTaxTotal);
+      this.GrandTotal = this.roundUpMoney(
+        total_without_discount + withholdingTaxTotal + (Number(this.purchase.shipping) || 0)
       );
-
-      var grand_total =  this.GrandTotal.toFixed(2);
-      this.GrandTotal = parseFloat(grand_total);
     },
 
     //-----------------------------------Delete Detail Product ------------------------------\\
@@ -1328,6 +1319,8 @@ export default {
             date: this.purchase.date,
             supplier_id: this.purchase.supplier_id,
             warehouse_id: this.purchase.warehouse_id,
+            sales_tax_invoice_no: this.purchase.sales_tax_invoice_no || null,
+            delivery_note_no: this.purchase.delivery_note_no || null,
             statut: this.purchase.statut,
             notes: this.purchase.notes,
             tax_rate: this.purchase.tax_rate?this.purchase.tax_rate:0,
@@ -1387,6 +1380,8 @@ export default {
         this.product.name = response.data.name;
         this.product.Net_cost = response.data.Net_cost;
         this.product.Unit_cost = response.data.Unit_cost;
+        this.product.company_rb_price = Number(response.data.company_rb_price || response.data.Unit_cost) || 0;
+        this.product.mrp_price = Number(response.data.mrp_price) || 0;
         this.product.taxe = response.data.tax_cost;
         this.product.tax_method = response.data.tax_method;
         this.product.tax_percent = response.data.tax_percent;
@@ -1416,6 +1411,7 @@ export default {
           this.details = response.data.details;
           this.suppliers = response.data.suppliers;
           this.warehouses = response.data.warehouses;
+          this.linked_gate_passes = response.data.gate_passes || [];
           this.managed_taxes = response.data.managed_taxes || [];
           const wht = this.managed_taxes.find(t => t.code === 'WHT' && t.calculation_type === 'percentage');
           this.withholding_tax_rate = wht ? (parseFloat(wht.rate) || 0) : 0;
@@ -1445,6 +1441,11 @@ export default {
 
 <style>
 
+  .purchase-detail-dialog {
+    width: calc(100% - 32px);
+    max-width: 1200px !important;
+  }
+
   .input-with-icon {
     display: flex;
     align-items: center;
@@ -1459,6 +1460,59 @@ export default {
 
   .purchase-row-highlight > td {
     animation: purchase-row-pulse 1.8s ease-out;
+  }
+
+  .purchase-products-table {
+    min-width: 1760px;
+  }
+
+  .purchase-products-table .purchase-quantity-column {
+    width: 126px;
+    min-width: 126px;
+  }
+
+  .purchase-quantity-control {
+    display: grid;
+    grid-template-columns: 32px minmax(54px, 1fr) 32px;
+    width: 118px;
+    overflow: hidden;
+    border-radius: 5px;
+  }
+
+  .purchase-quantity-control .purchase-quantity-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 36px !important;
+    min-width: 32px;
+    padding: 0;
+    border-radius: 0;
+    font-size: 18px;
+    line-height: 1;
+  }
+
+  .purchase-quantity-control .purchase-quantity-input {
+    width: 100%;
+    min-width: 0;
+    height: 36px;
+    padding: 4px 6px;
+    border-radius: 0;
+    text-align: center;
+  }
+
+  .purchase-quantity-control .purchase-quantity-input::-webkit-outer-spin-button,
+  .purchase-quantity-control .purchase-quantity-input::-webkit-inner-spin-button {
+    margin: 0;
+    appearance: none;
+  }
+
+  .purchase-quantity-control .purchase-quantity-input[type='number'] {
+    -moz-appearance: textfield;
+  }
+
+  .discount-percentage-input {
+    max-width: 210px;
   }
 
   @keyframes purchase-row-pulse {

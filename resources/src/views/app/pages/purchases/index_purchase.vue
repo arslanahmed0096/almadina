@@ -723,13 +723,6 @@ export default {
     columns() {
       return [
         {
-          label: this.$t("Action"),
-          field: "actions",
-          tdClass: "text-left",
-          thClass: "text-left",
-          sortable: false
-        },
-        {
           label: this.$t("date"),
           field: "date",
           tdClass: "text-left",
@@ -789,6 +782,13 @@ export default {
         {
           label: this.$t("Documents"),
           field: "documents",
+          tdClass: "text-left",
+          thClass: "text-left",
+          sortable: false
+        },
+        {
+          label: this.$t("Action"),
+          field: "actions",
           tdClass: "text-left",
           thClass: "text-left",
           sortable: false

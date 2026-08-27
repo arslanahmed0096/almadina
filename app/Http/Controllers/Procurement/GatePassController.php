@@ -53,7 +53,7 @@ class GatePassController extends Controller
             'items.*.product_id' => 'nullable|required_if:receipt_type,direct|integer|exists:products,id',
             'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
             'items.*.unit_id' => 'nullable|integer|exists:units,id', 'items.*.unit_cost' => 'nullable|numeric|min:0|decimal:0,6',
-            'items.*.delivered_quantity' => 'required|numeric|gt:0|decimal:0,6', 'items.*.accepted_quantity' => 'required|numeric|min:0|decimal:0,6',
+            'items.*.delivered_quantity' => 'required|integer|gt:0', 'items.*.accepted_quantity' => 'required|integer|min:0',
             'items.*.rejected_quantity' => 'nullable|numeric|min:0|decimal:0,6', 'items.*.short_quantity' => 'nullable|numeric|min:0|decimal:0,6',
             'items.*.over_delivery_reason' => 'nullable|string|max:2000', 'items.*.notes' => 'nullable|string|max:1000',
         ]);
@@ -72,7 +72,10 @@ class GatePassController extends Controller
         $this->permit($request, 'gate_passes_create');
         $warehouses = Warehouse::whereNull('deleted_at');
         $purchaseOrders = PurchaseOrder::with(['provider:id,name', 'warehouse:id,name'])
-            ->whereIn('status', ['issued', 'partially_received', 'fully_received', 'partially_invoiced', 'fully_invoiced', 'partially_purchased']);
+            ->whereNotIn('status', ['cancelled', 'completed'])
+            ->whereHas('items', function ($items) {
+                $items->whereRaw("purchase_order_items.ordered_quantity > COALESCE((SELECT SUM(gate_pass_items.accepted_quantity) FROM gate_pass_items INNER JOIN gate_passes ON gate_passes.id = gate_pass_items.gate_pass_id WHERE gate_pass_items.purchase_order_item_id = purchase_order_items.id AND gate_passes.status IN ('accepted', 'partially_accepted')), 0)");
+            });
         if (! $request->user('api')->is_all_warehouses && ! $request->user('api')->isSuperAdmin()) {
             $warehouseIds = UserWarehouse::where('user_id', $request->user('api')->id)->pluck('warehouse_id');
             $warehouses->whereIn('id', $warehouseIds);

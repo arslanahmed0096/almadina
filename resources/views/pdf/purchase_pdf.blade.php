@@ -8,7 +8,7 @@
 <head>
     <meta charset="utf-8">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Purchase Invoice - {{$purchase['Ref']}}</title>
+    <title>Purchase Details - {{$purchase['Ref']}}</title>
     @php
         $priceFormat = $setting['price_format'] ?? null;
         function formatPrice($number, $decimals = 2, $priceFormat = null) {
@@ -57,7 +57,7 @@
                 @endif
             </td>
             <td style="width: 70%; vertical-align: top; text-align: {{ $isRtl ? 'right' : 'right' }};">
-                <div style="font-size: 18pt; font-weight: bold; color: #1a56db; margin-bottom: 6px; letter-spacing: 0.5px;">{{ __('pdf.purchase_order') }}</div>
+                <div style="font-size: 18pt; font-weight: bold; color: #1a56db; margin-bottom: 6px; letter-spacing: 0.5px;">PURCHASE DETAILS</div>
                 <div style="display: inline-block; background: #f3f4f6; padding: 5px 12px; border-radius: 4px; font-size: 10pt; font-weight: bold; color: #4b5563; margin-bottom: 8px;">{{$purchase['Ref']}}</div>
                 <table style="width: 100%; font-size: 8pt; margin-top: 6px;" cellpadding="3" cellspacing="0">
                     <tr>
@@ -77,9 +77,27 @@
                         </td>
                     </tr>
                     <tr>
-                        <td style="text-align: right; color: #6b7280; font-weight: 600;">{{ __('pdf.order_no') }}{{ $isRtl ? '' : ':' }}</td>
+                        <td style="text-align: right; color: #6b7280; font-weight: 600;">Purchase #{{ $isRtl ? '' : ':' }}</td>
                         <td style="text-align: right; color: #1f2937; font-weight: 500;">{{$purchase['Ref']}}</td>
                     </tr>
+                    @if(!empty($purchase['purchase_order_number']))
+                    <tr>
+                        <td style="text-align: right; color: #6b7280; font-weight: 600;">Purchase Order #{{ $isRtl ? '' : ':' }}</td>
+                        <td style="text-align: right; color: #1f2937; font-weight: 500;">{{$purchase['purchase_order_number']}}</td>
+                    </tr>
+                    @endif
+                    @if(!empty($purchase['gate_pass_number']))
+                    <tr>
+                        <td style="text-align: right; color: #6b7280; font-weight: 600;">Gate Pass #{{ $isRtl ? '' : ':' }}</td>
+                        <td style="text-align: right; color: #1f2937; font-weight: 500;">{{$purchase['gate_pass_number']}}</td>
+                    </tr>
+                    @endif
+                    @if(!empty($purchase['sales_tax_invoice_no']))
+                    <tr>
+                        <td style="text-align: right; color: #6b7280; font-weight: 600;">Sales Tax Invoice #{{ $isRtl ? '' : ':' }}</td>
+                        <td style="text-align: right; color: #1f2937; font-weight: 500;">{{$purchase['sales_tax_invoice_no']}}</td>
+                    </tr>
+                    @endif
                     <tr>
                         <td style="text-align: right; color: #6b7280; font-weight: 600;">{{ __('pdf.status') }}{{ $isRtl ? '' : ':' }}</td>
                         <td style="text-align: right;">

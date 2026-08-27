@@ -148,8 +148,7 @@
                         || currentUserPermissions.includes('purchase_orders_view')
                         || currentUserPermissions.includes('purchase_orders_create')
                         || currentUserPermissions.includes('gate_passes_view')
-                        || currentUserPermissions.includes('gate_passes_create')
-                        || currentUserPermissions.includes('supplier_invoices_view'))"
+                        || currentUserPermissions.includes('gate_passes_create'))"
             @mouseenter="toggleSubMenu"
             class="nav-item"
             :class="{ active: selectedParentMenu == 'purchases' }"
@@ -1063,23 +1062,8 @@
           <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('purchase_orders_view')">
             <router-link tag="a" class to="/app/procurement/purchase-orders"><lucide-icon class="nav-icon" name="clipboard-list" /><span class="item-name">Purchase Orders</span></router-link>
           </li>
-          <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('purchase_orders_create')">
-            <router-link tag="a" class to="/app/procurement/purchase-orders/create"><lucide-icon class="nav-icon" name="file-plus" /><span class="item-name">New Purchase Order</span></router-link>
-          </li>
           <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('gate_passes_view')">
             <router-link tag="a" class to="/app/procurement/gate-passes"><lucide-icon class="nav-icon" name="truck" /><span class="item-name">Gate Passes</span></router-link>
-          </li>
-          <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('supplier_invoices_view')">
-            <router-link tag="a" class to="/app/procurement/supplier-invoices"><lucide-icon class="nav-icon" name="receipt" /><span class="item-name">Supplier Invoices</span></router-link>
-          </li>
-          <li
-            class="nav-item"
-            v-if="currentUserPermissions && currentUserPermissions.includes('Purchases_add')"
-          >
-            <router-link tag="a" class to="/app/purchases/store">
-              <lucide-icon class="nav-icon" name="file-plus" />
-              <span class="item-name">{{$t('AddPurchase')}}</span>
-            </router-link>
           </li>
           <li
             class="nav-item"

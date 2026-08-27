@@ -1,6 +1,6 @@
 <template>
   <div class="main-content">
-    <breadcumb class="no-print" :page="$t('PurchaseDetail')" :folder="$t('ListPurchases')"/>
+    <breadcumb class="no-print" page="Purchase Details" :folder="$t('ListPurchases')"/>
     <div v-if="isLoading" class="loading_page spinner spinner-primary mr-3 no-print"></div>
 
     <b-card v-if="!isLoading" class="print-card">
@@ -86,7 +86,7 @@
                 />
               </td>
               <td class="invoice-title-cell">
-                <div class="invoice-main-title">PURCHASE ORDER</div>
+                <div class="invoice-main-title">PURCHASE DETAILS</div>
                 <div class="invoice-ref-badge">{{purchase.Ref}}</div>
                 <table class="invoice-meta-table">
                   <tr>
@@ -94,8 +94,20 @@
                     <td class="invoice-meta-value">{{formatDisplayDate(purchase.date)}}</td>
                   </tr>
                   <tr>
-                    <td class="invoice-meta-label">Order #:</td>
+                    <td class="invoice-meta-label">Purchase #:</td>
                     <td class="invoice-meta-value">{{purchase.Ref}}</td>
+                  </tr>
+                  <tr v-if="purchase.purchase_order_number">
+                    <td class="invoice-meta-label">Purchase Order #:</td>
+                    <td class="invoice-meta-value">{{purchase.purchase_order_number}}</td>
+                  </tr>
+                  <tr v-if="purchase.gate_pass_number">
+                    <td class="invoice-meta-label">Gate Pass #:</td>
+                    <td class="invoice-meta-value">{{purchase.gate_pass_number}}</td>
+                  </tr>
+                  <tr v-if="purchase.sales_tax_invoice_no">
+                    <td class="invoice-meta-label">Sales Tax Invoice #:</td>
+                    <td class="invoice-meta-value">{{purchase.sales_tax_invoice_no}}</td>
                   </tr>
                   <tr>
                     <td class="invoice-meta-label">Status:</td>

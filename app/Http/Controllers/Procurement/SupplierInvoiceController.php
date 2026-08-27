@@ -39,6 +39,9 @@ class SupplierInvoiceController extends Controller
         $invoiced = \DB::table('supplier_invoice_items as i')->join('supplier_invoices as s', 's.id', '=', 'i.supplier_invoice_id')
             ->where('s.status', '<>', 'cancelled')->whereIn('i.gate_pass_item_id', $gatePass->items->pluck('id'))
             ->selectRaw('i.gate_pass_item_id, SUM(i.quantity) as quantity')->groupBy('i.gate_pass_item_id')->get()->pluck('quantity', 'gate_pass_item_id');
+        $purchased = \DB::table('purchase_gate_pass_items as i')->join('purchases as p', 'p.id', '=', 'i.purchase_id')
+            ->whereNull('p.deleted_at')->where('p.posting_status', '<>', 'cancelled')->whereIn('i.gate_pass_item_id', $gatePass->items->pluck('id'))
+            ->selectRaw('i.gate_pass_item_id, SUM(i.quantity) as quantity')->groupBy('i.gate_pass_item_id')->get()->pluck('quantity', 'gate_pass_item_id');
 
         return response()->json([
             'gate_pass' => $gatePass,
@@ -46,8 +49,9 @@ class SupplierInvoiceController extends Controller
                 'gate_pass_item_id' => $item->id, 'product' => $item->product_name ?: $item->purchaseOrderItem?->product_name,
                 'model' => $item->variant_name ?: $item->purchaseOrderItem?->variant_name,
                 'sku' => $item->sku ?: $item->purchaseOrderItem?->sku,
-                'accepted_quantity' => (float) $item->accepted_quantity, 'previously_invoiced' => (float) ($invoiced[$item->id] ?? 0),
-                'remaining_quantity' => max(0, (float) $item->accepted_quantity - (float) ($invoiced[$item->id] ?? 0)),
+                'accepted_quantity' => (float) $item->accepted_quantity,
+                'previously_invoiced' => (float) ($invoiced[$item->id] ?? 0) + (float) ($purchased[$item->id] ?? 0),
+                'remaining_quantity' => max(0, (float) $item->accepted_quantity - (float) ($invoiced[$item->id] ?? 0) - (float) ($purchased[$item->id] ?? 0)),
                 'default_cost' => (float) ($item->default_unit_cost ?: $item->purchaseOrderItem?->unit_price ?: 0),
             ]),
             'default_tax_type' => $gatePass->provider->tax_status ?: 'non_gst',
