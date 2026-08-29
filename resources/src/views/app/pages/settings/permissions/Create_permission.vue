@@ -1760,6 +1760,53 @@
                   </b-card>
                 </b-col>
 
+                <!-- Procurement permissions -->
+                <b-col
+                  v-for="group in procurementPermissionGroups"
+                  :key="group.key"
+                  md="4"
+                >
+                  <b-card no-body class="ul-card__border-radius">
+                    <b-card-header header-tag="header" class="p-1" role="tab">
+                      <b-button
+                        class="card-title mb-0"
+                        block
+                        href="#"
+                        v-b-toggle="group.collapseId"
+                        variant="transparent"
+                      >{{ group.title }}</b-button>
+                    </b-card-header>
+                    <b-collapse
+                      :id="group.collapseId"
+                      :visible="true"
+                      :accordion="group.accordionId"
+                      role="tabpanel"
+                    >
+                      <b-card-body>
+                        <b-card-text>
+                          <b-row>
+                            <b-col
+                              v-for="permission in group.permissions"
+                              :key="permission.value"
+                              md="6"
+                            >
+                              <label class="checkbox checkbox-outline-primary">
+                                <input
+                                  type="checkbox"
+                                  v-model="permissions"
+                                  :value="permission.value"
+                                >
+                                <span>{{ permission.label }}</span>
+                                <span class="checkmark"></span>
+                              </label>
+                            </b-col>
+                          </b-row>
+                        </b-card-text>
+                      </b-card-body>
+                    </b-collapse>
+                  </b-card>
+                </b-col>
+
                 <!-- Quotations -->
                 <b-col md="4">
                   <b-card no-body class="ul-card__border-radius">
@@ -3898,6 +3945,35 @@ export default {
       SubmitProcessing:false,
       isLoading: true,
       permissions: [],
+      procurementPermissionGroups: [
+        {
+          key: "purchase-orders",
+          title: "Purchase Orders",
+          collapseId: "panel-purchase-orders",
+          accordionId: "permission-purchase-orders",
+          permissions: [
+            { value: "purchase_orders_view", label: "View" },
+            { value: "purchase_orders_create", label: "Create" },
+            { value: "purchase_orders_edit_draft", label: "Edit Draft" },
+            { value: "purchase_orders_issue", label: "Issue" },
+            { value: "purchase_orders_cancel", label: "Cancel" },
+            { value: "purchase_orders_pdf", label: "Download PDF" }
+          ]
+        },
+        {
+          key: "gate-passes",
+          title: "Gate Passes",
+          collapseId: "panel-gate-passes",
+          accordionId: "permission-gate-passes",
+          permissions: [
+            { value: "gate_passes_view", label: "View" },
+            { value: "gate_passes_create", label: "Create" },
+            { value: "gate_passes_confirm", label: "Confirm" },
+            { value: "gate_passes_reject", label: "Reject" },
+            { value: "gate_passes_upload", label: "Upload Attachment" }
+          ]
+        }
+      ],
       transferWorkflowPermissions: [
         { value: 'transfer_request', label: 'Request Stock' },
         { value: 'transfer_approve', label: 'Full Approval' },

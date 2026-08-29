@@ -1,23 +1,18 @@
 <template>
   <div class="main-content">
     <breadcumb page="All Pricing Levels" folder="Pricing Level" />
-    <div v-if="isLoading" class="loading_page spinner spinner-primary mr-3"></div>
 
-    <vue-good-table
-      v-else
-      mode="remote"
-      :columns="columns"
-      :rows="pricingLevels"
-      :totalRows="totalRows"
-      :search-options="{ enabled: true, placeholder: $t('Search_this_table') }"
-      :pagination-options="{ enabled: true, mode: 'records', nextLabel: 'next', prevLabel: 'prev' }"
-      @on-page-change="onPageChange"
-      @on-per-page-change="onPerPageChange"
-      @on-sort-change="onSortChange"
-      @on-search="onSearch"
-      styleClass="table-hover tableOne vgt-table"
-    >
-      <div slot="table-actions" class="mt-2 mb-3">
+    <div class="d-flex flex-wrap align-items-center justify-content-between mt-2 mb-3">
+      <div class="pricing-level-search mb-2">
+        <input
+          v-model="search"
+          type="text"
+          class="form-control"
+          :placeholder="$t('Search_this_table')"
+          @input="onSearchInput($event.target.value)"
+        >
+      </div>
+      <div class="mb-2">
         <b-button variant="outline-info m-1" size="sm" v-b-toggle.pricing-level-filter>
           <lucide-icon name="filter" /> {{ $t("Filter") }}
         </b-button>
@@ -43,7 +38,20 @@
           <span class="ml-1">Create Pricing Level</span>
         </router-link>
       </div>
+    </div>
 
+    <vue-good-table
+      mode="remote"
+      :is-loading="isLoading"
+      :columns="columns"
+      :rows="pricingLevels"
+      :totalRows="totalRows"
+      :pagination-options="{ enabled: true, mode: 'records', nextLabel: 'next', prevLabel: 'prev' }"
+      @on-page-change="onPageChange"
+      @on-per-page-change="onPerPageChange"
+      @on-sort-change="onSortChange"
+      styleClass="table-hover tableOne vgt-table"
+    >
       <template slot="table-row" slot-scope="props">
         <span v-if="props.column.field === 'date'">{{ formatDate(props.row.date) }}</span>
         <span v-else-if="props.column.field === 'actions'">
@@ -127,6 +135,8 @@ export default {
       totalRows: 0,
       isLoading: true,
       search: "",
+      searchTimer: null,
+      requestSequence: 0,
       filters: { date: "", brand_id: null, category_id: null },
       serverParams: {
         page: 1,
@@ -203,6 +213,7 @@ export default {
       this.serverParams = Object.assign({}, this.serverParams, values);
     },
     getPricingLevels(page) {
+      const requestId = ++this.requestSequence;
       this.isLoading = true;
       NProgress.start();
       axios.get("pricing-levels", {
@@ -218,10 +229,12 @@ export default {
         }
       })
         .then(response => {
+          if (requestId !== this.requestSequence) return;
           this.pricingLevels = Array.isArray(response.data.pricing_levels) ? response.data.pricing_levels : [];
           this.totalRows = Number(response.data.totalRows || 0);
         })
         .finally(() => {
+          if (requestId !== this.requestSequence) return;
           this.isLoading = false;
           NProgress.done();
         });
@@ -241,10 +254,32 @@ export default {
       this.updateParams({ page: 1, sort: { field: params[0].field, type: params[0].type } });
       this.getPricingLevels(1);
     },
-    onSearch({ searchTerm }) {
-      this.search = searchTerm || "";
+    onSearchInput(searchTerm) {
+      const nextSearch = this.normalizeSearch(searchTerm);
+      this.search = nextSearch;
       this.updateParams({ page: 1 });
-      this.getPricingLevels(1);
+      this.syncSearchQuery(nextSearch);
+      this.scheduleSearch();
+    },
+    normalizeSearch(value) {
+      return typeof value === "string" ? value : "";
+    },
+    scheduleSearch() {
+      if (this.searchTimer) clearTimeout(this.searchTimer);
+      this.searchTimer = setTimeout(() => {
+        this.searchTimer = null;
+        this.getPricingLevels(1);
+      }, 350);
+    },
+    syncSearchQuery(search) {
+      const currentSearch = this.normalizeSearch(this.$route.query.search);
+      if (currentSearch === search) return;
+
+      const query = Object.assign({}, this.$route.query);
+      if (search) query.search = search;
+      else delete query.search;
+
+      this.$router.replace({ query }).catch(() => {});
     },
     applyFilters() {
       this.updateParams({ page: 1 });
@@ -293,9 +328,30 @@ export default {
       });
     }
   },
+  watch: {
+    "$route.query.search"(value) {
+      const nextSearch = this.normalizeSearch(value);
+      if (nextSearch === this.search) return;
+
+      this.search = nextSearch;
+      this.updateParams({ page: 1 });
+      this.scheduleSearch();
+    }
+  },
   created() {
+    this.search = this.normalizeSearch(this.$route.query.search);
     this.loadOptions();
     this.getPricingLevels(1);
+  },
+  beforeDestroy() {
+    if (this.searchTimer) clearTimeout(this.searchTimer);
   }
 };
 </script>
+
+<style scoped>
+.pricing-level-search {
+  width: 250px;
+  max-width: 100%;
+}
+</style>
