@@ -235,7 +235,11 @@ axios.interceptors.response.use(
       router.push({ name: 'NotFound' });
     }
 
-    if (status === 403) {
+    const skipForbiddenRedirect = error.config
+      && error.config.meta
+      && error.config.meta.skipForbiddenRedirect;
+
+    if (status === 403 && !skipForbiddenRedirect) {
       router.push({ name: 'not_authorize' });
     }
 
@@ -283,5 +287,3 @@ loadI18n().then(i18n => {
     render: h => h(App),
   }).$mount("#app");
 });
-
-  

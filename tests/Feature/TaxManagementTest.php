@@ -7,6 +7,7 @@ use App\Models\TaxPriceType;
 use App\Models\TransactionTaxSnapshot;
 use App\Models\User;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Laravel\Passport\Passport;
 use Tests\TestCase;
@@ -119,6 +120,49 @@ class TaxManagementTest extends TestCase
             ->assertJsonPath('available_taxes.1.0.tax_code', 'GST')
             ->assertJsonPath('line_totals.1', '180.00')
             ->assertJsonPath('totals.grand_total', '180.00');
+    }
+
+    public function test_sale_creator_can_preview_automatic_taxes_without_separate_tax_apply_permission(): void
+    {
+        $this->postJson('/api/taxes', $this->payload())->assertCreated();
+        DB::table('warehouses')->insert(['id' => 1, 'name' => 'Main']);
+
+        $roleId = DB::table('roles')->insertGetId(['name' => 'Sales User']);
+        $salesAddId = DB::table('permissions')->insertGetId(['name' => 'Sales_add']);
+        DB::table('permission_role')->insert([
+            'permission_id' => $salesAddId,
+            'role_id' => $roleId,
+        ]);
+
+        $salesUser = User::create([
+            'username' => 'sales-user',
+            'email' => 'sales-user@example.test',
+            'password' => bcrypt('secret'),
+            'role_id' => $roleId,
+            'statut' => 1,
+            'is_all_warehouses' => 1,
+        ]);
+        DB::table('role_user')->insert([
+            'role_id' => $roleId,
+            'user_id' => $salesUser->id,
+        ]);
+        Passport::actingAs($salesUser);
+
+        $this->postJson('/api/taxes/preview', [
+            'transaction_type' => 'sale_invoice',
+            'warehouse_id' => 1,
+            'date' => '2026-08-24',
+            'lines' => [[
+                'line_key' => 1,
+                'price_type' => 'price',
+                'unit_price' => 100,
+                'quantity' => 1,
+                'discount' => 0,
+                'discount_method' => '2',
+            ]],
+        ])->assertOk()
+            ->assertJsonPath('summary.0.tax_code', 'GST')
+            ->assertJsonPath('totals.grand_total', '118.00');
     }
 
     private function payload(): array

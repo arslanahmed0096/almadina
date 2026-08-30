@@ -55,7 +55,7 @@ class TaxController extends Controller
 
     public function applicable(Request $request, TaxResolver $resolver)
     {
-        $this->permit($request, 'taxes.apply');
+        $this->permitTransactionTaxApplication($request);
         $validated = $request->validate([
             'transaction_type' => ['required', Rule::in(Tax::TRANSACTION_TYPES)],
             'price_type' => ['required'], 'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'], 'date' => ['nullable', 'date'],
@@ -69,7 +69,7 @@ class TaxController extends Controller
      */
     public function preview(Request $request, TaxResolver $resolver, TaxCalculationService $calculator)
     {
-        $this->permit($request, 'taxes.apply');
+        $this->permitTransactionTaxApplication($request);
         $validated = $request->validate([
             'transaction_type' => ['required', Rule::in(Tax::TRANSACTION_TYPES)],
             'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
@@ -332,5 +332,29 @@ class TaxController extends Controller
         $user = $request->user('api');
         $permissions = (array) $permissions;
         abort_unless($user && ($user->isSuperAdmin() || $user->effectivePermissionNames()->intersect($permissions)->isNotEmpty()), 403);
+    }
+
+    /**
+     * Automatic tax calculation is part of creating a transaction. Users who
+     * can create that transaction must therefore be able to resolve and preview
+     * its approved taxes even when an older/custom role is missing taxes.apply.
+     */
+    private function permitTransactionTaxApplication(Request $request): void
+    {
+        $transactionPermission = match ((string) $request->input('transaction_type')) {
+            'purchase' => 'Purchases_add',
+            'sale_invoice' => 'Sales_add',
+            'pos' => 'Pos_view',
+            'sale_return' => 'Sale_Returns_add',
+            'purchase_return' => 'Purchase_Returns_add',
+            default => null,
+        };
+
+        $permissions = ['taxes.apply'];
+        if ($transactionPermission) {
+            $permissions[] = $transactionPermission;
+        }
+
+        $this->permit($request, $permissions);
     }
 }

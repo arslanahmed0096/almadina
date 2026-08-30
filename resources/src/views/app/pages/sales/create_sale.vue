@@ -1461,6 +1461,10 @@ export default {
         points_discount: Number(this.discount_from_points) || 0,
         shipping: Number(this.sale.shipping) || 0,
         lines,
+      }, {
+        // This is an optional background calculation. A permission/configuration
+        // failure must not navigate away from an in-progress sale.
+        meta: { skipForbiddenRedirect: true },
       }).then(({ data }) => {
         if (requestSequence !== this.managedTaxRequestSequence) return;
         this.managedTaxPreview = {
@@ -2075,7 +2079,8 @@ export default {
           price_type: priceType,
           warehouse_id: this.sale.warehouse_id,
           date: this.sale.date,
-        }
+        },
+        meta: { skipForbiddenRedirect: true },
       }).then(({ data }) => {
         this.modalManagedTaxes = (data.taxes || []).map(tax => {
           const matchedPrice = (tax.price_types || []).find(price => price.code === priceType);
