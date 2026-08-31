@@ -2359,14 +2359,23 @@ export default {
 
     //------ Validate Form Submit_Payment
     Submit_Payment() {
+      if (this.paymentProcessing) {
+        return;
+      }
+
+      // Set this before async validation so rapid Enter/click events cannot
+      // start more than one payment request.
+      this.paymentProcessing = true;
       this.$refs.Add_payment.validate().then(success => {
         if (!success) {
+          this.paymentProcessing = false;
           this.makeToast(
             "danger",
             this.$t("Please_fill_the_form_correctly"),
             this.$t("Failed")
           );
         } else if (this.payment.montant > this.payment.received_amount) {
+          this.paymentProcessing = false;
           this.makeToast(
             "warning",
             this.$t("Paying_amount_is_greater_than_Received_amount"),
@@ -2375,6 +2384,7 @@ export default {
           this.payment.received_amount = 0;
         }
         else if (this.payment.montant > this.due) {
+          this.paymentProcessing = false;
           this.makeToast(
             "warning",
             this.$t("Paying_amount_is_greater_than_Grand_Total"),
@@ -2387,7 +2397,8 @@ export default {
         } else {
             this.Update_Payment();
         }
-
+      }).catch(() => {
+        this.paymentProcessing = false;
       });
     },
 
@@ -3334,7 +3345,9 @@ export default {
             notes: this.payment.notes,
           })
           .then(response => {
-            this.paymentProcessing = false;
+            // Close immediately and keep submission locked until the refreshed
+            // sales data has arrived through the event handler.
+            this.$bvModal.hide("Add_Payment");
             Fire.$emit("Create_Facture_sale");
             this.makeToast(
               "success",
@@ -3345,6 +3358,13 @@ export default {
           .catch(error => {
             this.paymentProcessing = false;
             NProgress.done();
+            const errors = error && error.response && error.response.data
+              ? error.response.data.errors
+              : null;
+            const message = errors && errors.montant && errors.montant.length
+              ? errors.montant[0]
+              : this.$t("InvalidData");
+            this.makeToast("danger", message, this.$t("Failed"));
           });
     },
     //---------------------------------------- Update Payment ------------------------------\\
@@ -3376,6 +3396,13 @@ export default {
           .catch(error => {
             this.paymentProcessing = false;
             NProgress.done();
+            const errors = error && error.response && error.response.data
+              ? error.response.data.errors
+              : null;
+            const message = errors && errors.montant && errors.montant.length
+              ? errors.montant[0]
+              : this.$t("InvalidData");
+            this.makeToast("danger", message, this.$t("Failed"));
           });
     },
     //----------------------------------------- Remove Payment ------------------------------\\
@@ -3839,6 +3866,7 @@ export default {
       setTimeout(() => {
         this.Get_Sales(this.serverParams.page);
         NProgress.done();
+        this.paymentProcessing = false;
         this.$bvModal.hide("Add_Payment");
       }, 800);
     });

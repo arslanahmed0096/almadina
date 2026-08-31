@@ -28,4 +28,10 @@ class Category extends Model
         return $this->belongsToMany(Product::class, 'category_product')
             ->withTimestamps();
     }
+
+    public function providers()
+    {
+        return $this->belongsToMany(Provider::class, 'category_provider', 'category_id', 'provider_id')
+            ->withTimestamps();
+    }
 }

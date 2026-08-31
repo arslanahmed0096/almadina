@@ -38,4 +38,13 @@ class Provider extends Model
     {
         return $this->hasMany(SupplierInvoice::class);
     }
+
+    /**
+     * Item categories supplied by this supplier.
+     */
+    public function categories()
+    {
+        return $this->belongsToMany(Category::class, 'category_provider', 'provider_id', 'category_id')
+            ->withTimestamps();
+    }
 }

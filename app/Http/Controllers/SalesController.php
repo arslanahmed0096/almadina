@@ -233,6 +233,8 @@ class SalesController extends BaseController
             'warehouse_id' => 'required',
             'transaction_type' => 'nullable|in:sale,order',
             'credit_days' => 'nullable|integer|in:5,10,15,20,25,30',
+            'GrandTotal' => 'required|numeric|min:0',
+            'amount' => 'nullable|numeric|min:0',
         ]);
 
         $this->assertProductsSelectable($request->user('api'), $request->input('details', []));
@@ -242,9 +244,20 @@ class SalesController extends BaseController
         $sale = \DB::transaction(function () use ($request, $transactionType, $creditService) {
             $helpers = new helpers;
             $clientForCredit = Client::whereKey($request->client_id)->lockForUpdate()->firstOrFail();
+            $grandTotal = round((float) $request->GrandTotal, 2);
+            $requestedPayment = round(max(0, (float) $request->amount), 2);
+
+            if ($transactionType === 'sale'
+                && $request->input('payment.status') !== 'pending'
+                && $requestedPayment > $grandTotal) {
+                throw ValidationException::withMessages([
+                    'amount' => ['Payment cannot exceed the sale total of '.number_format($grandTotal, 2, '.', '').'.'],
+                ]);
+            }
+
             $initialPayment = ($request->input('payment.status') === 'pending')
                 ? 0.0
-                : min((float) $request->GrandTotal, max(0, (float) $request->amount));
+                : $requestedPayment;
             $requestedCredit = $transactionType === 'sale'
                 ? max(0, round((float) $request->GrandTotal - $initialPayment, 2))
                 : 0.0;
@@ -378,7 +391,7 @@ class SalesController extends BaseController
 
                 try {
 
-                    $total_paid = $sale->paid_amount + $request['amount'];
+                    $total_paid = round((float) $sale->paid_amount + $initialPayment, 2);
                     $due = $sale->GrandTotal - $total_paid;
 
                     if ($due === 0.0 || $due < 0.0) {
@@ -389,7 +402,7 @@ class SalesController extends BaseController
                         $payment_statut = 'unpaid';
                     }
 
-                    if ($request['amount'] > 0 && $request->payment['status'] != 'pending') {
+                    if ($initialPayment > 0 && $request->payment['status'] != 'pending') {
                         // All payment methods (including card) are now handled uniformly; no Stripe charge is performed here.
                         PaymentSale::create([
                             'sale_id' => $order->id,
@@ -397,7 +410,7 @@ class SalesController extends BaseController
                             'date' => Carbon::now(),
                             'account_id' => $request->payment['account_id'] ? $request->payment['account_id'] : null,
                             'payment_method_id' => $request->payment['payment_method_id'],
-                            'montant' => $request['amount'],
+                            'montant' => $initialPayment,
                             'change' => $request['change'],
                             'notes' => null,
                             'user_id' => Auth::user()->id,
@@ -409,7 +422,7 @@ class SalesController extends BaseController
                             // Account exists, perform the update
                             $account = Account::find($request->payment['account_id']);
                             $account->update([
-                                'balance' => $account->balance + $request['amount'],
+                                'balance' => $account->balance + $initialPayment,
                             ]);
                         }
 

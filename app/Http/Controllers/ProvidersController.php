@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Account;
+use App\Models\Category;
 use App\Models\PaymentMethod;
 use App\Models\PaymentPurchase;
 use App\Models\PaymentPurchaseReturns;
@@ -17,6 +18,7 @@ use DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Maatwebsite\Excel\Facades\Excel;
 
 class ProvidersController extends BaseController
@@ -168,30 +170,59 @@ class ProvidersController extends BaseController
 
     // ----------- Store new Supplier -------\\
 
+    public function categoryOptions(Request $request)
+    {
+        $user = $request->user('api');
+        abort_unless(
+            $user && ($user->can('create', Provider::class) || $user->can('update', Provider::class)),
+            403
+        );
+
+        return response()->json([
+            'categories' => Category::whereNull('deleted_at')
+                ->orderBy('name')
+                ->get(['id', 'name']),
+        ]);
+    }
+
     public function store(Request $request)
     {
         $this->authorizeForUser($request->user('api'), 'create', Provider::class);
 
-        request()->validate([
+        $validated = $request->validate([
             'name' => 'required',
             'tax_status' => 'nullable|in:gst,non_gst',
+            'category_ids' => 'nullable|array',
+            'category_ids.*' => [
+                'integer',
+                'distinct',
+                Rule::exists('categories', 'id')->whereNull('deleted_at'),
+            ],
         ]);
-        $provider = Provider::create([
-            'name' => $request['name'],
-            'code' => $this->getNumberOrder(),
-            'account_title' => $request['account_title'] ?? null,
-            'adresse' => $request['adresse'],
-            'phone' => $request['phone'],
-            'email' => $request['email'],
-            'country' => $request['country'],
-            'city' => $request['city'],
-            'tax_number' => $request['tax_number'],
-            'tax_status' => $request->input('tax_status', 'non_gst'),
-            'strn_number' => $request['strn_number'],
-            'ntn_number' => $request['ntn_number'],
-            'opening_balance' => $request['opening_balance'] ?? 0,
-            'credit_limit' => $request['credit_limit'] ?? 0,
-        ]);
+        $taxStatus = $validated['tax_status'] ?? 'non_gst';
+
+        $provider = DB::transaction(function () use ($request, $validated, $taxStatus) {
+            $provider = Provider::create([
+                'name' => $request['name'],
+                'code' => $this->getNumberOrder(),
+                'account_title' => $request['account_title'] ?? null,
+                'adresse' => $request['adresse'],
+                'phone' => $request['phone'],
+                'email' => $request['email'],
+                'country' => $request['country'],
+                'city' => $request['city'],
+                'tax_number' => $request['tax_number'],
+                'tax_status' => $taxStatus,
+                'strn_number' => $taxStatus === 'gst' ? $request['strn_number'] : null,
+                'ntn_number' => $taxStatus === 'gst' ? $request['ntn_number'] : null,
+                'opening_balance' => $request['opening_balance'] ?? 0,
+                'credit_limit' => $request['credit_limit'] ?? 0,
+            ]);
+
+            $provider->categories()->sync($validated['category_ids'] ?? []);
+
+            return $provider->load('categories:id,name');
+        });
 
         return response()->json([
             'success' => true,
@@ -207,10 +238,13 @@ class ProvidersController extends BaseController
     {
         $this->authorizeForUser(request()->user('api'), 'view', Provider::class);
 
-        $provider = Provider::where('deleted_at', '=', null)->findOrFail($id);
+        $provider = Provider::with('categories:id,name')
+            ->where('deleted_at', '=', null)
+            ->findOrFail($id);
 
         return response()->json([
             'provider' => $provider,
+            'category_ids' => $provider->categories->pluck('id')->values(),
         ]);
 
     }
@@ -221,25 +255,37 @@ class ProvidersController extends BaseController
     {
         $this->authorizeForUser($request->user('api'), 'update', Provider::class);
 
-        request()->validate([
+        $validated = $request->validate([
             'name' => 'required',
             'tax_status' => 'nullable|in:gst,non_gst',
+            'category_ids' => 'nullable|array',
+            'category_ids.*' => [
+                'integer',
+                'distinct',
+                Rule::exists('categories', 'id')->whereNull('deleted_at'),
+            ],
         ]);
+        $taxStatus = $validated['tax_status'] ?? 'non_gst';
 
-        Provider::whereId($id)->update([
-            'name' => $request['name'],
-            'account_title' => $request['account_title'] ?? null,
-            'adresse' => $request['adresse'],
-            'phone' => $request['phone'],
-            'email' => $request['email'],
-            'country' => $request['country'],
-            'city' => $request['city'],
-            'tax_number' => $request['tax_number'],
-            'tax_status' => $request->input('tax_status', 'non_gst'),
-            'strn_number' => $request['strn_number'],
-            'ntn_number' => $request['ntn_number'],
-            'credit_limit' => $request->input('credit_limit', 0),
-        ]);
+        DB::transaction(function () use ($request, $validated, $taxStatus, $id) {
+            $provider = Provider::whereNull('deleted_at')->findOrFail($id);
+            $provider->update([
+                'name' => $request['name'],
+                'account_title' => $request['account_title'] ?? null,
+                'adresse' => $request['adresse'],
+                'phone' => $request['phone'],
+                'email' => $request['email'],
+                'country' => $request['country'],
+                'city' => $request['city'],
+                'tax_number' => $request['tax_number'],
+                'tax_status' => $taxStatus,
+                'strn_number' => $taxStatus === 'gst' ? $request['strn_number'] : null,
+                'ntn_number' => $taxStatus === 'gst' ? $request['ntn_number'] : null,
+                'credit_limit' => $request->input('credit_limit', 0),
+            ]);
+
+            $provider->categories()->sync($validated['category_ids'] ?? []);
+        });
 
         return response()->json(['success' => true]);
 

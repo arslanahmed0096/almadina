@@ -22,6 +22,7 @@ use GuzzleHttp\Client as Client_termi;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Validation\ValidationException;
 use Infobip\Api\SendSmsApi;
 use Infobip\Configuration;
 use Infobip\Model\SmsAdvancedTextualRequest;
@@ -155,13 +156,28 @@ class PaymentSalesController extends BaseController
     {
         $this->authorizeForUser($request->user('api'), 'create', PaymentSale::class);
 
-        \DB::transaction(function () use ($request) {
-            $helpers = new helpers;
+        $validated = $request->validate([
+            'sale_id' => 'required|integer|exists:sales,id',
+            'date' => 'required|date',
+            'montant' => 'required|numeric|gt:0',
+            'received_amount' => 'nullable|numeric|min:0',
+            'change' => 'nullable|numeric|min:0',
+            'payment_method_id' => 'required|integer|exists:payment_methods,id',
+            'account_id' => 'nullable|integer|exists:accounts,id',
+            'notes' => 'nullable|string',
+        ]);
+
+        \DB::transaction(function () use ($request, $validated) {
             $user = Auth::user();
             // New way: Check user's record_view field (user-level boolean)
             // Backward compatibility: If record_view is null, fall back to role permission check
             $view_records = $user->hasRecordView();
-            $sale = Sale::findOrFail($request['sale_id']);
+            // Serialize payments for the same sale. A repeated or concurrent
+            // request will see the balance left by the first committed payment.
+            $sale = Sale::whereNull('deleted_at')
+                ->whereKey($validated['sale_id'])
+                ->lockForUpdate()
+                ->firstOrFail();
 
             // Check If User Has Permission view All Records
             if (! $view_records) {
@@ -169,53 +185,52 @@ class PaymentSalesController extends BaseController
                 $this->authorizeForUser($request->user('api'), 'check_record', $sale);
             }
 
-            try {
+            $amount = round((float) $validated['montant'], 2);
+            $grandTotal = round((float) $sale->GrandTotal, 2);
+            $alreadyPaid = round((float) $sale->paid_amount, 2);
+            $currentDue = round($grandTotal - $alreadyPaid, 2);
 
-                $total_paid = $sale->paid_amount + $request['montant'];
-                $due = $sale->GrandTotal - $total_paid;
-
-                if ($due === 0.0 || $due < 0.0) {
-                    $payment_statut = 'paid';
-                } elseif ($due !== $sale->GrandTotal) {
-                    $payment_statut = 'partial';
-                } elseif ($due === $sale->GrandTotal) {
-                    $payment_statut = 'unpaid';
-                }
-
-                if ($request['montant'] > 0) {
-                    // All payment methods are now handled the same way; no online Stripe charge is performed here.
-                    PaymentSale::create([
-                        'sale_id' => $sale->id,
-                        'Ref' => app('App\Http\Controllers\PaymentSalesController')->getNumberOrder(),
-                        'date' => $request['date'],
-                        'account_id' => $request['account_id'] ? $request['account_id'] : null,
-                        'payment_method_id' => $request['payment_method_id'],
-                        'montant' => $request['montant'],
-                        'change' => $request['change'],
-                        'notes' => $request['notes'],
-                        'user_id' => Auth::user()->id,
-                    ]);
-
-                    $account = Account::where('id', $request['account_id'])->exists();
-
-                    if ($account) {
-                        // Account exists, perform the update
-                        $account = Account::find($request['account_id']);
-                        $account->update([
-                            'balance' => $account->balance + $request['montant'],
-                        ]);
-                    }
-
-                    $sale->update([
-                        'paid_amount' => $total_paid,
-                        'payment_statut' => $payment_statut,
-                    ]);
-                }
-
-            } catch (Exception $e) {
-                return response()->json(['message' => $e->getMessage()], 500);
+            if ($currentDue <= 0) {
+                throw ValidationException::withMessages([
+                    'montant' => ['This sale is already fully paid. Refresh the sales list before adding another payment.'],
+                ]);
             }
 
+            if ($amount > $currentDue) {
+                throw ValidationException::withMessages([
+                    'montant' => ['Payment cannot exceed the remaining due of '.number_format($currentDue, 2, '.', '').'.'],
+                ]);
+            }
+
+            $totalPaid = round($alreadyPaid + $amount, 2);
+            $remainingDue = round($grandTotal - $totalPaid, 2);
+            $paymentStatus = $remainingDue <= 0 ? 'paid' : 'partial';
+
+            PaymentSale::create([
+                'sale_id' => $sale->id,
+                'Ref' => app('App\Http\Controllers\PaymentSalesController')->getNumberOrder(),
+                'date' => $validated['date'],
+                'account_id' => $validated['account_id'] ?? null,
+                'payment_method_id' => $validated['payment_method_id'],
+                'montant' => $amount,
+                'change' => $validated['change'] ?? 0,
+                'notes' => $validated['notes'] ?? null,
+                'user_id' => Auth::user()->id,
+            ]);
+
+            if (! empty($validated['account_id'])) {
+                $account = Account::whereKey($validated['account_id'])->lockForUpdate()->first();
+                if ($account) {
+                    $account->update([
+                        'balance' => $account->balance + $amount,
+                    ]);
+                }
+            }
+
+            $sale->update([
+                'paid_amount' => $totalPaid,
+                'payment_statut' => $paymentStatus,
+            ]);
         }, 10);
 
         return response()->json(['success' => true, 'message' => 'Payment Create successfully'], 200);
@@ -235,13 +250,22 @@ class PaymentSalesController extends BaseController
     {
         $this->authorizeForUser($request->user('api'), 'update', PaymentSale::class);
 
-        \DB::transaction(function () use ($id, $request) {
-            $helpers = new helpers;
+        $validated = $request->validate([
+            'date' => 'required|date',
+            'montant' => 'required|numeric|gt:0',
+            'received_amount' => 'nullable|numeric|min:0',
+            'change' => 'nullable|numeric|min:0',
+            'payment_method_id' => 'required|integer|exists:payment_methods,id',
+            'account_id' => 'nullable|integer|exists:accounts,id',
+            'notes' => 'nullable|string',
+        ]);
+
+        \DB::transaction(function () use ($id, $request, $validated) {
             $user = Auth::user();
             // New way: Check user's record_view field (user-level boolean)
             // Backward compatibility: If record_view is null, fall back to role permission check
             $view_records = $user->hasRecordView();
-            $payment = PaymentSale::findOrFail($id);
+            $payment = PaymentSale::whereKey($id)->lockForUpdate()->firstOrFail();
 
             // Check If User Has Permission view All Records
             if (! $view_records) {
@@ -249,64 +273,67 @@ class PaymentSalesController extends BaseController
                 $this->authorizeForUser($request->user('api'), 'check_record', $payment);
             }
 
-            $sale = Sale::find($payment->sale_id);
-            $old_total_paid = $sale->paid_amount - $payment->montant;
-            $new_total_paid = $old_total_paid + $request['montant'];
-
-            $due = $sale->GrandTotal - $new_total_paid;
-            if ($due === 0.0 || $due < 0.0) {
-                $payment_statut = 'paid';
-            } elseif ($due !== $sale->GrandTotal) {
-                $payment_statut = 'partial';
-            } elseif ($due === $sale->GrandTotal) {
-                $payment_statut = 'unpaid';
-            }
-
-            // delete old balance
-            $account = Account::where('id', $payment->account_id)->exists();
-
-            if ($account) {
-                // Account exists, perform the update
-                $account = Account::find($payment->account_id);
-                $account->update([
-                    'balance' => $account->balance - $payment->montant,
+            if ((int) $payment->payment_method_id === 1) {
+                throw ValidationException::withMessages([
+                    'montant' => ['Card payments cannot be edited.'],
                 ]);
             }
 
-            try {
-                if ($payment->payment_method_id != 1 && $payment->payment_method_id != '1') {
+            $sale = Sale::whereKey($payment->sale_id)->lockForUpdate()->firstOrFail();
+            $amount = round((float) $validated['montant'], 2);
+            $paidWithoutThisPayment = round(max(0, (float) $sale->paid_amount - (float) $payment->montant), 2);
+            $maximumPayment = round((float) $sale->GrandTotal - $paidWithoutThisPayment, 2);
 
-                    $payment->update([
-                        'date' => $request['date'],
-                        'payment_method_id' => $request['payment_method_id'],
-                        'account_id' => $request['account_id'] ? $request['account_id'] : null,
-                        'montant' => $request['montant'],
-                        'change' => $request['change'],
-                        'notes' => $request['notes'],
-                    ]);
-
-                    // update new account
-                    $new_account = Account::where('id', $request['account_id'])->exists();
-
-                    if ($new_account) {
-                        // Account exists, perform the update
-                        $new_account = Account::find($request['account_id']);
-                        $new_account->update([
-                            'balance' => $new_account->balance + $request['montant'],
-                        ]);
-                    }
-
-                    $sale->update([
-                        'paid_amount' => $new_total_paid,
-                        'payment_statut' => $payment_statut,
-                    ]);
-
-                }
-
-            } catch (Exception $e) {
-                return response()->json(['message' => $e->getMessage()], 500);
+            if ($amount > $maximumPayment) {
+                throw ValidationException::withMessages([
+                    'montant' => ['Payment cannot exceed the available balance of '.number_format($maximumPayment, 2, '.', '').'.'],
+                ]);
             }
 
+            $newTotalPaid = round($paidWithoutThisPayment + $amount, 2);
+            $remainingDue = round((float) $sale->GrandTotal - $newTotalPaid, 2);
+            $paymentStatus = $remainingDue <= 0
+                ? 'paid'
+                : ($newTotalPaid > 0 ? 'partial' : 'unpaid');
+
+            $accountIds = collect([$payment->account_id, $validated['account_id'] ?? null])
+                ->filter()
+                ->unique()
+                ->sort()
+                ->values();
+            $accounts = Account::whereIn('id', $accountIds)
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+
+            if ($payment->account_id && $accounts->has($payment->account_id)) {
+                $oldAccount = $accounts->get($payment->account_id);
+                $oldAccount->update([
+                    'balance' => $oldAccount->balance - (float) $payment->montant,
+                ]);
+            }
+
+            $payment->update([
+                'date' => $validated['date'],
+                'payment_method_id' => $validated['payment_method_id'],
+                'account_id' => $validated['account_id'] ?? null,
+                'montant' => $amount,
+                'change' => $validated['change'] ?? 0,
+                'notes' => $validated['notes'] ?? null,
+            ]);
+
+            if (! empty($validated['account_id']) && $accounts->has($validated['account_id'])) {
+                $newAccount = $accounts->get($validated['account_id']);
+                $newAccount->refresh();
+                $newAccount->update([
+                    'balance' => $newAccount->balance + $amount,
+                ]);
+            }
+
+            $sale->update([
+                'paid_amount' => $newTotalPaid,
+                'payment_statut' => $paymentStatus,
+            ]);
         }, 10);
 
         return response()->json(['success' => true, 'message' => 'Payment Update successfully'], 200);

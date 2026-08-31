@@ -452,6 +452,7 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
     // ------------------------------- Providers --------------------------\\
     // --------------------------------------------------------------------\\
 
+    Route::get('providers/category-options', 'ProvidersController@categoryOptions');
     Route::resource('providers', 'ProvidersController');
     Route::post('suppliers/import', 'ProvidersController@import');
 

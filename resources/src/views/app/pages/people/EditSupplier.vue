@@ -99,6 +99,21 @@
             <b-col v-if="provider.tax_status === 'gst'" md="4" sm="12"><b-form-group label="GST / STRN number"><b-form-input v-model="provider.strn_number" /></b-form-group></b-col>
             <b-col v-if="provider.tax_status === 'gst'" md="4" sm="12"><b-form-group label="NTN number"><b-form-input v-model="provider.ntn_number" /></b-form-group></b-col>
 
+            <!-- Categories supplied -->
+            <b-col md="12" sm="12">
+              <b-form-group label="Item categories supplied">
+                <v-select
+                  v-model="provider.category_ids"
+                  multiple
+                  :close-on-select="false"
+                  :reduce="option => option.value"
+                  :options="categoryOptions"
+                  placeholder="Choose one or more item categories"
+                />
+                <small class="text-muted">Select the categories of items this supplier provides.</small>
+              </b-form-group>
+            </b-col>
+
             <!-- Credit Limit -->
             <b-col md="6" sm="12">
                 <b-form-group :label="$t('Credit_Limit')">
@@ -167,6 +182,7 @@ export default {
       isLoading: true,
       SubmitProcessing: false,
       customFieldValues: {},
+      categories: [],
       provider: {
         id: "",
           account_title: "",
@@ -177,6 +193,7 @@ export default {
         tax_status: "non_gst",
         strn_number: "",
         ntn_number: "",
+        category_ids: [],
         country: "",
         city: "",
         adresse: "",
@@ -186,6 +203,18 @@ export default {
   },
 
   methods: {
+    Get_Category_Options() {
+      axios
+        .get("providers/category-options")
+        .then(response => {
+          this.categories = response.data.categories || [];
+        })
+        .catch(() => {
+          this.categories = [];
+          this.makeToast("danger", "Failed to load item categories", this.$t("Failed"));
+        });
+    },
+
     //------------- Submit Validation Edit Provider
     Submit_Provider() {
       this.$refs.Create_Provider.validate().then(success => {
@@ -213,6 +242,7 @@ export default {
           tax_status: this.provider.tax_status,
           strn_number: this.provider.strn_number,
           ntn_number: this.provider.ntn_number,
+          category_ids: this.provider.category_ids,
           phone: this.provider.phone,
           country: this.provider.country,
           city: this.provider.city,
@@ -270,6 +300,7 @@ export default {
             tax_status: response.data.provider?.tax_status || "non_gst",
             strn_number: response.data.provider?.strn_number || "",
             ntn_number: response.data.provider?.ntn_number || "",
+            category_ids: response.data.category_ids || [],
             country: response.data.provider?.country || "",
             city: response.data.provider?.city || "",
             adresse: response.data.provider?.adresse || "",
@@ -320,7 +351,17 @@ export default {
 
   //----------------------------- Created function-------------------
   created: function() {
+    this.Get_Category_Options();
     this.Get_Provider();
+  },
+
+  computed: {
+    categoryOptions() {
+      return this.categories.map(category => ({
+        label: category.name,
+        value: category.id
+      }));
+    }
   }
 };
 </script>

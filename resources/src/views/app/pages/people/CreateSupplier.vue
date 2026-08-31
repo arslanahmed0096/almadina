@@ -97,6 +97,21 @@
             <b-col v-if="provider.tax_status === 'gst'" md="4" sm="12"><b-form-group label="GST / STRN number"><b-form-input v-model="provider.strn_number" /></b-form-group></b-col>
             <b-col v-if="provider.tax_status === 'gst'" md="4" sm="12"><b-form-group label="NTN number"><b-form-input v-model="provider.ntn_number" /></b-form-group></b-col>
 
+            <!-- Categories supplied -->
+            <b-col md="12" sm="12">
+              <b-form-group label="Item categories supplied">
+                <v-select
+                  v-model="provider.category_ids"
+                  multiple
+                  :close-on-select="false"
+                  :reduce="option => option.value"
+                  :options="categoryOptions"
+                  placeholder="Choose one or more item categories"
+                />
+                <small class="text-muted">Select the categories of items this supplier provides.</small>
+              </b-form-group>
+            </b-col>
+
             <!-- Opening Balance (Previous Dues) -->
             <b-col md="6" sm="12">
                 <b-form-group :label="$t('Opening_Balance_Previous_Dues')">
@@ -175,6 +190,7 @@ export default {
     return {
       SubmitProcessing: false,
       customFieldValues: {},
+      categories: [],
       provider: {
         id: "",
           account_title: "",
@@ -185,6 +201,7 @@ export default {
         tax_status: "non_gst",
         strn_number: "",
         ntn_number: "",
+        category_ids: [],
         country: "",
         city: "",
         adresse: "",
@@ -195,6 +212,18 @@ export default {
   },
 
   methods: {
+    Get_Category_Options() {
+      axios
+        .get("providers/category-options")
+        .then(response => {
+          this.categories = response.data.categories || [];
+        })
+        .catch(() => {
+          this.categories = [];
+          this.makeToast("danger", "Failed to load item categories", this.$t("Failed"));
+        });
+    },
+
     //------------- Submit Validation Create Provider
     Submit_Provider() {
       this.$refs.Create_Provider.validate().then(success => {
@@ -223,6 +252,7 @@ export default {
           tax_status: this.provider.tax_status,
           strn_number: this.provider.strn_number,
           ntn_number: this.provider.ntn_number,
+          category_ids: this.provider.category_ids,
           country: this.provider.country,
           city: this.provider.city,
           adresse: this.provider.adresse,
@@ -297,6 +327,7 @@ export default {
 
   //----------------------------- Created function-------------------
   created: function() {
+    this.Get_Category_Options();
     // Reset form on component creation
     this.provider = {
       id: "",
@@ -307,12 +338,22 @@ export default {
       tax_status: "non_gst",
       strn_number: "",
       ntn_number: "",
+      category_ids: [],
       country: "",
       city: "",
       adresse: "",
       opening_balance: 0,
       credit_limit: 0
     };
+  },
+
+  computed: {
+    categoryOptions() {
+      return this.categories.map(category => ({
+        label: category.name,
+        value: category.id
+      }));
+    }
   }
 };
 </script>
