@@ -14,6 +14,7 @@ use App\Models\TaxPriceType;
 use App\Models\TaxAudit;
 use App\Models\TransactionTaxSnapshot;
 use App\Models\User;
+use App\Services\ProductSupplierResolver;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -21,7 +22,11 @@ use Illuminate\Validation\ValidationException;
 
 class TransactionTaxService
 {
-    public function __construct(private TaxResolver $resolver, private TaxCalculationService $calculator) {}
+    public function __construct(
+        private TaxResolver $resolver,
+        private TaxCalculationService $calculator,
+        private ProductSupplierResolver $supplierResolver
+    ) {}
 
     public function snapshotPurchase(Purchase $purchase, array $inputLines, ?User $user): Collection
     {
@@ -136,6 +141,17 @@ class TransactionTaxService
                     $priceType = TaxPriceType::where('code', $priceCode)->first();
                     if (! $priceType) continue;
                     $taxes = $this->resolver->applicable($type, $priceType->id, $warehouseId, $user);
+                    if (
+                        in_array($type, ['sale_invoice', 'pos'], true)
+                        && ! empty($input['product_id'])
+                        && $this->supplierResolver->isNonGst(
+                            (int) $input['product_id'],
+                            ! empty($input['product_variant_id']) ? (int) $input['product_variant_id'] : null,
+                            $warehouseId
+                        )
+                    ) {
+                        $taxes = $taxes->reject(fn ($tax) => strtoupper((string) $tax->code) === 'GST')->values();
+                    }
                     if (isset($input['tax_ids']) && is_array($input['tax_ids'])) {
                         $selected = collect($input['tax_ids'])->map(fn ($id) => (int) $id);
                         $automaticIds = $taxes->pluck('id')->sort()->values();

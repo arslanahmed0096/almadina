@@ -115,7 +115,7 @@ export default {
   data() {
     return {
       order: null, gate: null, lines: [], file: null, ready: false, saving: false, api: '/api/',
-      hasPurchaseOrder: false, loadingPurchaseOrder: false,
+      hasPurchaseOrder: true, loadingPurchaseOrder: false,
       meta: { providers: [], warehouses: [], purchase_orders: [] }, productsLoading: false, warehouseProducts: [], productFilter: [],
       focused: false, searchInput: '', searchTimer: null, nextLineKey: 1,
       form: {
@@ -147,7 +147,7 @@ export default {
     if (this.viewing) this.loadGate();
     else {
       const purchaseOrderId = this.$route.name === 'procurement_gate_create' ? Number(this.$route.params.id) : null;
-      this.hasPurchaseOrder = Boolean(purchaseOrderId);
+      this.hasPurchaseOrder = true;
       this.form.purchase_order_id = purchaseOrderId;
       this.loadMetadata(purchaseOrderId);
     }

@@ -3,29 +3,6 @@
     <breadcumb :page="$t('SuppliersManagement')" :folder="$t('Suppliers')"/>
     <div v-if="isLoading" class="loading_page spinner spinner-primary mr-3"></div>
     <div v-else>
-      <div class="row mb-3 align-items-center">
-        <div class="col-12 col-md-8 mb-2 mb-md-0">
-          <b-form-input
-            size="sm"
-            v-model="search"
-            @keyup.enter="Get_Providers(1)"
-            :placeholder="$t('Search_this_table')"
-            class="w-100"
-          />
-        </div>
-        <div class="col-12 col-md-auto text-md-right">
-          <b-button
-            @click="New_Provider()"
-            class="btn-rounded m-1"
-            size="sm"
-            variant="btn btn-primary btn-icon"
-            v-if="currentUserPermissions && currentUserPermissions.includes('Suppliers_add')"
-          >
-            <lucide-icon name="plus" />
-            {{$t('Add')}}
-          </b-button>
-        </div>
-      </div>
       <vue-good-table
         mode="remote"
         :columns="columns"
@@ -34,9 +11,8 @@
         @on-page-change="onPageChange"
         @on-per-page-change="onPerPageChange"
         @on-sort-change="onSortChange"
-        :search-options="{
-        enabled: false,
-      }"
+        @on-search="onSearch"
+        :search-options="{ enabled: true, placeholder: $t('Search_this_table') }"
         :select-options="{ 
           enabled: true ,
           clearSelectionText: '',
@@ -48,53 +24,60 @@
         nextLabel: 'next',
         prevLabel: 'prev',
       }"
-        :styleClass="showDropdown?'tableOne table-hover vgt-table full-height':'tableOne table-hover vgt-table non-height'"
+        styleClass="tableOne table-hover vgt-table"
       >
         <div slot="selected-row-actions" v-if="currentUserPermissions.includes('Suppliers_delete')">
           <button class="btn btn-danger btn-sm" @click="delete_by_selected()">{{$t('Del')}}</button>
         </div>
-        <div slot="table-actions" class="table-actions-wrapper mt-2 mb-3">
-          <div class="d-flex flex-wrap align-items-center justify-content-between">
-            <div class="d-flex align-items-center flex-wrap">
-              <b-form-select
-                v-model="nameSort"
-                :options="nameSortOptions"
-                size="sm"
-                class="sort-select m-1"
-                @change="applyNameSort"
-              />
-            </div>
+        <div slot="table-actions" class="table-actions-wrapper mt-2 mb-3 d-flex flex-wrap align-items-center justify-content-between">
+          <div class="table-actions-left d-flex flex-wrap align-items-center">
+            <b-form-select
+              v-model="nameSort"
+              :options="nameSortOptions"
+              size="sm"
+              class="sort-select m-1"
+              @change="applyNameSort"
+            />
 
-            <div class="d-flex align-items-center flex-wrap justify-content-end">
-              <b-button class="m-1" size="sm" variant="outline-info" v-b-toggle.sidebar-right>
-                <lucide-icon name="filter" />
-                {{ $t("Filter") }}
-              </b-button>
+            <b-button class="m-1" size="sm" variant="outline-info" v-b-toggle.sidebar-right>
+              <lucide-icon name="filter" />
+              {{ $t("Filter") }}
+            </b-button>
 
-              <b-button class="m-1" @click="Providers_PDF()" size="sm" variant="outline-success">
-                <lucide-icon name="copy" /> PDF
-              </b-button>
+            <b-button class="m-1" @click="Providers_PDF()" size="sm" variant="outline-success">
+              <lucide-icon name="copy" /> PDF
+            </b-button>
 
-              <vue-excel-xlsx
-                class="btn btn-sm btn-outline-danger m-1"
-                :data="providers"
-                :columns="columns"
-                :file-name="'providers'"
-                :file-type="'xlsx'"
-                :sheet-name="'providers'"
-              >
-                <lucide-icon name="file-spreadsheet" /> EXCEL
-              </vue-excel-xlsx>
+            <vue-excel-xlsx
+              class="btn btn-sm btn-outline-danger m-1"
+              :data="providers"
+              :columns="columns"
+              :file-name="'providers'"
+              :file-type="'xlsx'"
+              :sheet-name="'providers'"
+            >
+              <lucide-icon name="file-spreadsheet" /> EXCEL
+            </vue-excel-xlsx>
 
-              <router-link
-                v-if="currentUserPermissions && currentUserPermissions.includes('Suppliers_import')"
-                :to="{ name: 'Import_Suppliers' }"
-                class="btn btn-sm btn-outline-info m-1"
-              >
-                <lucide-icon name="download" />
-                {{ $t("Import_Suppliers") }}
-              </router-link>
-            </div>
+            <router-link
+              v-if="currentUserPermissions && currentUserPermissions.includes('Suppliers_import')"
+              :to="{ name: 'Import_Suppliers' }"
+              class="btn btn-sm btn-outline-info m-1"
+            >
+              <lucide-icon name="download" />
+              {{ $t("Import_Suppliers") }}
+            </router-link>
+          </div>
+
+          <div class="table-actions-right d-flex flex-wrap align-items-center">
+            <router-link
+              v-if="currentUserPermissions && currentUserPermissions.includes('Suppliers_add')"
+              :to="{ name: 'Create_Supplier' }"
+              class="btn btn-sm btn-primary m-1"
+            >
+              <lucide-icon name="plus" />
+              {{$t('Add')}}
+            </router-link>
           </div>
         </div>
 
@@ -109,6 +92,8 @@
                 size="lg"
                 right
                 no-caret
+                boundary="viewport"
+                :popper-opts="{ positionFixed: true }"
               >
                 <template v-slot:button-content class="_r_btn border-0">
                   <span class="_dot _r_block-dot bg-dark"></span>
@@ -687,7 +672,6 @@ export default {
       ImportProcessing:false,
       paymentProcessing:false,
       payment_return_Processing:false,
-      showDropdown: false,
       serverParams: {
         columnFilters: {},
         sort: {
@@ -745,15 +729,6 @@ export default {
       },
       providerCustomFields: [],
     };
-  },
-
-   mounted() {
-    this.$root.$on("bv::dropdown::show", bvEvent => {
-      this.showDropdown = true;
-    });
-    this.$root.$on("bv::dropdown::hide", bvEvent => {
-      this.showDropdown = false;
-    });
   },
 
   computed: {
@@ -1597,3 +1572,14 @@ export default {
   }
 };
 </script>
+
+<style scoped>
+.sort-select { width: 190px; min-width: 180px; vertical-align: middle; }
+.table-actions-wrapper { gap: 0.5rem; }
+.table-actions-left,
+.table-actions-right { gap: 0.5rem; }
+.table-actions-right { margin-left: auto; }
+.table-actions-wrapper .btn,
+.table-actions-wrapper .btn-group,
+.table-actions-wrapper .b-form-select { white-space: nowrap; }
+</style>

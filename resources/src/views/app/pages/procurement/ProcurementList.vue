@@ -75,6 +75,10 @@ export default {
     value(row, key) {
       const result = key.split('.').reduce((value, part) => value && value[part], row);
       if (key === 'purchase_order.number' && !result) return 'Direct receipt';
+      if (['order_date', 'delivered_at', 'invoice_date'].includes(key) && result) {
+        const [year, month, day] = String(result).split('T')[0].split('-');
+        if (year && month && day) return `${day}-${month}-${year}`;
+      }
       return result ?? '-';
     },
     label(value) { return String(value || '').replaceAll('_', ' ').replace(/\b\w/g, char => char.toUpperCase()); },

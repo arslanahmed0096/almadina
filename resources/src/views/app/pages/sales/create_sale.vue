@@ -1245,7 +1245,7 @@ export default {
     gstApplicabilityOptions() {
       const options = [];
       if (this.modalGstTax) options.push({ value: 'gst', text: 'GST' });
-      options.push({ value: 'no_gst', text: 'Not GST' });
+      options.push({ value: 'no_gst', text: 'No GST' });
       return options;
     },
 
@@ -1409,7 +1409,7 @@ export default {
       const hasGst = this.availableManagedTaxesForLine(detail).some(tax => String(tax.tax_code || tax.code).toUpperCase() === 'GST');
       const options = [];
       if (hasGst) options.push({ value: 'gst', text: 'GST' });
-      options.push({ value: 'no_gst', text: 'Not GST' });
+      options.push({ value: 'no_gst', text: 'No GST' });
       return options;
     },
 
@@ -1444,6 +1444,8 @@ export default {
       this.managedTaxLoading = true;
       const lines = this.details.map(detail => ({
         line_key: detail.detail_id,
+        product_id: detail.product_id,
+        product_variant_id: detail.product_variant_id || null,
         price_type: detail.price_type === 'wholesale' ? 'wholesale_price' : 'price',
         unit_price: Number(detail.Unit_price) || 0,
         quantity: Number(detail.quantity) || 0,
@@ -2854,6 +2856,9 @@ export default {
             // Strip helper UI-only fields and pass clean batches
             delete out.available_batches;
             delete out.batches_loading;
+            delete out.supplier_id;
+            delete out.supplier_name;
+            delete out.supplier_tax_status;
             if (d.is_batch_tracked && Array.isArray(d.batches)) {
               out.batches = d.batches
                 .filter(b => b && b.product_batch_id && Number(b.qty) > 0)
@@ -2949,7 +2954,14 @@ export default {
         this.product.taxe = response.data.tax_price;
         this.product.tax_method = response.data.tax_method;
         this.product.tax_percent = response.data.tax_percent;
-        this.$set(this.product, 'gst_option', 'gst');
+        this.$set(this.product, 'supplier_id', response.data.supplier_id || null);
+        this.$set(this.product, 'supplier_name', response.data.supplier_name || null);
+        this.$set(this.product, 'supplier_tax_status', response.data.supplier_tax_status || null);
+        this.$set(
+          this.product,
+          'gst_option',
+          response.data.supplier_tax_status === 'non_gst' ? 'no_gst' : 'gst'
+        );
         this.product.unitSale = response.data.unitSale;
         this.product.fix_price = response.data.fix_price;
         this.product.sale_unit_id = response.data.sale_unit_id;

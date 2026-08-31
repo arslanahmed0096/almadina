@@ -23,6 +23,7 @@ use App\Models\Warehouse;
 use App\Models\WarehouseLocation;
 use App\Models\ProductWarehouseLocation;
 use App\Services\ProductGalleryService;
+use App\Services\ProductSupplierResolver;
 use App\Models\Setting;
 use App\utils\helpers;
 use Carbon\Carbon;
@@ -2154,7 +2155,7 @@ class ProductsController extends BaseController
     public function show_product_data(Request $request, $id, $variant_id, $warehouse_id = null)
     {
 
-        $Product_data = Product::with('unit')
+        $Product_data = Product::with('unit', 'brand')
             ->visibleTo($request->user('api'))
             ->where('id', $id)
             ->where('deleted_at', '=', null)
@@ -2447,6 +2448,15 @@ class ProductsController extends BaseController
                 ];
             }
         }
+
+        $supplier = app(ProductSupplierResolver::class)->resolve(
+            $Product_data,
+            ($variant_id && $variant_id !== 'null' && (int) $variant_id > 0) ? (int) $variant_id : null,
+            $warehouse_id ? (int) $warehouse_id : null
+        );
+        $item['supplier_id'] = $supplier ? (int) $supplier->id : null;
+        $item['supplier_name'] = $supplier?->name;
+        $item['supplier_tax_status'] = $supplier ? ($supplier->tax_status === 'gst' ? 'gst' : 'non_gst') : null;
 
         $data[] = $item;
 

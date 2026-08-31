@@ -10,6 +10,7 @@ use App\Models\TaxPriceType;
 use App\Models\TransactionTaxSnapshot;
 use App\Models\UserWarehouse;
 use App\Models\Warehouse;
+use App\Services\ProductSupplierResolver;
 use App\Services\Tax\TaxResolver;
 use App\Services\Tax\Decimal;
 use App\Services\Tax\TaxCalculationService;
@@ -67,7 +68,7 @@ class TaxController extends Controller
      * Calculate a transaction tax preview with the same resolver and decimal
      * calculator used when the transaction is persisted.
      */
-    public function preview(Request $request, TaxResolver $resolver, TaxCalculationService $calculator)
+    public function preview(Request $request, TaxResolver $resolver, TaxCalculationService $calculator, ProductSupplierResolver $supplierResolver)
     {
         $this->permitTransactionTaxApplication($request);
         $validated = $request->validate([
@@ -80,6 +81,8 @@ class TaxController extends Controller
             'shipping' => ['nullable', 'numeric', 'min:0'],
             'lines' => ['required', 'array', 'max:500'],
             'lines.*.line_key' => ['required'],
+            'lines.*.product_id' => ['nullable', 'integer', 'exists:products,id'],
+            'lines.*.product_variant_id' => ['nullable', 'integer'],
             'lines.*.price_type' => ['required'],
             'lines.*.unit_price' => ['required', 'numeric', 'min:0'],
             'lines.*.quantity' => ['required', 'numeric', 'min:0'],
@@ -126,10 +129,31 @@ class TaxController extends Controller
                 'price_type_name' => $priceType->name,
             ])->values();
 
-            $excludedCodes = collect($line['excluded_tax_codes'] ?? [])->map(fn ($code) => strtoupper(trim((string) $code)))->filter()->unique();
-            if ($excludedCodes->isNotEmpty()) {
+            $supplierExcludedCodes = collect();
+            if (
+                in_array($validated['transaction_type'], ['sale_invoice', 'pos'], true)
+                && ! empty($line['product_id'])
+                && $supplierResolver->isNonGst(
+                    (int) $line['product_id'],
+                    ! empty($line['product_variant_id']) ? (int) $line['product_variant_id'] : null,
+                    $warehouseId ? (int) $warehouseId : null
+                )
+            ) {
+                $supplierExcludedCodes->push('GST');
+            }
+
+            $requestedExcludedCodes = collect($line['excluded_tax_codes'] ?? [])
+                ->map(fn ($code) => strtoupper(trim((string) $code)))
+                ->filter()
+                ->unique();
+            $manualExcludedCodes = $requestedExcludedCodes->diff($supplierExcludedCodes);
+            if ($manualExcludedCodes->isNotEmpty()) {
                 $user = $request->user('api');
                 abort_unless($user->isSuperAdmin() || $user->effectivePermissionNames()->contains('taxes.override'), 403, 'You are not allowed to override automatically selected taxes.');
+            }
+
+            $excludedCodes = $supplierExcludedCodes->merge($requestedExcludedCodes)->unique();
+            if ($excludedCodes->isNotEmpty()) {
                 $taxes = $taxes->reject(fn ($tax) => $excludedCodes->contains(strtoupper($tax->code)))->values();
             }
             $calculated = collect($calculator->calculateLine($netUnitPrice, $quantity, $taxes));
