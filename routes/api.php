@@ -695,14 +695,10 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
     Route::post('procurement/gate-passes/{gatePass}/cancel', [GatePassController::class, 'cancel']);
     Route::post('procurement/gate-passes/{gatePass}/attachment', [GatePassController::class, 'replaceAttachment']);
     Route::get('procurement/gate-passes/{gatePass}/attachment', [GatePassController::class, 'downloadAttachment']);
-    Route::get('procurement/gate-passes/{gatePass}/invoice-metadata', [SupplierInvoiceController::class, 'metadata']);
+    // Supplier invoices are recorded directly as Purchases from confirmed Gate Passes.
+    // Historical standalone Supplier Invoice records remain readable below.
     Route::get('procurement/supplier-invoices', [SupplierInvoiceController::class, 'index']);
-    Route::post('procurement/supplier-invoices', [SupplierInvoiceController::class, 'store']);
     Route::get('procurement/supplier-invoices/{supplierInvoice}', [SupplierInvoiceController::class, 'show']);
-    Route::post('procurement/supplier-invoices/{supplierInvoice}/record', [SupplierInvoiceController::class, 'record']);
-    Route::post('procurement/supplier-invoices/{supplierInvoice}/create-purchase', [SupplierInvoiceController::class, 'createPurchase']);
-    Route::post('procurement/supplier-invoices/{supplierInvoice}/cancel', [SupplierInvoiceController::class, 'cancel']);
-    Route::post('procurement/supplier-invoices/{supplierInvoice}/attachment', [SupplierInvoiceController::class, 'replaceAttachment']);
     Route::get('procurement/supplier-invoices/{supplierInvoice}/attachment', [SupplierInvoiceController::class, 'downloadAttachment']);
     Route::get('procurement/reports/summary', [ProcurementReportController::class, 'summary']);
     Route::get('purchases/{id}/barcodes', 'PurchasesController@get_barcode_products');

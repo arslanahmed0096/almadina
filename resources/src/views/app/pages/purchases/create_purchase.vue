@@ -10,6 +10,14 @@
             <b-card>
               <b-row>
 
+                <b-col cols="12">
+                  <b-alert :variant="selectedGatePasses.length ? 'success' : 'info'" show>
+                    <strong>{{ selectedGatePasses.length ? 'Gate Pass Purchase' : 'Direct Purchase' }}</strong>
+                    <span v-if="selectedGatePasses.length"> — Stock was already received when the Gate Pass was confirmed. This Purchase records the supplier invoice and will not increase stock.</span>
+                    <span v-else> — Saving this Purchase as received will add its product quantities to stock.</span>
+                  </b-alert>
+                </b-col>
+
                 <b-modal hide-footer id="open_scan" size="md" title="Barcode Scanner">
                   <qrcode-scanner
                     :qrbox="250" 
@@ -248,9 +256,10 @@
                  
                   <div id="autocomplete" class="autocomplete">
                     <div class="input-with-icon">
-                      <img src="/assets_setup/scan.png" alt="Scan" class="scan-icon" @click="showModal">
+                      <img src="/assets_setup/scan.png" alt="Scan" class="scan-icon" :class="{ 'scan-icon-disabled': selectedGatePasses.length }" @click="showModal">
                     <input 
                      :placeholder="$t('Scan_Search_Product_by_Code_Name')"
+                      :disabled="selectedGatePasses.length > 0"
                       @input='e => search_input = e.target.value' 
                       @keyup="search(search_input)"
                       @focus="handleFocus"
@@ -258,7 +267,7 @@
                       ref="product_autocomplete"
                       class="autocomplete-input" />
                     </div>
-                    <ul class="autocomplete-result-list" v-show="focused">
+                    <ul class="autocomplete-result-list" v-show="focused && !selectedGatePasses.length">
                       <li class="autocomplete-result" v-for="product_fil in product_filter" @mousedown="SearchProduct(product_fil)">{{getResultValue(product_fil)}}</li>
                     </ul>
                 </div>
@@ -1043,6 +1052,10 @@ export default {
   methods: {
 
     showModal() {
+      if (this.selectedGatePasses.length) {
+        this.makeToast('warning', 'Manual products cannot be added to a Gate Pass Purchase.', this.$t('Warning'));
+        return;
+      }
       this.$bvModal.show('open_scan');
       
     },
@@ -1142,6 +1155,9 @@ export default {
       }
       if (this.purchase.warehouse_id && Number(this.purchase.warehouse_id) !== Number(gatePass.warehouse_id)) {
         return Promise.reject(new Error('All Gate Passes must belong to the selected warehouse.'));
+      }
+      if (this.details.some(detail => !this.isGatePassDetail(detail))) {
+        return Promise.reject(new Error('Remove manually added products before creating a Gate Pass Purchase.'));
       }
 
       const lines = gatePass.items.map(item => ({ item, product: item.product_data || {} }));

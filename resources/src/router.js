@@ -918,7 +918,6 @@ const baseRoutes = [
                     { name: "procurement_gates", path: "gate-passes", meta: { kind: "gates" }, component: () => import(/* webpackChunkName: "procurement" */ "./views/app/pages/procurement/ProcurementList.vue") },
                     { name: "procurement_gate_create_direct", path: "gate-passes/create", component: () => import(/* webpackChunkName: "procurement" */ "./views/app/pages/procurement/GatePassPage.vue") },
                     { name: "procurement_gate_detail", path: "gate-passes/:id", component: () => import(/* webpackChunkName: "procurement" */ "./views/app/pages/procurement/GatePassPage.vue") },
-                    { name: "procurement_invoice_create", path: "gate-passes/:id/invoice", component: () => import(/* webpackChunkName: "procurement" */ "./views/app/pages/procurement/SupplierInvoicePage.vue") },
                     { name: "procurement_invoices", path: "supplier-invoices", meta: { kind: "invoices" }, component: () => import(/* webpackChunkName: "procurement" */ "./views/app/pages/procurement/ProcurementList.vue") },
                     { name: "procurement_invoice_detail", path: "supplier-invoices/:id", component: () => import(/* webpackChunkName: "procurement" */ "./views/app/pages/procurement/SupplierInvoicePage.vue") }
                 ]

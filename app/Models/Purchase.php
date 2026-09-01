@@ -10,7 +10,7 @@ class Purchase extends Model
 
     protected $fillable = [
         'date', 'Ref', 'user_id', 'sales_tax_invoice_no', 'delivery_note_no', 'purchase_order_id', 'gate_pass_id',
-        'supplier_invoice_id', 'invoice_tax_type', 'inventory_already_received', 'posting_status',
+        'supplier_invoice_id', 'invoice_tax_type', 'inventory_already_received', 'posting_status', 'purchase_source',
         'provider_id', 'warehouse_id', 'GrandTotal', 'time',
         'discount', 'shipping', 'statut', 'notes', 'TaxNet', 'withholding_tax', 'tax_rate', 'paid_amount',
         'payment_statut', 'created_at', 'updated_at', 'deleted_at',

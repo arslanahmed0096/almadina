@@ -97,7 +97,7 @@
 
                 <b-dropdown-item
                   title="Sell Return"
-                  v-if="currentUserPermissions.includes('Sale_Returns_add') && props.row.sale_has_return == 'no' && props.row.statut == 'completed'"
+                  v-if="currentUserPermissions.includes('Sale_Returns_add') && props.row.sale_has_return == 'no' && (props.row.statut == 'completed' || props.row.has_delivered_items)"
                   :to="'/app/sales/sale_return/'+props.row.id"
                 >
                   <lucide-icon class="nav-icon font-weight-bold mr-2" name="arrow-left" />
@@ -170,7 +170,7 @@
 
                 <b-dropdown-item
                   title="Delete"
-                  v-if="currentUserPermissions.includes('Sales_delete')"
+                  v-if="currentUserPermissions.includes('Sales_delete') && !(props.row.statut == 'ordered' && props.row.has_delivered_items)"
                   @click="Remove_Sale(props.row.id , props.row.sale_has_return)"
                 >
                   <lucide-icon class="nav-icon font-weight-bold mr-2" name="x" />

@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class SaleReturnDetails extends Model
 {
     protected $fillable = [
-        'id', 'product_id', 'sale_return_id', 'sale_unit_id', 'total', 'quantity', 'product_variant_id',
+        'id', 'product_id', 'sale_return_id', 'sale_detail_id', 'sale_unit_id', 'total', 'quantity', 'product_variant_id',
         'price', 'TaxNet', 'discount', 'discount_method', 'tax_method', 'imei_number',
     ];
 
@@ -15,6 +15,7 @@ class SaleReturnDetails extends Model
         'total' => 'double',
         'quantity' => 'double',
         'sale_return_id' => 'integer',
+        'sale_detail_id' => 'integer',
         'product_id' => 'integer',
         'sale_unit_id' => 'integer',
         'product_variant_id' => 'integer',
@@ -31,5 +32,10 @@ class SaleReturnDetails extends Model
     public function product()
     {
         return $this->belongsTo('App\Models\Product');
+    }
+
+    public function saleDetail()
+    {
+        return $this->belongsTo(SaleDetail::class, 'sale_detail_id');
     }
 }

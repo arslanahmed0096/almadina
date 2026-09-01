@@ -92,7 +92,13 @@ class PurchasesController extends BaseController
         $total = 0;
 
         // Check If User Has Permission View  All Records
-        $Purchases = Purchase::with('facture', 'provider', 'warehouse')
+        $Purchases = Purchase::with([
+            'facture', 'provider', 'warehouse',
+            'gatePass:id,number,supplier_gate_pass_number,purchase_order_id',
+            'gatePass.purchaseOrder:id,number',
+            'gatePasses:id,number,supplier_gate_pass_number,purchase_order_id',
+            'gatePasses.purchaseOrder:id,number',
+        ])
             ->where('deleted_at', '=', null)
             ->where(function ($query) use ($view_records) {
                 if (! $view_records) {
@@ -101,6 +107,9 @@ class PurchasesController extends BaseController
             });
         if (! $is_all_warehouses) {
             $Purchases->whereIn('warehouse_id', $warehouse_ids);
+        }
+        if ($request->filled('purchase_source') && in_array($request->purchase_source, ['direct', 'gate_pass'], true)) {
+            $Purchases->where('purchase_source', $request->purchase_source);
         }
 
         // Multiple Filter
@@ -153,6 +162,11 @@ class PurchasesController extends BaseController
             $item['paid_amount'] = number_format($Purchase->paid_amount, 2, '.', '');
             $item['due'] = number_format($item['GrandTotal'] - $item['paid_amount'], 2, '.', '');
             $item['payment_status'] = $Purchase->payment_statut;
+            $references = $this->purchaseProcurementReferences($Purchase);
+            $item['purchase_source'] = $Purchase->purchase_source ?: ($references['gate_pass_number'] !== '' ? 'gate_pass' : 'direct');
+            $item['purchase_source_label'] = $item['purchase_source'] === 'gate_pass' ? 'Gate Pass Purchase' : 'Direct Purchase';
+            $item['gate_pass_number'] = $references['gate_pass_number'];
+            $item['purchase_order_number'] = $references['purchase_order_number'];
 
             if (PurchaseReturn::where('purchase_id', $Purchase['id'])->where('deleted_at', '=', null)->exists()) {
                 $PurchaseReturn = PurchaseReturn::where('purchase_id', $Purchase['id'])->where('deleted_at', '=', null)->first();
@@ -362,6 +376,10 @@ class PurchasesController extends BaseController
                 $purchaseOrderIds = $gatePasses->pluck('purchase_order_id')->filter()->unique();
                 $order->purchase_order_id = $purchaseOrderIds->count() === 1 ? $purchaseOrderIds->first() : null;
                 $order->inventory_already_received = true;
+                $order->purchase_source = 'gate_pass';
+            } else {
+                $order->inventory_already_received = false;
+                $order->purchase_source = 'direct';
             }
 
             $order->save();
@@ -464,6 +482,9 @@ class PurchasesController extends BaseController
             }
 
             return ['gate_passes' => collect(), 'allocations' => collect()];
+        }
+        if ($submittedLines->count() !== count($details)) {
+            throw ValidationException::withMessages(['details' => ['A Gate Pass Purchase can contain only products allocated from the selected Gate Passes. Remove manually added products and try again.']]);
         }
 
         $query = GatePass::with('items')->whereIn('id', $ids)->lockForUpdate();
@@ -2530,6 +2551,7 @@ class PurchasesController extends BaseController
             $order->payment_statut = 'unpaid';
             $order->notes = $request->notes;
             $order->user_id = Auth::user()->id;
+            $order->purchase_source = 'direct';
 
             $order->save();
 

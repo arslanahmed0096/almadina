@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Mail\CustomEmail;
 use App\Services\BatchService;
 use App\Services\CustomerCreditService;
+use App\Services\SaleReturnEligibilityService;
 use App\Models\Account;
 use App\Models\Client;
 use App\Models\EmailMessage;
@@ -99,7 +100,7 @@ class SalesController extends BaseController
         $data = [];
 
         // Check If User Has Permission View  All Records
-        $Sales = Sale::with('facture', 'client', 'warehouse', 'user')
+        $Sales = Sale::with('facture', 'client', 'warehouse', 'user', 'details:id,sale_id', 'details.shipmentItem:id,sale_detail_id')
             ->where('deleted_at', '=', null)
             ->where(function ($query) use ($view_records) {
                 if (! $view_records) {
@@ -179,6 +180,7 @@ class SalesController extends BaseController
             $item['credit_due_date'] = optional($Sale->credit_due_date)->format('Y-m-d');
             $item['outstanding_amount'] = number_format($creditService->outstandingForSale($Sale), 2, '.', '');
             $item['credit_status'] = $creditService->creditStatus($Sale);
+            $item['has_delivered_items'] = app(SaleReturnEligibilityService::class)->hasDeliveredItems($Sale);
 
             if (SaleReturn::where('sale_id', $Sale['id'])->where('deleted_at', '=', null)->exists()) {
                 $sellReturn = SaleReturn::where('sale_id', $Sale['id'])->where('deleted_at', '=', null)->first();
@@ -1063,6 +1065,12 @@ class SalesController extends BaseController
                 abort(403, 'Return exists for this sale; cannot delete.');
             }
 
+            if ($current->statut === 'ordered' && app(SaleReturnEligibilityService::class)->hasDeliveredItems($current)) {
+                throw ValidationException::withMessages([
+                    'sale' => ['This ordered sale has delivered items and cannot be deleted. Create a Sale Return for the delivered items instead.'],
+                ]);
+            }
+
             if (! $view_records) {
                 $this->authorizeForUser($request->user('api'), 'check_record', $current);
             }
@@ -1218,7 +1226,13 @@ class SalesController extends BaseController
                 if (SaleReturn::where('sale_id', $sale_id)->where('deleted_at', '=', null)->exists()) {
                     return response()->json(['success' => false, 'Return exist for the Transaction' => false], 403);
                 } else {
-                    $current_Sale = Sale::findOrFail($sale_id);
+                    $current_Sale = Sale::with('details')->findOrFail($sale_id);
+
+                    if ($current_Sale->statut === 'ordered' && app(SaleReturnEligibilityService::class)->hasDeliveredItems($current_Sale)) {
+                        throw ValidationException::withMessages([
+                            'selectedIds' => ['Sale '.$current_Sale->Ref.' has delivered items and cannot be deleted. Create a Sale Return for its delivered items instead.'],
+                        ]);
+                    }
 
                      /**
                      * Warehouses restriction

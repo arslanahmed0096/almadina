@@ -6,6 +6,7 @@ use App\Models\GatePass;
 use App\Models\Product;
 use App\Models\product_warehouse;
 use App\Models\Provider;
+use App\Models\Purchase;
 use App\Models\Role;
 use App\Models\SupplierInvoice;
 use App\Models\Tax;
@@ -40,6 +41,7 @@ class ProcurementWorkflowTest extends TestCase
         (require database_path('migrations/2026_08_25_000002_support_direct_gate_passes.php'))->up();
         (require database_path('migrations/2026_08_25_000003_link_purchases_to_gate_passes.php'))->up();
         (require database_path('migrations/2026_08_25_000004_track_purchase_gate_pass_quantities.php'))->up();
+        (require database_path('migrations/2026_09_01_000001_add_purchase_source_to_purchases.php'))->up();
         $this->user = User::create(['username' => 'admin', 'email' => 'admin@example.test', 'password' => bcrypt('secret'), 'role_id' => 1, 'statut' => 1, 'is_all_warehouses' => 1]);
         \DB::table('role_user')->insert(['user_id' => $this->user->id, 'role_id' => 1]);
         $purchasePermissionId = \DB::table('permissions')->insertGetId(['name' => 'Purchases_add', 'label' => 'Add Purchases']);
@@ -181,6 +183,7 @@ class ProcurementWorkflowTest extends TestCase
 
         $purchase = app(SupplierInvoiceService::class)->createPurchase($invoice, $this->user);
         $this->assertNull($purchase->purchase_order_id);
+        $this->assertSame('gate_pass', $purchase->purchase_source);
         $this->assertSame(4.0, (float) product_warehouse::where('product_id', $product->id)->value('qte'));
         $this->assertDatabaseHas('purchase_details', [
             'purchase_id' => $purchase->id,
@@ -263,6 +266,7 @@ class ProcurementWorkflowTest extends TestCase
 
         $purchaseId = (int) \DB::table('purchases')->max('id');
         $this->assertDatabaseHas('purchases', ['id' => $purchaseId, 'inventory_already_received' => 1]);
+        $this->assertDatabaseHas('purchases', ['id' => $purchaseId, 'purchase_source' => 'gate_pass']);
         $this->assertSame(2, \DB::table('purchase_gate_pass')->where('purchase_id', $purchaseId)->count());
         $this->assertSame(2, \DB::table('purchase_gate_pass_items')->where('purchase_id', $purchaseId)->count());
 
@@ -333,6 +337,102 @@ class ProcurementWorkflowTest extends TestCase
         app(SupplierInvoiceService::class)->createPurchase($invoice, $this->user);
         $this->expectException(ValidationException::class);
         app(SupplierInvoiceService::class)->createPurchase($invoice->fresh(), $this->user);
+    }
+
+    public function test_direct_purchase_is_classified_and_adds_received_stock(): void
+    {
+        $product = Product::create([
+            'name' => 'Direct Purchase Product', 'code' => 'DIRECT-PUR-1', 'cost' => 100,
+            'unit_id' => $this->unit->id, 'unit_purchase_id' => $this->unit->id,
+            'is_variant' => 0, 'is_active' => 1,
+        ]);
+        product_warehouse::create([
+            'product_id' => $product->id, 'warehouse_id' => $this->warehouse->id,
+            'product_variant_id' => null, 'qte' => 0,
+        ]);
+
+        $this->actingAs($this->user, 'api');
+        $this->postJson('/api/purchases', [
+            'date' => '2026-09-01',
+            'supplier_id' => $this->provider->id,
+            'warehouse_id' => $this->warehouse->id,
+            'statut' => 'received',
+            'tax_rate' => 0,
+            'TaxNet' => 0,
+            'withholding_tax' => 0,
+            'discount' => 0,
+            'shipping' => 0,
+            'GrandTotal' => 200,
+            'details' => [[
+                'product_id' => $product->id,
+                'product_variant_id' => null,
+                'purchase_unit_id' => $this->unit->id,
+                'quantity' => 2,
+                'Unit_cost' => 100,
+                'company_rb_price' => 100,
+                'mrp_price' => 100,
+                'tax_percent' => 0,
+                'taxe' => 0,
+                'withholding_tax' => 0,
+                'tax_method' => '1',
+                'discount' => 0,
+                'discount_Method' => '2',
+                'subtotal' => 200,
+                'imei_number' => '',
+            ]],
+        ])->assertOk();
+
+        $purchase = Purchase::latest('id')->firstOrFail();
+        $this->assertSame('direct', $purchase->purchase_source);
+        $this->assertFalse($purchase->inventory_already_received);
+        $this->assertSame(2.0, (float) product_warehouse::where('product_id', $product->id)->value('qte'));
+    }
+
+    public function test_gate_pass_purchase_rejects_manually_added_product_lines(): void
+    {
+        [$po] = $this->singleLineOrder(5);
+        $gate = app(GatePassService::class)->create($po, [
+            'delivered_at' => now(),
+            'items' => [[
+                'purchase_order_item_id' => $po->items[0]->id,
+                'delivered_quantity' => 5,
+                'accepted_quantity' => 5,
+            ]],
+        ], $this->user);
+        app(GatePassService::class)->confirm($gate, $this->user);
+        $gateItem = $gate->items()->firstOrFail();
+
+        $this->actingAs($this->user, 'api');
+        $this->postJson('/api/purchases', [
+            'date' => '2026-09-01',
+            'supplier_id' => $this->provider->id,
+            'warehouse_id' => $this->warehouse->id,
+            'statut' => 'received',
+            'tax_rate' => 0,
+            'TaxNet' => 0,
+            'discount' => 0,
+            'shipping' => 0,
+            'GrandTotal' => 200,
+            'gate_pass_ids' => [$gate->id],
+            'details' => [
+                [
+                    'gate_pass_item_id' => $gateItem->id,
+                    'product_id' => $gateItem->product_id,
+                    'product_variant_id' => null,
+                    'purchase_unit_id' => $gateItem->unit_id,
+                    'quantity' => 1,
+                ],
+                [
+                    'product_id' => $gateItem->product_id,
+                    'product_variant_id' => null,
+                    'purchase_unit_id' => $gateItem->unit_id,
+                    'quantity' => 1,
+                ],
+            ],
+        ])->assertStatus(422)->assertJsonValidationErrors('details');
+
+        $this->assertSame(0, Purchase::count());
+        $this->assertSame(5.0, (float) product_warehouse::where('product_id', $gateItem->product_id)->value('qte'));
     }
 
     public function test_supplier_tax_default_is_snapshotted_and_non_gst_invoice_has_no_tax(): void

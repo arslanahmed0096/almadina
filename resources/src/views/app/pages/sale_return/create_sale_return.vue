@@ -66,6 +66,9 @@
                 <b-col md="12">
                   <h5>{{$t('list_product_returns')}} *</h5>
                   <div class="alert alert-danger">{{$t('products_refunded_alert')}}</div>
+                  <div v-if="sale_return.is_partial_shipment_return" class="alert alert-info">
+                    This is a partially shipped order. Only delivered items are listed and returnable; unshipped items remain on the order.
+                  </div>
 
                   <div class="table-responsive">
                     <table class="table table-hover">
@@ -176,6 +179,52 @@
                     </tbody>
                   </table>
                 </div>
+
+                <b-col md="12" class="mb-3">
+                  <b-card class="border" title="Refund Amount">
+                    <b-alert variant="info" show>
+                      Record how the customer is refunded. The combined refund can be partial, but cannot exceed the Sale Return total.
+                    </b-alert>
+                    <b-row>
+                      <b-col lg="4" md="6" sm="12">
+                        <b-form-group label="Cash Refund">
+                          <b-input-group :append="currentUser.currency">
+                            <b-form-input type="number" min="0" step="0.01" v-model.number="sale_return.refund_cash_amount"></b-form-input>
+                          </b-input-group>
+                        </b-form-group>
+                        <b-form-group label="Cash Account (optional)">
+                          <v-select v-model="sale_return.refund_cash_account_id" :reduce="item => item.value" :options="accountOptions" placeholder="Choose account"></v-select>
+                        </b-form-group>
+                      </b-col>
+                      <b-col lg="4" md="6" sm="12">
+                        <b-form-group label="Bank Refund">
+                          <b-input-group :append="currentUser.currency">
+                            <b-form-input type="number" min="0" step="0.01" v-model.number="sale_return.refund_bank_amount"></b-form-input>
+                          </b-input-group>
+                        </b-form-group>
+                        <b-form-group label="Bank Account (optional)">
+                          <v-select v-model="sale_return.refund_bank_account_id" :reduce="item => item.value" :options="accountOptions" placeholder="Choose account"></v-select>
+                        </b-form-group>
+                      </b-col>
+                      <b-col lg="4" md="6" sm="12">
+                        <b-form-group label="EasyPaisa Refund">
+                          <b-input-group :append="currentUser.currency">
+                            <b-form-input type="number" min="0" step="0.01" v-model.number="sale_return.refund_easypaisa_amount"></b-form-input>
+                          </b-input-group>
+                        </b-form-group>
+                        <b-form-group label="EasyPaisa Account (optional)">
+                          <v-select v-model="sale_return.refund_easypaisa_account_id" :reduce="item => item.value" :options="accountOptions" placeholder="Choose account"></v-select>
+                        </b-form-group>
+                      </b-col>
+                    </b-row>
+                    <div class="text-right">
+                      <strong>Total refund: {{currentUser.currency}} {{refundTotal.toFixed(2)}}</strong>
+                      <span class="ml-3" :class="refundRemaining < 0 ? 'text-danger' : 'text-muted'">
+                        Remaining: {{currentUser.currency}} {{refundRemaining.toFixed(2)}}
+                      </span>
+                    </div>
+                  </b-card>
+                </b-col>
 
                  <!-- Order Tax  -->
                 <b-col lg="4" md="4" sm="12" class="mb-3">
@@ -292,6 +341,7 @@ export default {
       details: [],
       detail: {},
       sales: [],
+      accounts: [],
       sale_return: {
         id: "",
         date: new Date().toISOString().slice(0, 10),
@@ -303,7 +353,13 @@ export default {
         tax_rate: 0,
         TaxNet: 0,
         shipping: 0,
-        discount: 0
+        discount: 0,
+        refund_cash_amount: 0,
+        refund_bank_amount: 0,
+        refund_easypaisa_amount: 0,
+        refund_cash_account_id: null,
+        refund_bank_account_id: null,
+        refund_easypaisa_account_id: null
       },
       total: 0,
       GrandTotal: 0,
@@ -311,7 +367,18 @@ export default {
   },
 
   computed: {
-    ...mapGetters(["currentUser"])
+    ...mapGetters(["currentUser"]),
+    accountOptions() {
+      return this.accounts.map(account => ({ label: account.account_name, value: account.id }));
+    },
+    refundTotal() {
+      return Number(this.sale_return.refund_cash_amount || 0)
+        + Number(this.sale_return.refund_bank_amount || 0)
+        + Number(this.sale_return.refund_easypaisa_amount || 0);
+    },
+    refundRemaining() {
+      return Number((this.GrandTotal - this.refundTotal).toFixed(2));
+    }
   },
 
   methods: {
@@ -532,10 +599,7 @@ export default {
       } else {
         var count = 0;
         for (var i = 0; i < this.details.length; i++) {
-          if (
-            this.details[i].quantity != "" ||
-            this.details[i].quantity !== 0
-          ) {
+          if (Number(this.details[i].quantity || 0) > 0) {
             count += 1;
           }
          
@@ -554,6 +618,10 @@ export default {
     //--------------------------------- Create Sale Return -------------------------\\
     create_sale_return() {
       if (this.verifiedForm()) {
+        if (this.refundTotal > this.GrandTotal + 0.005) {
+          this.makeToast("warning", "The combined refund cannot exceed the Sale Return total.", this.$t("Warning"));
+          return;
+        }
         this.SubmitProcessing = true;
         NProgress.start();
         NProgress.set(0.1);
@@ -570,6 +638,12 @@ export default {
             discount: this.sale_return.discount?this.sale_return.discount:0,
             shipping: this.sale_return.shipping?this.sale_return.shipping:0,
             GrandTotal: this.GrandTotal,
+            refund_cash_amount: this.sale_return.refund_cash_amount || 0,
+            refund_bank_amount: this.sale_return.refund_bank_amount || 0,
+            refund_easypaisa_amount: this.sale_return.refund_easypaisa_amount || 0,
+            refund_cash_account_id: this.sale_return.refund_cash_account_id || null,
+            refund_bank_account_id: this.sale_return.refund_bank_account_id || null,
+            refund_easypaisa_account_id: this.sale_return.refund_easypaisa_account_id || null,
             details: this.details
           })
           .then(response => {
@@ -601,6 +675,13 @@ export default {
         .then(response => {
           this.details = response.data.details;
           this.sale_return = response.data.sale_return;
+          this.accounts = response.data.accounts || [];
+          this.$set(this.sale_return, 'refund_cash_amount', 0);
+          this.$set(this.sale_return, 'refund_bank_amount', 0);
+          this.$set(this.sale_return, 'refund_easypaisa_amount', 0);
+          this.$set(this.sale_return, 'refund_cash_account_id', null);
+          this.$set(this.sale_return, 'refund_bank_account_id', null);
+          this.$set(this.sale_return, 'refund_easypaisa_account_id', null);
           this.sale_return.date = new Date().toISOString().slice(0, 10);
           this.Calcul_Total();
           this.isLoading = false;

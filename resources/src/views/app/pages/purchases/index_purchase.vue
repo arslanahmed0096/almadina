@@ -185,6 +185,14 @@
             <span v-else class="badge badge-outline-warning">{{$t('Ordered')}}</span>
           </div>
 
+          <div v-else-if="props.column.field == 'purchase_source'">
+            <span v-if="props.row.purchase_source == 'gate_pass'" class="badge badge-outline-success">Gate Pass Purchase</span>
+            <span v-else class="badge badge-outline-primary">Direct Purchase</span>
+            <div v-if="props.row.gate_pass_number" class="text-muted mt-1" style="font-size: 11px;">
+              GP: {{ props.row.gate_pass_number }}
+            </div>
+          </div>
+
           <div v-else-if="props.column.field == 'payment_status'">
             <span
               v-if="props.row.payment_status == 'paid'"
@@ -278,6 +286,20 @@
                         {label: 'Pending', value: 'pending'},
                         {label: 'Ordered', value: 'ordered'},
                       ]"
+              ></v-select>
+            </b-form-group>
+          </b-col>
+
+          <b-col md="12">
+            <b-form-group label="Purchase Type">
+              <v-select
+                v-model="Filter_source"
+                :reduce="label => label.value"
+                placeholder="Choose purchase type"
+                :options="[
+                  {label: 'Direct Purchase', value: 'direct'},
+                  {label: 'Gate Pass Purchase', value: 'gate_pass'},
+                ]"
               ></v-select>
             </b-form-group>
           </b-col>
@@ -667,6 +689,7 @@ export default {
       Filter_warehouse: "",
       Filter_Ref: "",
       Filter_date: "",
+      Filter_source: "",
       Purchase_id: "",
       suppliers: [],
       warehouses: [],
@@ -731,6 +754,12 @@ export default {
         {
           label: this.$t("Reference"),
           field: "Ref",
+          tdClass: "text-left",
+          thClass: "text-left"
+        },
+        {
+          label: "Purchase Type",
+          field: "purchase_source",
           tdClass: "text-left",
           thClass: "text-left"
         },
@@ -937,6 +966,7 @@ export default {
       this.Filter_Ref = "";
       this.Filter_date = "";
       this.Filter_warehouse = "";
+      this.Filter_source = "";
       this.Get_Purchases(this.serverParams.page);
     },
 
@@ -951,6 +981,7 @@ export default {
 
       const headers = [
         self.$t("Reference"),
+        "Purchase Type",
         self.$t("Supplier"),
         self.$t("warehouse"),
         self.$t("Status"),
@@ -962,6 +993,7 @@ export default {
 
       const body = (self.purchases || []).map(purchase => ([
         purchase.Ref,
+        purchase.purchase_source_label,
         purchase.provider_name,
         purchase.warehouse_name,
         purchase.statut,
@@ -978,6 +1010,7 @@ export default {
 
       const footer = [[
         self.$t("Total"),
+        '',
         '',
         '',
         '',
@@ -1135,6 +1168,8 @@ export default {
         this.Filter_status = "";
       } else if (this.Filter_Payment === null) {
         this.Filter_Payment = "";
+      } else if (this.Filter_source === null) {
+        this.Filter_source = "";
       }
     },
 
@@ -1160,6 +1195,8 @@ export default {
             this.Filter_warehouse +
             "&payment_statut=" +
             this.Filter_Payment +
+            "&purchase_source=" +
+            this.Filter_source +
             "&SortField=" +
             this.serverParams.sort.field +
             "&SortType=" +

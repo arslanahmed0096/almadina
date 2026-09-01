@@ -505,10 +505,7 @@ export default {
       } else {
         var count = 0;
         for (var i = 0; i < this.details.length; i++) {
-          if (
-            this.details[i].quantity != "" ||
-            this.details[i].quantity !== 0
-          ) {
+          if (Number(this.details[i].quantity || 0) > 0) {
             count += 1;
           }
          

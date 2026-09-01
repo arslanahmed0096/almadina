@@ -7,6 +7,7 @@ use App\Models\Sale;
 use App\Models\ShipmentItem;
 use App\Models\User;
 use App\Services\CommissionService;
+use App\Services\SaleReturnEligibilityService;
 use App\Services\ShipmentEligibilityService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\QueryException;
@@ -37,6 +38,7 @@ class ShipmentWorkflowTest extends TestCase
     {
         Schema::dropIfExists('shipment_items');
         Schema::dropIfExists('shipments');
+        Schema::dropIfExists('sale_return_details');
         Schema::dropIfExists('sale_returns');
         Schema::dropIfExists('sale_details');
         Schema::dropIfExists('sales');
@@ -126,6 +128,64 @@ class ShipmentWorkflowTest extends TestCase
         $this->assertFalse($view['all_items'][1]['is_shipped']);
         $this->assertSame(1, $view['shipped_count']);
         $this->assertSame(1, $view['unshipped_count']);
+    }
+
+    public function test_partial_sale_return_allows_only_shipped_sale_lines(): void
+    {
+        [$sale, $detailIds] = $this->seedSale([6000, 5000], 11000, 11000, 10000);
+        app(ShipmentEligibilityService::class)->shipSelectedItems($sale, [$detailIds[0]], [], 1);
+
+        $eligibility = app(SaleReturnEligibilityService::class);
+        $available = $eligibility->returnableQuantities($sale->fresh()->load('details'));
+
+        $this->assertSame(1.0, $available[$detailIds[0]]);
+        $this->assertSame(0.0, $available[$detailIds[1]]);
+        $this->assertTrue($eligibility->hasDeliveredItems($sale->fresh()->load('details.shipmentItem')));
+
+        $validated = $eligibility->validateDetails($sale->fresh()->load('details'), [[
+            'id' => $detailIds[0],
+            'product_id' => 1,
+            'product_variant_id' => null,
+            'sale_unit_id' => null,
+            'quantity' => 1,
+        ]]);
+        $this->assertSame($detailIds[0], $validated->first()['sale_detail_id']);
+
+        $this->expectException(ValidationException::class);
+        $eligibility->validateDetails($sale->fresh()->load('details'), [[
+            'id' => $detailIds[1],
+            'product_id' => 1,
+            'product_variant_id' => null,
+            'sale_unit_id' => null,
+            'quantity' => 1,
+        ]]);
+    }
+
+    public function test_existing_return_quantity_cannot_be_returned_again(): void
+    {
+        [$sale, $detailIds] = $this->seedSale([6000], 6000, 6000, 0);
+        app(ShipmentEligibilityService::class)->shipSelectedItems($sale, [$detailIds[0]], [], 1);
+        DB::table('sale_returns')->insert([
+            'id' => 1,
+            'client_id' => 1,
+            'sale_id' => $sale->id,
+            'GrandTotal' => 6000,
+            'paid_amount' => 0,
+            'deleted_at' => null,
+        ]);
+        DB::table('sale_return_details')->insert([
+            'sale_return_id' => 1,
+            'sale_detail_id' => $detailIds[0],
+            'product_id' => 1,
+            'quantity' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $available = app(SaleReturnEligibilityService::class)
+            ->returnableQuantities($sale->fresh()->load('details'));
+
+        $this->assertSame(0.0, $available[$detailIds[0]]);
     }
 
     public function test_selected_item_uses_sale_payment_before_unshipped_items(): void
@@ -374,6 +434,14 @@ class ShipmentWorkflowTest extends TestCase
             $table->decimal('GrandTotal', 15, 2)->default(0);
             $table->decimal('paid_amount', 15, 2)->default(0);
             $table->softDeletes();
+        });
+        Schema::create('sale_return_details', function (Blueprint $table) {
+            $table->increments('id');
+            $table->unsignedInteger('sale_return_id');
+            $table->unsignedInteger('sale_detail_id')->nullable();
+            $table->unsignedInteger('product_id');
+            $table->decimal('quantity', 15, 2);
+            $table->timestamps();
         });
         Schema::create('shipments', function (Blueprint $table) {
             $table->increments('id');

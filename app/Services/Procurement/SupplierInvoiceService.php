@@ -156,6 +156,7 @@ class SupplierInvoiceService
                 'purchase_order_id' => $invoice->purchase_order_id, 'gate_pass_id' => $invoice->gate_pass_id,
                 'supplier_invoice_id' => $invoice->id, 'invoice_tax_type' => $invoice->tax_type,
                 'inventory_already_received' => true, 'posting_status' => 'posted',
+                'purchase_source' => 'gate_pass',
                 'provider_id' => $invoice->provider_id, 'warehouse_id' => $invoice->gatePass->warehouse_id,
                 'GrandTotal' => $invoice->grand_total, 'tax_rate' => 0, 'TaxNet' => $invoice->tax_total,
                 'withholding_tax' => 0, 'discount' => $invoice->discount_total,

@@ -20,12 +20,15 @@ use App\Models\User;
 use App\Models\UserWarehouse;
 use App\Models\Warehouse;
 use App\Services\BatchService;
+use App\Services\SaleReturnEligibilityService;
+use App\Services\SaleReturnRefundService;
 use App\utils\helpers;
 use ArPHP\I18N\Arabic;
 use Carbon\Carbon;
 use DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\ValidationException;
 use PDF;
 
 class SalesReturnController extends BaseController
@@ -185,10 +188,52 @@ class SalesReturnController extends BaseController
         request()->validate([
             'client_id' => 'required',
             'warehouse_id' => 'required',
+            'sale_id' => 'required|integer|exists:sales,id',
             'statut' => 'required',
+            'details' => 'required|array|min:1',
+            'details.*.product_id' => 'required|integer',
+            'details.*.quantity' => 'required|numeric|min:0',
+            'refund_cash_amount' => 'nullable|numeric|min:0',
+            'refund_bank_amount' => 'nullable|numeric|min:0',
+            'refund_easypaisa_amount' => 'nullable|numeric|min:0',
+            'refund_cash_account_id' => 'nullable|integer|exists:accounts,id',
+            'refund_bank_account_id' => 'nullable|integer|exists:accounts,id',
+            'refund_easypaisa_account_id' => 'nullable|integer|exists:accounts,id',
         ]);
 
         \DB::transaction(function () use ($request) {
+            $sale = Sale::with('details')
+                ->whereNull('deleted_at')
+                ->lockForUpdate()
+                ->findOrFail($request->sale_id);
+
+            if ((int) $sale->client_id !== (int) $request->client_id || (int) $sale->warehouse_id !== (int) $request->warehouse_id) {
+                throw ValidationException::withMessages([
+                    'sale_id' => ['The customer or warehouse does not match the selected sale.'],
+                ]);
+            }
+            if (SaleReturn::where('sale_id', $sale->id)->whereNull('deleted_at')->lockForUpdate()->exists()) {
+                throw ValidationException::withMessages([
+                    'sale_id' => ['An active Sale Return already exists for this sale. Edit the existing return instead.'],
+                ]);
+            }
+
+            $data = app(SaleReturnEligibilityService::class)
+                ->validateDetails($sale, (array) $request->input('details', []))
+                ->values()
+                ->all();
+            $refunds = $request->only([
+                'refund_cash_amount', 'refund_bank_amount', 'refund_easypaisa_amount',
+                'refund_cash_account_id', 'refund_bank_account_id', 'refund_easypaisa_account_id',
+            ]);
+            $refundService = app(SaleReturnRefundService::class);
+            $refundTotal = $refundService->total($refunds);
+            if ($refundTotal > (float) $request->GrandTotal + 0.005) {
+                throw ValidationException::withMessages([
+                    'refunds' => ['The combined cash, bank, and EasyPaisa refund cannot exceed the Sale Return total.'],
+                ]);
+            }
+
             $order = new SaleReturn;
 
             $order->date = $request->date;
@@ -203,19 +248,20 @@ class SalesReturnController extends BaseController
             $order->shipping = $request->shipping;
             $order->GrandTotal = $request->GrandTotal;
             $order->statut = $request->statut;
-            $order->payment_statut = 'unpaid';
+            $order->paid_amount = $refundTotal;
+            $order->payment_statut = $refundService->paymentStatus((float) $request->GrandTotal, $refundTotal);
             $order->notes = $request->notes;
             $order->user_id = Auth::user()->id;
 
             $order->save();
 
-            $data = $request['details'];
             $persistedDetails = [];
             foreach ($data as $key => $value) {
                 $unit = Unit::where('id', $value['sale_unit_id'])->first();
 
                 $persistedDetails[$key] = SaleReturnDetails::create([
                     'sale_return_id' => $order->id,
+                    'sale_detail_id' => $value['sale_detail_id'],
                     'quantity' => $value['quantity'],
                     'price' => $value['Unit_price'],
                     'sale_unit_id' => $value['sale_unit_id'],
@@ -281,6 +327,8 @@ class SalesReturnController extends BaseController
 
             app(\App\Services\Tax\TransactionTaxService::class)
                 ->reverseSaleReturn($order->fresh());
+
+            $refundService->record($order, $refunds, (int) Auth::id());
         }, 10);
 
         return response()->json(['success' => true]);
@@ -327,7 +375,11 @@ class SalesReturnController extends BaseController
                 $this->authorizeForUser($request->user('api'), 'check_record', $current_SaleReturn);
             }
             $old_return_details = SaleReturnDetails::where('sale_return_id', $id)->get();
-            $new_return_details = $request['details'];
+            $sourceSale = Sale::with('details')->lockForUpdate()->findOrFail($current_SaleReturn->sale_id);
+            $new_return_details = app(SaleReturnEligibilityService::class)
+                ->validateDetails($sourceSale, (array) $request->input('details', []), $current_SaleReturn->id)
+                ->values()
+                ->all();
             $length = count($new_return_details);
 
             // Get Ids details
@@ -450,6 +502,7 @@ class SalesReturnController extends BaseController
                     }
 
                     $orderDetails['sale_return_id'] = $id;
+                    $orderDetails['sale_detail_id'] = $product_detail['sale_detail_id'];
                     $orderDetails['sale_unit_id'] = $product_detail['sale_unit_id'];
                     $orderDetails['quantity'] = $product_detail['quantity'];
                     $orderDetails['price'] = $product_detail['Unit_price'];
@@ -989,9 +1042,17 @@ class SalesReturnController extends BaseController
         // New way: Check user's record_view field (user-level boolean)
         // Backward compatibility: If record_view is null, fall back to role permission check
         $view_records = $user->hasRecordView();
-        $SaleReturn = Sale::with('details.product.unitSale')
+        $SaleReturn = Sale::with('details.product.unitSale', 'details.shipmentItem')
             ->where('deleted_at', '=', null)
             ->findOrFail($id);
+
+        if (SaleReturn::where('sale_id', $SaleReturn->id)->whereNull('deleted_at')->exists()) {
+            throw ValidationException::withMessages([
+                'sale_id' => ['An active Sale Return already exists for this sale. Edit the existing return instead.'],
+            ]);
+        }
+
+        $returnableQuantities = app(SaleReturnEligibilityService::class)->returnableQuantities($SaleReturn);
 
         $details = [];
 
@@ -1011,9 +1072,14 @@ class SalesReturnController extends BaseController
         $Return_detail['shipping'] = 0;
         $Return_detail['statut'] = 'received';
         $Return_detail['notes'] = '';
+        $Return_detail['is_partial_shipment_return'] = $SaleReturn->statut !== 'completed';
 
         $detail_id = 0;
         foreach ($SaleReturn['details'] as $detail) {
+            $returnableQuantity = (float) ($returnableQuantities[$detail->id] ?? 0);
+            if ($returnableQuantity <= 0) {
+                continue;
+            }
 
             // check if detail has sale_unit_id Or Null
             if ($detail->sale_unit_id !== null) {
@@ -1064,7 +1130,7 @@ class SalesReturnController extends BaseController
             $data['detail_id'] = $detail_id += 1;
             $data['product_type'] = $detail['product']['type'];
             $data['quantity'] = 0;
-            $data['sale_quantity'] = $detail->quantity;
+            $data['sale_quantity'] = $returnableQuantity;
             $data['product_id'] = $detail->product_id;
             $data['unitSale'] = $unit ? $unit->ShortName : '';
             $data['sale_unit_id'] = $unit ? $unit->id : '';
@@ -1102,6 +1168,7 @@ class SalesReturnController extends BaseController
         return response()->json([
             'details' => $details,
             'sale_return' => $Return_detail,
+            'accounts' => Account::whereNull('deleted_at')->orderBy('account_name')->get(['id', 'account_name']),
         ]);
 
     }
@@ -1275,6 +1342,10 @@ class SalesReturnController extends BaseController
         $Return_detail['notes'] = $SaleReturn->notes;
         $Return_detail['statut'] = $SaleReturn->statut;
 
+        $sourceSale = Sale::with('details')->findOrFail($sale_id);
+        $returnableQuantities = app(SaleReturnEligibilityService::class)
+            ->returnableQuantities($sourceSale, $SaleReturn->id);
+
         $detail_id = 0;
         foreach ($SaleReturn['details'] as $detail) {
 
@@ -1327,12 +1398,17 @@ class SalesReturnController extends BaseController
             $data['id'] = $detail->id;
             $data['detail_id'] = $detail_id += 1;
 
-            $sell_detail = SaleDetail::where('sale_id', $sale_id)
-                ->where('product_id', $detail->product_id)
-                ->where('product_variant_id', $detail->product_variant_id)
-                ->first();
+            $sell_detail = $detail->sale_detail_id
+                ? $sourceSale->details->firstWhere('id', $detail->sale_detail_id)
+                : SaleDetail::where('sale_id', $sale_id)
+                    ->where('product_id', $detail->product_id)
+                    ->where('product_variant_id', $detail->product_variant_id)
+                    ->first();
 
-            $data['sale_quantity'] = $sell_detail->quantity;
+            $data['sale_detail_id'] = $sell_detail ? $sell_detail->id : null;
+            $data['sale_quantity'] = $sell_detail
+                ? (float) ($returnableQuantities[$sell_detail->id] ?? 0)
+                : (float) $detail->quantity;
             $data['product_type'] = $detail['product']['type'];
             $data['quantity'] = $detail->quantity;
             $data['product_id'] = $detail->product_id;
