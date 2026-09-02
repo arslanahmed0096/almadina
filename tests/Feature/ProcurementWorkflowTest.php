@@ -42,6 +42,7 @@ class ProcurementWorkflowTest extends TestCase
         (require database_path('migrations/2026_08_25_000003_link_purchases_to_gate_passes.php'))->up();
         (require database_path('migrations/2026_08_25_000004_track_purchase_gate_pass_quantities.php'))->up();
         (require database_path('migrations/2026_09_01_000001_add_purchase_source_to_purchases.php'))->up();
+        (require database_path('migrations/2026_09_02_000001_track_purchase_invoice_quantities_by_po_item.php'))->up();
         $this->user = User::create(['username' => 'admin', 'email' => 'admin@example.test', 'password' => bcrypt('secret'), 'role_id' => 1, 'statut' => 1, 'is_all_warehouses' => 1]);
         \DB::table('role_user')->insert(['user_id' => $this->user->id, 'role_id' => 1]);
         $purchasePermissionId = \DB::table('permissions')->insertGetId(['name' => 'Purchases_add', 'label' => 'Add Purchases']);
@@ -388,31 +389,40 @@ class ProcurementWorkflowTest extends TestCase
         $this->assertSame(2.0, (float) product_warehouse::where('product_id', $product->id)->value('qte'));
     }
 
-    public function test_gate_pass_purchase_rejects_manually_added_product_lines(): void
+    public function test_gate_pass_invoice_excess_revises_same_purchase_order_and_stocks_only_the_excess(): void
     {
-        [$po] = $this->singleLineOrder(5);
+        [$po, $orderedProduct] = $this->singleLineOrder(20);
         $gate = app(GatePassService::class)->create($po, [
             'delivered_at' => now(),
             'items' => [[
                 'purchase_order_item_id' => $po->items[0]->id,
-                'delivered_quantity' => 5,
-                'accepted_quantity' => 5,
+                'delivered_quantity' => 20,
+                'accepted_quantity' => 20,
             ]],
         ], $this->user);
         app(GatePassService::class)->confirm($gate, $this->user);
         $gateItem = $gate->items()->firstOrFail();
+        $extraProduct = Product::create([
+            'name' => 'Invoice Extra Product', 'code' => 'INV-EXTRA', 'cost' => 100,
+            'unit_id' => $this->unit->id, 'unit_purchase_id' => $this->unit->id,
+            'is_variant' => 0, 'is_active' => 1,
+        ]);
 
         $this->actingAs($this->user, 'api');
+        $this->getJson('/api/purchase-gate-passes/lookup?number='.urlencode($gate->number))
+            ->assertOk()
+            ->assertJsonPath('gate_pass.purchase_order_id', $po->id);
         $this->postJson('/api/purchases', [
-            'date' => '2026-09-01',
+            'date' => '2026-09-02',
             'supplier_id' => $this->provider->id,
             'warehouse_id' => $this->warehouse->id,
             'statut' => 'received',
             'tax_rate' => 0,
             'TaxNet' => 0,
+            'withholding_tax' => 0,
             'discount' => 0,
             'shipping' => 0,
-            'GrandTotal' => 200,
+            'GrandTotal' => 2500,
             'gate_pass_ids' => [$gate->id],
             'details' => [
                 [
@@ -420,19 +430,81 @@ class ProcurementWorkflowTest extends TestCase
                     'product_id' => $gateItem->product_id,
                     'product_variant_id' => null,
                     'purchase_unit_id' => $gateItem->unit_id,
-                    'quantity' => 1,
+                    'quantity' => 20,
+                    'Unit_cost' => 100,
+                    'company_rb_price' => 100,
+                    'mrp_price' => 100,
+                    'tax_percent' => 0,
+                    'taxe' => 0,
+                    'withholding_tax' => 0,
+                    'tax_method' => '1',
+                    'discount' => 0,
+                    'discount_Method' => '2',
+                    'subtotal' => 2000,
+                    'imei_number' => '',
                 ],
                 [
-                    'product_id' => $gateItem->product_id,
+                    'product_id' => $extraProduct->id,
                     'product_variant_id' => null,
-                    'purchase_unit_id' => $gateItem->unit_id,
-                    'quantity' => 1,
+                    'purchase_unit_id' => $this->unit->id,
+                    'quantity' => 5,
+                    'Unit_cost' => 100,
+                    'company_rb_price' => 100,
+                    'mrp_price' => 100,
+                    'tax_percent' => 0,
+                    'taxe' => 0,
+                    'withholding_tax' => 0,
+                    'tax_method' => '1',
+                    'discount' => 0,
+                    'discount_Method' => '2',
+                    'subtotal' => 500,
+                    'imei_number' => '',
                 ],
             ],
-        ])->assertStatus(422)->assertJsonValidationErrors('details');
+        ])->assertOk();
 
-        $this->assertSame(0, Purchase::count());
-        $this->assertSame(5.0, (float) product_warehouse::where('product_id', $gateItem->product_id)->value('qte'));
+        $purchase = Purchase::latest('id')->firstOrFail();
+        $revisedOrder = $po->fresh('items');
+        $revisedOrderedLine = $revisedOrder->items->firstWhere('product_id', $orderedProduct->id);
+        $newOrderLine = $revisedOrder->items->firstWhere('product_id', $extraProduct->id);
+
+        $this->assertSame($po->id, (int) $purchase->purchase_order_id);
+        $this->assertSame(1, \App\Models\PurchaseOrder::count());
+        $this->assertSame(25.0, (float) $revisedOrder->items->sum('ordered_quantity'));
+        $this->assertSame(20.0, (float) $revisedOrderedLine->ordered_quantity);
+        $this->assertSame(5.0, (float) $newOrderLine->ordered_quantity);
+        $this->assertSame(20.0, (float) product_warehouse::where('product_id', $orderedProduct->id)->sum('qte'));
+        $this->assertSame(5.0, (float) product_warehouse::where('product_id', $extraProduct->id)->sum('qte'));
+        $this->assertSame(25.0, (float) product_warehouse::whereIn('product_id', [$orderedProduct->id, $extraProduct->id])->sum('qte'));
+        $this->assertSame(20.0, (float) \DB::table('purchase_gate_pass_items')->where('purchase_id', $purchase->id)->sum('quantity'));
+        $this->assertDatabaseHas('purchase_details', [
+            'purchase_id' => $purchase->id,
+            'purchase_order_item_id' => $revisedOrderedLine->id,
+            'product_id' => $orderedProduct->id,
+            'quantity' => 20,
+            'gate_pass_quantity' => 20,
+            'invoice_excess_quantity' => 0,
+        ]);
+        $this->assertDatabaseHas('purchase_details', [
+            'purchase_id' => $purchase->id,
+            'purchase_order_item_id' => $newOrderLine->id,
+            'product_id' => $extraProduct->id,
+            'quantity' => 5,
+            'gate_pass_quantity' => 0,
+            'invoice_excess_quantity' => 5,
+        ]);
+        $this->assertDatabaseHas('procurement_audits', [
+            'purchase_order_id' => $po->id,
+            'action' => 'invoice_excess_revised',
+        ]);
+
+        $progress = app(PurchaseOrderProgressService::class)->progress($revisedOrder);
+        $this->assertSame(25.0, $progress['totals']['ordered']);
+        $this->assertSame(25.0, $progress['totals']['received']);
+        $this->assertSame(0.0, $progress['totals']['remaining']);
+        $this->assertSame(25.0, $progress['totals']['invoiced']);
+        $this->assertSame(25.0, $progress['totals']['purchased']);
+        $this->assertSame('completed', $revisedOrder->fresh()->status);
     }
 
     public function test_supplier_tax_default_is_snapshotted_and_non_gst_invoice_has_no_tax(): void

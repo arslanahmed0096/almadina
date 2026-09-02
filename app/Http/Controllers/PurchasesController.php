@@ -316,6 +316,7 @@ class PurchasesController extends BaseController
             'id' => $gatePass->id,
             'number' => $gatePass->number,
             'supplier_gate_pass_number' => $gatePass->supplier_gate_pass_number,
+            'purchase_order_id' => $gatePass->purchase_order_id,
             'provider_id' => $gatePass->provider_id,
             'provider' => $gatePass->provider,
             'warehouse_id' => $gatePass->warehouse_id,
@@ -352,6 +353,8 @@ class PurchasesController extends BaseController
             );
             $gatePasses = $gatePassData['gate_passes'];
             $gatePassAllocations = $gatePassData['allocations'];
+            $purchaseOrder = $gatePassData['purchase_order'];
+            $lineMappings = $gatePassData['line_mappings'];
             $order = new Purchase;
 
             $order->date = $request->date;
@@ -395,12 +398,21 @@ class PurchasesController extends BaseController
                 ])->values()->all());
             }
 
+            if ($purchaseOrder && collect($lineMappings)->sum('invoice_excess_quantity') > 0) {
+                $lineMappings = app(\App\Services\Procurement\PurchaseOrderInvoiceAdjustmentService::class)
+                    ->apply($purchaseOrder, $order, $request->input('details', []), $lineMappings);
+            }
+
             $data = $request['details'];
             foreach ($data as $key => $value) {
                 $unit = Unit::where('id', $value['purchase_unit_id'])->first();
+                $lineMapping = $lineMappings[$key] ?? [];
                 $orderDetails[] = [
                     'purchase_id' => $order->id,
+                    'purchase_order_item_id' => $lineMapping['purchase_order_item_id'] ?? null,
                     'quantity' => $value['quantity'],
+                    'gate_pass_quantity' => $lineMapping['gate_pass_quantity'] ?? 0,
+                    'invoice_excess_quantity' => $lineMapping['invoice_excess_quantity'] ?? 0,
                     'cost' => $value['Unit_cost'],
                     'company_rb_price' => $value['company_rb_price'] ?? $value['Unit_cost'],
                     'mrp_price' => $value['mrp_price'] ?? 0,
@@ -417,41 +429,18 @@ class PurchasesController extends BaseController
                     'imei_number' => $value['imei_number'],
                 ];
 
-                if ($order->statut == 'received' && ! $order->inventory_already_received) {
-                    if ($value['product_variant_id'] !== null) {
-                        $product_warehouse = product_warehouse::where('deleted_at', '=', null)
-                            ->where('warehouse_id', $order->warehouse_id)
-                            ->where('product_id', $value['product_id'])
-                            ->where('product_variant_id', $value['product_variant_id'])
-                            ->first();
-
-                        if ($unit && $product_warehouse) {
-                            if ($unit->operator == '/') {
-                                $product_warehouse->qte += $value['quantity'] / $unit->operator_value;
-                            } else {
-                                $product_warehouse->qte += $value['quantity'] * $unit->operator_value;
-                            }
-                            $product_warehouse->save();
-                        }
-
-                    } else {
-                        $product_warehouse = product_warehouse::where('deleted_at', '=', null)
-                            ->where('warehouse_id', $order->warehouse_id)
-                            ->where('product_id', $value['product_id'])
-                            ->first();
-
-                        if ($unit && $product_warehouse) {
-                            if ($unit->operator == '/') {
-                                $product_warehouse->qte += $value['quantity'] / $unit->operator_value;
-                            } else {
-                                $product_warehouse->qte += $value['quantity'] * $unit->operator_value;
-                            }
-                            $product_warehouse->save();
-                        }
-                    }
+                $stockQuantity = $order->inventory_already_received
+                    ? (float) ($lineMapping['invoice_excess_quantity'] ?? 0)
+                    : (float) $value['quantity'];
+                if ($order->statut == 'received' && $stockQuantity > 0) {
+                    $this->increasePurchaseStock($order, $value, $unit, $stockQuantity);
                 }
             }
             PurchaseDetail::insert($orderDetails);
+            if ($purchaseOrder) {
+                app(\App\Services\Procurement\PurchaseOrderProgressService::class)
+                    ->refreshStatus($purchaseOrder->fresh());
+            }
 
             // Managed tax snapshots are calculated server-side. Legacy aggregate
             // columns remain dual-written for backward-compatible reports/PDFs.
@@ -481,10 +470,12 @@ class PurchasesController extends BaseController
                 throw ValidationException::withMessages(['gate_pass_ids' => ['Gate Pass item lines require their Gate Pass reference.']]);
             }
 
-            return ['gate_passes' => collect(), 'allocations' => collect()];
-        }
-        if ($submittedLines->count() !== count($details)) {
-            throw ValidationException::withMessages(['details' => ['A Gate Pass Purchase can contain only products allocated from the selected Gate Passes. Remove manually added products and try again.']]);
+            return [
+                'gate_passes' => collect(),
+                'allocations' => collect(),
+                'purchase_order' => null,
+                'line_mappings' => [],
+            ];
         }
 
         $query = GatePass::with('items')->whereIn('id', $ids)->lockForUpdate();
@@ -502,6 +493,11 @@ class PurchasesController extends BaseController
         if ($gatePasses->contains(fn ($gatePass) => (int) $gatePass->warehouse_id !== $warehouseId)) {
             throw ValidationException::withMessages(['gate_pass_ids' => ['All Gate Passes must belong to the selected warehouse.']]);
         }
+        $purchaseOrderIds = $gatePasses->pluck('purchase_order_id')->filter()->unique()->values();
+        $purchaseOrder = $purchaseOrderIds->count() === 1
+            && $gatePasses->every(fn ($gatePass) => (int) $gatePass->purchase_order_id === (int) $purchaseOrderIds->first())
+            ? \App\Models\PurchaseOrder::lockForUpdate()->findOrFail($purchaseOrderIds->first())
+            : null;
         $acceptedItems = $gatePasses->flatMap->items
             ->filter(fn ($item) => (float) $item->accepted_quantity > 0)
             ->keyBy('id');
@@ -512,38 +508,72 @@ class PurchasesController extends BaseController
             throw ValidationException::withMessages(['details' => ['Add at least one Gate Pass product quantity.']]);
         }
 
-        $representedGatePassIds = $submittedLines->map(function ($detail) use ($acceptedItems) {
-            return (int) optional($acceptedItems->get((int) $detail['gate_pass_item_id']))->gate_pass_id;
-        })->filter()->unique()->sort()->values();
-        if ($representedGatePassIds->all() !== $ids->sort()->values()->all()) {
-            throw ValidationException::withMessages(['gate_pass_ids' => ['Each selected Gate Pass must contribute at least one product line.']]);
-        }
-
         $used = $this->gatePassItemUsedQuantities($acceptedItems->keys());
-        $allocations = $submittedLines->groupBy(fn ($detail) => (int) $detail['gate_pass_item_id'])
-            ->map(function ($lines, $gatePassItemId) use ($acceptedItems, $used) {
-                $item = $acceptedItems->get((int) $gatePassItemId);
+        $remaining = $acceptedItems->mapWithKeys(fn ($item) => [
+            $item->id => max(0, (float) $item->accepted_quantity - (float) ($used[$item->id] ?? 0)),
+        ]);
+        $allocations = collect();
+        $lineMappings = [];
+        $representedGatePassIds = collect();
+
+        foreach ($details as $index => $line) {
+            $quantity = (float) ($line['quantity'] ?? 0);
+            if ($quantity <= 0) {
+                throw ValidationException::withMessages(["details.$index.quantity" => ['Invoice quantity must be greater than zero.']]);
+            }
+
+            if (! empty($line['gate_pass_item_id'])) {
+                $gatePassItemId = (int) $line['gate_pass_item_id'];
+                $item = $acceptedItems->get($gatePassItemId);
                 if (! $item) {
                     throw ValidationException::withMessages(['details' => ['A submitted product does not belong to the selected Gate Passes.']]);
                 }
-                foreach ($lines as $line) {
-                    $sameProduct = (int) ($line['product_id'] ?? 0) === (int) $item->product_id;
-                    $sameVariant = (int) (($line['product_variant_id'] ?? null) ?: 0) === (int) ($item->product_variant_id ?: 0);
-                    $sameUnit = (int) ($line['purchase_unit_id'] ?? 0) === (int) $item->unit_id;
-                    if (! $sameProduct || ! $sameVariant || ! $sameUnit) {
-                        throw ValidationException::withMessages(['details' => ['A Gate Pass product or unit was changed. Reload the Gate Pass and try again.']]);
-                    }
-                }
-                $quantity = (float) $lines->sum(fn ($line) => (float) ($line['quantity'] ?? 0));
-                $remaining = max(0, (float) $item->accepted_quantity - (float) ($used[$item->id] ?? 0));
-                if ($quantity <= 0 || $quantity - $remaining > 0.000001) {
-                    throw ValidationException::withMessages(['details' => ["Purchase quantity must be positive and cannot exceed the remaining {$remaining} for {$item->sku}."]]);
+                $sameProduct = (int) ($line['product_id'] ?? 0) === (int) $item->product_id;
+                $sameVariant = (int) (($line['product_variant_id'] ?? null) ?: 0) === (int) ($item->product_variant_id ?: 0);
+                $sameUnit = (int) ($line['purchase_unit_id'] ?? 0) === (int) $item->unit_id;
+                if (! $sameProduct || ! $sameVariant || ! $sameUnit) {
+                    throw ValidationException::withMessages(['details' => ['A Gate Pass product or unit was changed. Reload the Gate Pass and try again.']]);
                 }
 
-                return $quantity;
-            });
+                $available = (float) ($remaining[$gatePassItemId] ?? 0);
+                $gatePassQuantity = min($quantity, $available);
+                if ($gatePassQuantity <= 0) {
+                    throw ValidationException::withMessages(["details.$index.quantity" => ["The accepted Gate Pass quantity for {$item->sku} has already been fully invoiced."]]);
+                }
+                $invoiceExcess = max(0, $quantity - $gatePassQuantity);
+                $remaining[$gatePassItemId] = max(0, $available - $gatePassQuantity);
+                $allocations[$gatePassItemId] = (float) ($allocations[$gatePassItemId] ?? 0) + $gatePassQuantity;
+                $representedGatePassIds->push((int) $item->gate_pass_id);
+                $purchaseOrderItemId = $item->purchase_order_item_id;
+            } else {
+                $gatePassQuantity = 0.0;
+                $invoiceExcess = $quantity;
+                $purchaseOrderItemId = null;
+            }
 
-        return ['gate_passes' => $gatePasses, 'allocations' => $allocations];
+            if ($invoiceExcess > 0 && ! $purchaseOrder) {
+                throw ValidationException::withMessages(["details.$index.quantity" => [
+                    'Invoice-only excess can be added only when all selected Gate Passes belong to one Purchase Order.',
+                ]]);
+            }
+
+            $lineMappings[$index] = [
+                'purchase_order_item_id' => $purchaseOrderItemId,
+                'gate_pass_quantity' => $gatePassQuantity,
+                'invoice_excess_quantity' => $invoiceExcess,
+            ];
+        }
+
+        if ($representedGatePassIds->filter()->unique()->sort()->values()->all() !== $ids->sort()->values()->all()) {
+            throw ValidationException::withMessages(['gate_pass_ids' => ['Each selected Gate Pass must contribute at least one product line.']]);
+        }
+
+        return [
+            'gate_passes' => $gatePasses,
+            'allocations' => $allocations,
+            'purchase_order' => $purchaseOrder,
+            'line_mappings' => $lineMappings,
+        ];
     }
 
     private function gatePassItemUsedQuantities($gatePassItemIds)
@@ -574,6 +604,34 @@ class PurchasesController extends BaseController
         if (! $user->isSuperAdmin() && ! $user->is_all_warehouses) {
             $query->whereIn('warehouse_id', UserWarehouse::where('user_id', $user->id)->pluck('warehouse_id'));
         }
+    }
+
+    private function increasePurchaseStock(Purchase $purchase, array $detail, ?Unit $unit, float $quantity): void
+    {
+        if (! $unit || (float) $unit->operator_value <= 0) {
+            return;
+        }
+
+        $baseQuantity = $unit->operator === '/'
+            ? $quantity / (float) $unit->operator_value
+            : $quantity * (float) $unit->operator_value;
+        $query = product_warehouse::whereNull('deleted_at')
+            ->where('warehouse_id', $purchase->warehouse_id)
+            ->where('product_id', $detail['product_id']);
+        ! empty($detail['product_variant_id'] ?? null)
+            ? $query->where('product_variant_id', $detail['product_variant_id'])
+            : $query->whereNull('product_variant_id');
+        $stock = $query->lockForUpdate()->first();
+        if (! $stock) {
+            $stock = product_warehouse::create([
+                'warehouse_id' => $purchase->warehouse_id,
+                'product_id' => $detail['product_id'],
+                'product_variant_id' => ($detail['product_variant_id'] ?? null) ?: null,
+                'qte' => 0,
+            ]);
+        }
+        $stock->qte = (float) $stock->qte + $baseQuantity;
+        $stock->save();
     }
 
     // --------- Update Purchase  -------------\\

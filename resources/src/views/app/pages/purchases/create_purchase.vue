@@ -13,7 +13,8 @@
                 <b-col cols="12">
                   <b-alert :variant="selectedGatePasses.length ? 'success' : 'info'" show>
                     <strong>{{ selectedGatePasses.length ? 'Gate Pass Purchase' : 'Direct Purchase' }}</strong>
-                    <span v-if="selectedGatePasses.length"> — Stock was already received when the Gate Pass was confirmed. This Purchase records the supplier invoice and will not increase stock.</span>
+                    <span v-if="selectedGatePasses.length && canAddInvoiceExcess"> — Gate Pass quantities are already in stock. Invoice-only excess will revise the same Purchase Order and add only the excess quantity to stock.</span>
+                    <span v-else-if="selectedGatePasses.length"> — Stock was already received at Gate Pass confirmation. Extra invoice quantities require all selected Gate Passes to belong to one Purchase Order.</span>
                     <span v-else> — Saving this Purchase as received will add its product quantities to stock.</span>
                   </b-alert>
                 </b-col>
@@ -256,10 +257,10 @@
                  
                   <div id="autocomplete" class="autocomplete">
                     <div class="input-with-icon">
-                      <img src="/assets_setup/scan.png" alt="Scan" class="scan-icon" :class="{ 'scan-icon-disabled': selectedGatePasses.length }" @click="showModal">
+                      <img src="/assets_setup/scan.png" alt="Scan" class="scan-icon" :class="{ 'scan-icon-disabled': selectedGatePasses.length && !canAddInvoiceExcess }" @click="showModal">
                     <input 
                      :placeholder="$t('Scan_Search_Product_by_Code_Name')"
-                      :disabled="selectedGatePasses.length > 0"
+                      :disabled="selectedGatePasses.length > 0 && !canAddInvoiceExcess"
                       @input='e => search_input = e.target.value' 
                       @keyup="search(search_input)"
                       @focus="handleFocus"
@@ -267,7 +268,7 @@
                       ref="product_autocomplete"
                       class="autocomplete-input" />
                     </div>
-                    <ul class="autocomplete-result-list" v-show="focused && !selectedGatePasses.length">
+                    <ul class="autocomplete-result-list" v-show="focused && (!selectedGatePasses.length || canAddInvoiceExcess)">
                       <li class="autocomplete-result" v-for="product_fil in product_filter" @mousedown="SearchProduct(product_fil)">{{getResultValue(product_fil)}}</li>
                     </ul>
                 </div>
@@ -320,6 +321,12 @@
                             <div v-if="isGatePassDetail(detail)" class="text-primary mt-1" style="font-size: 12px;">
                               Gate Pass: <strong>{{ gatePassLabels(detail) }}</strong>
                             </div>
+                            <div v-if="canAddInvoiceExcess && invoiceExcessQuantity(detail) > 0" class="text-warning mt-1" style="font-size: 12px;">
+                              <strong>Invoice-only excess: {{ invoiceExcessQuantity(detail) }}</strong> — added to the same Purchase Order and stock.
+                            </div>
+                            <div v-if="canAddInvoiceExcess && !isGatePassDetail(detail)" class="text-warning mt-1" style="font-size: 12px;">
+                              Manual invoice line — the full quantity will be added to the same Purchase Order and stock.
+                            </div>
                           </td>
                           <td class="purchase-quantity-column">
                             <div class="purchase-quantity-control">
@@ -334,8 +341,8 @@
                                 class="form-control purchase-quantity-input"
                                 @input="Verified_Qty(detail, detail.detail_id)"
                                 :min="1"
-                                :max="detail.gate_pass_max_quantity || null"
-                                :step="isGatePassDetail(detail) ? 1 : 'any'"
+                                :max="isGatePassDetail(detail) && !canAddInvoiceExcess ? detail.gate_pass_max_quantity : null"
+                                step="any"
                                 v-model.number="detail.quantity"
                               >
                               <button
@@ -1046,14 +1053,24 @@ export default {
         if (!Array.isArray(d.batches) || d.batches.length === 0) return true;
         return this.batchQtyMismatch(d);
       }) || null;
+    },
+
+    gatePassPurchaseOrderId() {
+      if (!this.selectedGatePasses.length) return null;
+      const ids = [...new Set(this.selectedGatePasses.map(gatePass => Number(gatePass.purchase_order_id) || 0))];
+      return ids.length === 1 && ids[0] > 0 ? ids[0] : null;
+    },
+
+    canAddInvoiceExcess() {
+      return Boolean(this.gatePassPurchaseOrderId);
     }
   },
 
   methods: {
 
     showModal() {
-      if (this.selectedGatePasses.length) {
-        this.makeToast('warning', 'Manual products cannot be added to a Gate Pass Purchase.', this.$t('Warning'));
+      if (this.selectedGatePasses.length && !this.canAddInvoiceExcess) {
+        this.makeToast('warning', 'Extra products require all selected Gate Passes to belong to one Purchase Order.', this.$t('Warning'));
         return;
       }
       this.$bvModal.show('open_scan');
@@ -1156,10 +1173,6 @@ export default {
       if (this.purchase.warehouse_id && Number(this.purchase.warehouse_id) !== Number(gatePass.warehouse_id)) {
         return Promise.reject(new Error('All Gate Passes must belong to the selected warehouse.'));
       }
-      if (this.details.some(detail => !this.isGatePassDetail(detail))) {
-        return Promise.reject(new Error('Remove manually added products before creating a Gate Pass Purchase.'));
-      }
-
       const lines = gatePass.items.map(item => ({ item, product: item.product_data || {} }));
       return Promise.resolve().then(() => {
         this.purchase.supplier_id = gatePass.provider_id;
@@ -1181,6 +1194,7 @@ export default {
           id: gatePass.id,
           number: gatePass.number,
           supplier_gate_pass_number: gatePass.supplier_gate_pass_number,
+          purchase_order_id: gatePass.purchase_order_id,
           provider_id: gatePass.provider_id,
           warehouse_id: gatePass.warehouse_id
         });
@@ -1233,6 +1247,13 @@ export default {
 
     isGatePassDetail(detail) {
       return Array.isArray(detail.gate_pass_items) && detail.gate_pass_items.length > 0;
+    },
+
+    invoiceExcessQuantity(detail) {
+      const quantity = Number(detail && detail.quantity) || 0;
+      if (!this.canAddInvoiceExcess) return 0;
+      if (!this.isGatePassDetail(detail)) return quantity;
+      return Math.max(0, quantity - (Number(detail.gate_pass_max_quantity) || 0));
     },
 
     gatePassLabels(detail) {
@@ -1554,7 +1575,7 @@ export default {
           if (isNaN(detail.quantity)) {
             this.details[i].quantity = 1;
           }
-          if (this.isGatePassDetail(detail) && Number(detail.quantity) > Number(detail.gate_pass_max_quantity)) {
+          if (this.isGatePassDetail(detail) && !this.canAddInvoiceExcess && Number(detail.quantity) > Number(detail.gate_pass_max_quantity)) {
             this.details[i].quantity = Number(detail.gate_pass_max_quantity);
             this.makeToast('warning', `Quantity cannot exceed the remaining Gate Pass quantity of ${detail.gate_pass_max_quantity}.`, this.$t('Warning'));
           }
@@ -1569,7 +1590,7 @@ export default {
     increment(detail, id) {
       for (var i = 0; i < this.details.length; i++) {
         if (this.details[i].detail_id == id) {
-          if (this.isGatePassDetail(detail) && Number(this.details[i].quantity) + 1 > Number(detail.gate_pass_max_quantity)) {
+          if (this.isGatePassDetail(detail) && !this.canAddInvoiceExcess && Number(this.details[i].quantity) + 1 > Number(detail.gate_pass_max_quantity)) {
             this.makeToast('warning', `Quantity cannot exceed the remaining Gate Pass quantity of ${detail.gate_pass_max_quantity}.`, this.$t('Warning'));
             return;
           }

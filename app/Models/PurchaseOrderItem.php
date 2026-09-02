@@ -37,4 +37,9 @@ class PurchaseOrderItem extends Model
     {
         return $this->hasMany(GatePassItem::class);
     }
+
+    public function purchaseDetails()
+    {
+        return $this->hasMany(PurchaseDetail::class);
+    }
 }

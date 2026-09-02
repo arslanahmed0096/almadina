@@ -7,7 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 class PurchaseDetail extends Model
 {
     protected $fillable = [
-        'id', 'purchase_id', 'purchase_unit_id', 'quantity', 'product_id', 'total', 'product_variant_id',
+        'id', 'purchase_id', 'purchase_order_item_id', 'purchase_unit_id', 'quantity', 'gate_pass_quantity',
+        'invoice_excess_quantity', 'product_id', 'total', 'product_variant_id',
         'cost', 'company_rb_price', 'mrp_price', 'TaxNet', 'sales_tax', 'withholding_tax', 'discount', 'discount_method', 'tax_method',
     ];
 
@@ -21,7 +22,10 @@ class PurchaseDetail extends Model
         'withholding_tax' => 'double',
         'discount' => 'double',
         'quantity' => 'double',
+        'gate_pass_quantity' => 'double',
+        'invoice_excess_quantity' => 'double',
         'purchase_id' => 'integer',
+        'purchase_order_item_id' => 'integer',
         'purchase_unit_id' => 'integer',
         'product_id' => 'integer',
         'product_variant_id' => 'integer',
@@ -35,6 +39,11 @@ class PurchaseDetail extends Model
     public function product()
     {
         return $this->belongsTo('App\Models\Product');
+    }
+
+    public function purchaseOrderItem()
+    {
+        return $this->belongsTo(PurchaseOrderItem::class);
     }
 
     public function batches()

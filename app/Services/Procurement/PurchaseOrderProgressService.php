@@ -13,17 +13,26 @@ class PurchaseOrderProgressService
             'items.gatePassItems.gatePass',
             'items.gatePassItems.supplierInvoiceItems.supplierInvoice',
             'items.gatePassItems.supplierInvoiceItems.supplierInvoice.purchase.details',
+            'items.purchaseDetails.purchase',
             'supplierInvoices.purchase',
+            'purchases',
         ]);
 
         $lines = $order->items->map(function ($item) {
             $validReceipts = $item->gatePassItems->filter(fn ($line) => in_array($line->gatePass?->status, ['accepted', 'partially_accepted'], true));
-            $received = $validReceipts->sum(fn ($line) => (float) $line->accepted_quantity);
             $rejected = $validReceipts->sum(fn ($line) => (float) $line->rejected_quantity);
             $invoiceLines = $validReceipts->flatMap->supplierInvoiceItems
                 ->filter(fn ($line) => $line->supplierInvoice?->status !== 'cancelled');
-            $invoiced = $invoiceLines->sum(fn ($line) => (float) $line->quantity);
+            $purchaseLines = $item->purchaseDetails->filter(fn ($line) => $line->purchase
+                && $line->purchase->deleted_at === null
+                && $line->purchase->posting_status !== 'cancelled');
+            $received = $validReceipts->sum(fn ($line) => (float) $line->accepted_quantity)
+                + $purchaseLines->sum(fn ($line) => (float) $line->invoice_excess_quantity);
+            $invoiced = $invoiceLines->sum(fn ($line) => (float) $line->quantity)
+                + $purchaseLines->sum(fn ($line) => (float) $line->quantity);
             $posted = $invoiceLines->filter(fn ($line) => $line->supplierInvoice?->purchase?->posting_status === 'posted')
+                ->sum(fn ($line) => (float) $line->quantity);
+            $posted += $purchaseLines->filter(fn ($line) => $line->purchase->posting_status === 'posted')
                 ->sum(fn ($line) => (float) $line->quantity);
 
             return [
@@ -45,6 +54,11 @@ class PurchaseOrderProgressService
 
         $sum = fn (string $key) => (float) $lines->sum($key);
 
+        $normalPurchases = $order->purchases->filter(fn ($purchase) => $purchase->deleted_at === null
+            && $purchase->posting_status !== 'cancelled'
+            && ! $purchase->supplier_invoice_id);
+        $legacyInvoices = $order->supplierInvoices->where('status', '!=', 'cancelled');
+
         return [
             'lines' => $lines,
             'totals' => [
@@ -52,8 +66,9 @@ class PurchaseOrderProgressService
                 'remaining' => $sum('remaining'), 'invoiced' => $sum('invoiced'),
                 'not_invoiced' => $sum('not_invoiced'), 'purchased' => $sum('purchased'),
                 'order_value' => (float) $order->grand_total,
-                'invoiced_value' => (float) $order->supplierInvoices->where('status', '!=', 'cancelled')->sum('grand_total'),
-                'purchased_value' => (float) $order->supplierInvoices->filter(fn ($invoice) => $invoice->purchase?->posting_status === 'posted')->sum('grand_total'),
+                'invoiced_value' => (float) $legacyInvoices->sum('grand_total') + (float) $normalPurchases->sum('GrandTotal'),
+                'purchased_value' => (float) $legacyInvoices->filter(fn ($invoice) => $invoice->purchase?->posting_status === 'posted')->sum('grand_total')
+                    + (float) $normalPurchases->where('posting_status', 'posted')->sum('GrandTotal'),
             ],
         ];
     }

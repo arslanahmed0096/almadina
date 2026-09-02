@@ -108,6 +108,15 @@ class GatePassService
                 $alreadyReceived = $poItem ? (string) DB::table('gate_pass_items as i')->join('gate_passes as g', 'g.id', '=', 'i.gate_pass_id')
                     ->where('i.purchase_order_item_id', $poItem->id)->where('g.id', '<>', $gatePass->id)
                     ->whereIn('g.status', [GatePassStatus::Accepted->value, GatePassStatus::PartiallyAccepted->value])->sum('i.accepted_quantity') : '0';
+                if ($poItem) {
+                    $invoiceReceived = (string) DB::table('purchase_details as d')
+                        ->join('purchases as p', 'p.id', '=', 'd.purchase_id')
+                        ->where('d.purchase_order_item_id', $poItem->id)
+                        ->whereNull('p.deleted_at')
+                        ->where('p.posting_status', '<>', 'cancelled')
+                        ->sum('d.invoice_excess_quantity');
+                    $alreadyReceived = Decimal::add($alreadyReceived, $invoiceReceived);
+                }
                 $remaining = $poItem ? Decimal::sub($poItem->ordered_quantity, $alreadyReceived) : null;
                 if ($poItem && bccomp($item->accepted_quantity, $remaining, 6) === 1) {
                     if (! $user->canProcurement('procurement_over_delivery_approve') || blank($item->over_delivery_reason)) {
