@@ -19,7 +19,7 @@
             <div class="text-muted">
               <span class="mr-3"><strong>{{ $t('Code') }}:</strong> {{ client.code }}</span>
               <span class="mr-3"><strong>{{ $t('Email') }}:</strong> {{ client.email || '-' }}</span>
-              <span class="mr-3"><strong>{{ $t('Phone') }}:</strong> {{ client.display_phone || (client.phone ? (String(client.phone).replace(/\D+/g,'').charAt(0) === '0' ? String(client.phone).replace(/\D+/g,'') : '0' + String(client.phone).replace(/\D+/g,'')) : '-') }}</span>
+              <span class="mr-3"><strong>{{ $t('Phone') }}:</strong> {{ client.phone || '-' }}</span>
             </div>
             <div class="text-muted mt-2">
               <span class="mr-3"><strong>{{ $t('City') }}:</strong> {{ client.city || '-' }}</span>

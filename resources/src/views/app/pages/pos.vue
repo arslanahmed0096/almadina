@@ -3302,9 +3302,7 @@ export default {
     customerOptions() {
       const clients = Array.isArray(this.clients) ? this.clients : [];
       return clients.map(client => {
-        const raw = client.display_phone || client.phone || '';
-        const digits = String(raw).replace(/\D+/g, '');
-        const display = digits ? (digits.charAt(0) === '0' ? digits : '0' + digits) : '';
+        const display = String(client.phone || '').trim();
         return ({
           label: display ? `${client.name} - ${display}` : client.name,
         value: client.id,

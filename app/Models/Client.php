@@ -38,7 +38,7 @@ class Client extends Model
 
     public function getDisplayPhoneAttribute()
     {
-        return CustomerPhoneNormalizer::display($this->phone);
+        return trim((string) ($this->phone ?? ''));
     }
 
     public function setPhoneAttribute($value): void

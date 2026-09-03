@@ -12,6 +12,7 @@ class CustomerPhoneNormalizerTest extends TestCase
         $this->assertSame('03123456789', CustomerPhoneNormalizer::normalize('3123456789'));
         $this->assertSame('03123456789', CustomerPhoneNormalizer::normalize('312-3456789'));
         $this->assertSame('03123456789', CustomerPhoneNormalizer::normalize('0312 345 6789'));
+        $this->assertSame('03123456789', CustomerPhoneNormalizer::normalize('003123456789'));
         $this->assertSame('+923123456789', CustomerPhoneNormalizer::normalize('+923123456789'));
         $this->assertSame('+3123456789', CustomerPhoneNormalizer::normalize('+3123456789'));
         $this->assertSame('0421234567', CustomerPhoneNormalizer::normalize('0421234567'));
@@ -22,6 +23,7 @@ class CustomerPhoneNormalizerTest extends TestCase
     {
         $this->assertSame('3123456789', CustomerPhoneNormalizer::identityKey('03123456789'));
         $this->assertSame('3123456789', CustomerPhoneNormalizer::identityKey('3123456789'));
+        $this->assertSame('3123456789', CustomerPhoneNormalizer::identityKey('003123456789'));
         $this->assertSame('3123456789', CustomerPhoneNormalizer::identityKey('+923123456789'));
         $this->assertSame('3123456789', CustomerPhoneNormalizer::identityKey('00923123456789'));
         $this->assertNull(CustomerPhoneNormalizer::identityKey('+3123456789'));

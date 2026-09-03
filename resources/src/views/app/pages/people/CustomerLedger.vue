@@ -26,7 +26,7 @@
         <div class="text-right">
             <div class="text-white small mb-1">
             <lucide-icon class="mr-1" name="mail" />{{ client.email || '-' }} &nbsp;|&nbsp;
-            <lucide-icon class="mr-1" name="phone" />{{ client.display_phone || (client.phone ? (String(client.phone).replace(/\D+/g,'').charAt(0) === '0' ? String(client.phone).replace(/\D+/g,'') : '0' + String(client.phone).replace(/\D+/g,'')) : '-') }}
+            <lucide-icon class="mr-1" name="phone" />{{ client.phone || '-' }}
           </div>
           <b-button size="sm" variant="light" class="mr-2" @click="$router.push({ name: 'Customers' })">
             <lucide-icon class="mr-1" name="chevron-left" /> {{ $t('Back') }}

@@ -31,6 +31,7 @@ class FixCustomerPhoneLeadingZeroCommandTest extends TestCase
             ['id' => 4, 'name' => 'Blank', 'phone' => null, 'created_at' => now(), 'updated_at' => now()],
             ['id' => 5, 'name' => 'Duplicate Missing', 'phone' => '3151234567', 'created_at' => now(), 'updated_at' => now()],
             ['id' => 6, 'name' => 'Duplicate Correct', 'phone' => '03151234567', 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 7, 'name' => 'Duplicated Zero', 'phone' => '003181234567', 'created_at' => now(), 'updated_at' => now()],
         ]);
     }
 
@@ -59,9 +60,11 @@ class FixCustomerPhoneLeadingZeroCommandTest extends TestCase
         $this->assertSame('03131234567', DB::table('clients')->where('id', 2)->value('phone'));
         $this->assertSame('+923141234567', DB::table('clients')->where('id', 3)->value('phone'));
         $this->assertSame('3151234567', DB::table('clients')->where('id', 5)->value('phone'));
+        $this->assertSame('03181234567', DB::table('clients')->where('id', 7)->value('phone'));
         $this->assertFileExists($this->backupPath);
         $backup = file_get_contents($this->backupPath);
         $this->assertStringContainsString('3123456789,03123456789', $backup);
+        $this->assertStringContainsString('003181234567,03181234567', $backup);
         $this->assertStringNotContainsString('3151234567,03151234567', $backup);
     }
 

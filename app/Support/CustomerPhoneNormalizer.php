@@ -19,6 +19,9 @@ final class CustomerPhoneNormalizer
         if (self::isMissingLeadingZero($phone)) {
             return '0'.$digits;
         }
+        if (self::hasDuplicatedLeadingZero($phone)) {
+            return substr($digits, 1);
+        }
         if (preg_match('/^03\d{9}$/', $digits)) {
             return $digits;
         }
@@ -41,10 +44,23 @@ final class CustomerPhoneNormalizer
         return preg_match('/^03\d{9}$/', self::digits($phone)) === 1;
     }
 
+    public static function hasDuplicatedLeadingZero(?string $phone): bool
+    {
+        return preg_match('/^003\d{9}$/', self::digits($phone)) === 1;
+    }
+
+    public static function needsCorrection(?string $phone): bool
+    {
+        return self::isMissingLeadingZero($phone) || self::hasDuplicatedLeadingZero($phone);
+    }
+
     public static function identityKey(?string $phone): ?string
     {
         $raw = trim((string) $phone);
         $digits = self::digits($phone);
+        if (preg_match('/^003\d{9}$/', $digits)) {
+            return substr($digits, 2);
+        }
         if (str_starts_with($raw, '+') && ! str_starts_with($digits, '923')) {
             return null;
         }
@@ -65,11 +81,6 @@ final class CustomerPhoneNormalizer
         }
 
         return null;
-    }
-
-    public static function display(?string $phone): string
-    {
-        return (string) (self::normalize($phone) ?? '');
     }
 
     private static function digits(?string $phone): string

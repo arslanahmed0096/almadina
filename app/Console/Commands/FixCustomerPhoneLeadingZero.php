@@ -15,7 +15,7 @@ class FixCustomerPhoneLeadingZero extends Command
         {--include-deleted : Include soft-deleted customers}
         {--backup= : CSV backup path; relative paths are stored below storage/app}';
 
-    protected $description = 'Safely add the missing leading zero to Pakistani customer mobile numbers';
+    protected $description = 'Safely repair missing or duplicated leading zeros on Pakistani customer mobile numbers';
 
     public function handle(): int
     {
@@ -46,7 +46,7 @@ class FixCustomerPhoneLeadingZero extends Command
                 $alreadyCorrect++;
                 continue;
             }
-            if (! CustomerPhoneNormalizer::isMissingLeadingZero($customer->phone)) {
+            if (! CustomerPhoneNormalizer::needsCorrection($customer->phone)) {
                 continue;
             }
 

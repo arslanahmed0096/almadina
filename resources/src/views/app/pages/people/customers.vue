@@ -699,7 +699,7 @@
               <tr>
                 <!-- Customer Phone -->
                 <td>{{$t('Phone')}}</td>
-                  <th>{{ client.display_phone || (client.phone ? (String(client.phone).replace(/\D+/g,'').charAt(0) === '0' ? String(client.phone).replace(/\D+/g,'') : '0' + String(client.phone).replace(/\D+/g,'')) : '-') }}</th>
+                  <th>{{ client.phone || '-' }}</th>
               </tr>
               <tr>
                 <!-- Customer Email -->
@@ -1741,13 +1741,7 @@ export default {
             this.limit
         )
         .then(response => {
-          // Ensure display_phone exists for every client (fallback to formatted phone)
-          this.clients = (response.data.clients || []).map(c => {
-            const raw = c.display_phone || c.phone || '';
-            const digits = String(raw).replace(/\D+/g, '');
-            const display = digits ? (digits.charAt(0) === '0' ? digits : '0' + digits) : '';
-            return Object.assign({}, c, { display_phone: display });
-          });
+          this.clients = response.data.clients || [];
           this.company_info = response.data.company_info;
           this.totalRows = response.data.totalRows;
           this.clients_without_ecommerce = response.data.clients_without_ecommerce;
