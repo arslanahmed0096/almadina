@@ -14,6 +14,7 @@ use App\Models\Sale;
 use App\Models\SaleReturn;
 use App\Models\Setting;
 use App\Services\CustomerCreditService;
+use App\Support\CustomerPhoneNormalizer;
 use App\utils\helpers;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -125,8 +126,7 @@ class ClientController extends BaseController
             $item['username'] = $client->username;
             $item['company_name'] = $client->company_name;
             $item['phone'] = $client->phone;
-            $phoneDigits = preg_replace('/\D+/', '', (string) ($client->phone ?? ''));
-            $item['display_phone'] = $phoneDigits !== '' && strpos($phoneDigits, '0') !== 0 ? '0' . $phoneDigits : $phoneDigits;
+            $item['display_phone'] = $client->display_phone;
             $item['tax_number'] = $client->tax_number;
             $item['code'] = $client->code;
             $item['email'] = $client->email;
@@ -205,7 +205,7 @@ class ClientController extends BaseController
             'company_name' => $request->input('company_name'),
             'code' => $this->getNumberOrder(),
             'adresse' => $request['adresse'],
-            'phone' => $request['phone'],
+            'phone' => CustomerPhoneNormalizer::normalize($request['phone']),
             'email' => $request['email'],
             'country' => $request['country'],
             'city' => $request['city'],
@@ -305,7 +305,7 @@ class ClientController extends BaseController
                 'username' => $request->input('username'),
                 'company_name' => $request->input('company_name'),
                 'adresse' => $request->input('adresse'),
-                'phone' => $request->input('phone'),
+                'phone' => CustomerPhoneNormalizer::normalize($request->input('phone')),
                 'email' => $request->input('email'),
                 'country' => $request->input('country'),
                 'city' => $request->input('city'),
@@ -438,7 +438,7 @@ class ClientController extends BaseController
         $clients = Client::where('deleted_at', '=', null)->get(['id', 'name', 'phone']);
         $clients = $this->uniqueClientsByPhone($clients)->map(function ($c) {
             $phone = (string) ($c->phone ?? '');
-            $display = $phone !== '' && strpos($phone, '0') !== 0 ? '0' . $phone : $phone;
+            $display = $c->display_phone;
             return ['id' => $c->id, 'name' => $c->name, 'phone' => $phone, 'display_phone' => $display];
         });
 
@@ -478,8 +478,7 @@ class ClientController extends BaseController
         $clients = $clientsQuery->orderBy('name')->limit($limit * 3)->get(['id', 'name', 'phone']);
 
         $payload = $this->uniqueClientsByPhone($clients)->map(function ($c) {
-            $phone = preg_replace('/\D+/', '', (string) ($c->phone ?? ''));
-            $display = $phone !== '' && strpos($phone, '0') !== 0 ? '0' . $phone : $phone;
+            $display = $c->display_phone;
             return ['id' => $c->id, 'name' => $c->name, 'phone' => $c->phone, 'display_phone' => $display];
         })->take($limit)->values();
 
@@ -691,7 +690,7 @@ class ClientController extends BaseController
                 'lastname' => $lastname ?: null,
                 'code' => $code,
                 'email' => $email ?: null,
-                'phone' => $phone ?: null,
+                'phone' => CustomerPhoneNormalizer::normalize($phone) ?: null,
                 'country' => $country ?: null,
                 'city' => $city ?: null,
                 'state' => $state ?: null,

@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Support\CustomerPhoneNormalizer;
 use Illuminate\Database\Eloquent\Model;
 
 class Client extends Model
 {
+    protected $appends = ['display_phone'];
+
     protected $dates = ['deleted_at'];
 
     protected $fillable = [
@@ -35,8 +38,11 @@ class Client extends Model
 
     public function getDisplayPhoneAttribute()
     {
-        $phone = preg_replace('/\D+/', '', (string) ($this->phone ?? ''));
-        if ($phone === '') return '';
-        return strpos($phone, '0') === 0 ? $phone : '0' . $phone;
+        return CustomerPhoneNormalizer::display($this->phone);
+    }
+
+    public function setPhoneAttribute($value): void
+    {
+        $this->attributes['phone'] = CustomerPhoneNormalizer::normalize($value);
     }
 }
