@@ -505,6 +505,7 @@
             v-show="currentUserPermissions && 
                      (currentUserPermissions.includes('Reports_payments_Sales') 
                      || currentUserPermissions.includes('Reports_payments_Purchases')
+                     || currentUserPermissions.includes('daily_reports_view')
                      || currentUserPermissions.includes('Reports_payments_Sale_Returns')
                      || currentUserPermissions.includes('Reports_payments_purchase_Return')
                      || currentUserPermissions.includes('Warehouse_report')
@@ -1818,6 +1819,16 @@
             <router-link tag="a" class to="/app/reports/sales-3d-dashboard">
               <lucide-icon class="nav-icon" name="atom" />
               <span class="item-name">{{$t('sales_3d_dashboard')}}</span>
+            </router-link>
+          </li>
+
+          <li
+            v-if="currentUserPermissions && currentUserPermissions.includes('daily_reports_view')"
+            class="nav-item"
+          >
+            <router-link tag="a" class to="/app/reports/daily_reports">
+              <lucide-icon class="nav-icon" name="calendar-days" />
+              <span class="item-name">Daily Reports</span>
             </router-link>
           </li>
 

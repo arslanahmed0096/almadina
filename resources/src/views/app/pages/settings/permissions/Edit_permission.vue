@@ -2547,6 +2547,24 @@
                       <b-card-body>
                         <b-card-text>
                           <b-row>
+                            <b-col md="12" class="mb-2">
+                              <strong>Daily Reports</strong>
+                            </b-col>
+                            <b-col md="12">
+                              <label class="checkbox checkbox-outline-primary">
+                                <input type="checkbox" checked v-model="permissions" value="daily_reports_view">
+                                <span>View Daily Reports</span>
+                                <span class="checkmark"></span>
+                              </label>
+                            </b-col>
+                            <b-col md="12" class="mb-3">
+                              <label class="checkbox checkbox-outline-primary">
+                                <input type="checkbox" checked v-model="permissions" value="daily_reports_export">
+                                <span>Print and export Daily Reports</span>
+                                <span class="checkmark"></span>
+                              </label>
+                            </b-col>
+
                             <!--Reports_payments_Sales  -->
                             <b-col md="12">
                               <label class="checkbox checkbox-outline-primary">

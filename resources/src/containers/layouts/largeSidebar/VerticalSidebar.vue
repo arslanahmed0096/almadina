@@ -1278,6 +1278,13 @@
                 </router-link>
               </li>
 
+              <li class="submenu-item" v-if="currentUserPermissions && currentUserPermissions.includes('daily_reports_view')">
+                <router-link to="/app/reports/daily_reports" class="submenu-link">
+                  <lucide-icon class="submenu-icon" name="calendar-days" />
+                  <span>Daily Reports</span>
+                </router-link>
+              </li>
+
               <!-- Payments dropdown -->
               <li class="submenu-item has-nested" v-if="hasPaymentReportsPermission">
                 <a href="#" @click.prevent="toggleNestedSubmenu('payments')" class="submenu-link">
@@ -1698,7 +1705,7 @@ export default {
         'report_attendance_summary','return_ratio_report','service_jobs',
         'service_jobs_report','checklist_completion_report','customer_maintenance_history_report','report_device_management',
         'analytics_report', 'Stock_Inventory_Valuation', 'internal_location_report',
-        'sales_3d_dashboard', 'expiry_report'
+        'sales_3d_dashboard', 'expiry_report', 'daily_reports_view'
       ];
       return reportPermissions.some(perm => this.currentUserPermissions.includes(perm));
     },

@@ -50,7 +50,8 @@ export default {
         gates: [
           { key: 'number', label: 'Gate Pass' }, { key: 'supplier_gate_pass_number', label: 'Supplier GP' }, { key: 'purchase_order.number', label: 'PO Number' },
           { key: 'provider.name', label: 'Supplier' }, { key: 'delivered_at', label: 'Delivery' }, { key: 'vehicle_number', label: 'Vehicle' },
-          { key: 'bilty_number', label: 'Bilty' }, { key: 'accepted_quantity', label: 'Accepted' }, { key: 'status', label: 'Status' }
+          { key: 'bilty_number', label: 'Bilty' }, { key: 'accepted_quantity', label: 'Accepted' },
+          { key: 'po_remaining_quantity', label: 'PO Remaining' }, { key: 'status', label: 'Status' }
         ],
         invoices: [
           { key: 'supplier_invoice_number', label: 'Supplier Invoice' }, { key: 'provider.name', label: 'Supplier' }, { key: 'purchase_order.number', label: 'PO Number' },
@@ -75,6 +76,9 @@ export default {
     value(row, key) {
       const result = key.split('.').reduce((value, part) => value && value[part], row);
       if (key === 'purchase_order.number' && !result) return 'Direct receipt';
+      if (['accepted_quantity', 'po_remaining_quantity', 'progress.ordered', 'progress.received', 'progress.remaining', 'progress.invoiced'].includes(key) && result !== null && result !== undefined) {
+        return Number(result).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 6 });
+      }
       if (['order_date', 'delivered_at', 'invoice_date'].includes(key) && result) {
         const [year, month, day] = String(result).split('T')[0].split('-');
         if (year && month && day) return `${day}-${month}-${year}`;

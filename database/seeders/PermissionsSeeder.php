@@ -939,6 +939,16 @@ class PermissionsSeeder extends Seeder
                     'id' => 216,
                     'name' => 'transfer_price_view',
                 ],
+                [
+                    'id' => 217,
+                    'name' => 'daily_reports_view',
+                    'label' => 'View Daily Reports',
+                ],
+                [
+                    'id' => 218,
+                    'name' => 'daily_reports_export',
+                    'label' => 'Print and export Daily Reports',
+                ],
 
             ]
         );

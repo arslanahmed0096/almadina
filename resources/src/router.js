@@ -2297,6 +2297,16 @@ const baseRoutes = [
                     },
 
                     {
+                        name: "daily_reports",
+                        path: "daily_reports",
+                        component: () =>
+                            import(
+                                /* webpackChunkName: "daily_reports" */
+                                "./views/app/pages/reports/DailyReports"
+                            )
+                    },
+
+                    {
                         name: "report_transactions",
                         path: "report_transactions",
                         component: () =>

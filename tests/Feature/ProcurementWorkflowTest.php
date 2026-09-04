@@ -104,6 +104,15 @@ class ProcurementWorkflowTest extends TestCase
         $this->assertSame(410.0, $progress['totals']['remaining']);
         $this->assertSame(150.0, $progress['totals']['invoiced']);
         $this->assertSame(150.0, $progress['totals']['purchased']);
+
+        $gatePasses = $this->actingAs($this->user, 'api')
+            ->getJson('/api/procurement/gate-passes?limit=20')
+            ->assertOk()
+            ->json('data');
+        $listedGatePass = collect($gatePasses)->firstWhere('id', $gp1->id);
+        $this->assertNotNull($listedGatePass);
+        $this->assertSame(150.0, (float) $listedGatePass['accepted_quantity']);
+        $this->assertSame(410.0, (float) $listedGatePass['po_remaining_quantity']);
     }
 
     public function test_non_po_products_and_over_receipt_are_rejected_server_side(): void

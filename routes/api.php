@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\Store\PagesApiController;
 use App\Http\Controllers\Api\Store\PendingCustomersController;
 use App\Http\Controllers\Api\Store\SettingsApiController;
 use App\Http\Controllers\Api\Store\SubscriberController;
+use App\Http\Controllers\DailyReportController;
 use App\Http\Controllers\KnowledgeBaseArticleController;
 use App\Http\Controllers\KnowledgeBaseArticleGroupController;
 use App\Http\Controllers\Procurement\GatePassController;
@@ -252,6 +253,7 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
     Route::get('report/stock_inventory_valuation', 'ReportController@stock_inventory_valuation');
     Route::get('report/expenses_report', 'ReportController@expenses_report');
     Route::get('report/deposits_report', 'ReportController@deposits_report');
+    Route::get('report/daily', DailyReportController::class);
     Route::get('report/report_transactions', 'ReportController@report_transactions');
     Route::get('report/sales_by_category_report', 'ReportController@sales_by_category_report');
     Route::get('report/sales_by_brand_report', 'ReportController@sales_by_brand_report');

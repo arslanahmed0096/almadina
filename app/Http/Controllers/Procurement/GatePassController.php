@@ -12,6 +12,7 @@ use App\Services\Procurement\GatePassService;
 use App\Services\Procurement\ProcurementAuditService;
 use App\Services\Procurement\PurchaseOrderProgressService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
@@ -31,7 +32,46 @@ class GatePassController extends Controller
         $q->when($request->search, fn ($q, $s) => $q->where(fn ($q) => $q->where('number', 'like', "%{$s}%")->orWhere('supplier_gate_pass_number', 'like', "%{$s}%")->orWhere('bilty_number', 'like', "%{$s}%")->orWhere('vehicle_number', 'like', "%{$s}%")->orWhereHas('purchaseOrder', fn ($p) => $p->where('number', 'like', "%{$s}%"))))
             ->when($request->status, fn ($q, $v) => $q->where('status', $v));
 
-        return response()->json($q->latest('id')->paginate(min(100, max(1, (int) $request->get('limit', 20)))));
+        $page = $q->latest('id')->paginate(min(100, max(1, (int) $request->get('limit', 20))));
+        $purchaseOrderIds = $page->getCollection()->pluck('purchase_order_id')->filter()->unique()->values();
+        $remainingByOrder = collect();
+        if ($purchaseOrderIds->isNotEmpty()) {
+            $orderItems = DB::table('purchase_order_items')
+                ->whereIn('purchase_order_id', $purchaseOrderIds)
+                ->get(['id', 'purchase_order_id', 'ordered_quantity']);
+            $gatePassReceived = DB::table('gate_pass_items as items')
+                ->join('gate_passes as gates', 'gates.id', '=', 'items.gate_pass_id')
+                ->whereIn('gates.purchase_order_id', $purchaseOrderIds)
+                ->whereIn('gates.status', ['accepted', 'partially_accepted'])
+                ->selectRaw('items.purchase_order_item_id, SUM(items.accepted_quantity) AS quantity')
+                ->groupBy('items.purchase_order_item_id')
+                ->pluck('quantity', 'items.purchase_order_item_id');
+            $invoiceReceived = DB::table('purchase_details as details')
+                ->join('purchases', 'purchases.id', '=', 'details.purchase_id')
+                ->whereIn('purchases.purchase_order_id', $purchaseOrderIds)
+                ->whereNull('purchases.deleted_at')
+                ->where('purchases.posting_status', '<>', 'cancelled')
+                ->selectRaw('details.purchase_order_item_id, SUM(details.invoice_excess_quantity) AS quantity')
+                ->groupBy('details.purchase_order_item_id')
+                ->pluck('quantity', 'details.purchase_order_item_id');
+
+            $remainingByOrder = $orderItems->groupBy('purchase_order_id')->map(fn ($items) => (float) $items->sum(fn ($item) => max(
+                0,
+                (float) $item->ordered_quantity
+                    - (float) ($gatePassReceived[$item->id] ?? 0)
+                    - (float) ($invoiceReceived[$item->id] ?? 0)
+            )));
+        }
+        $page->getCollection()->transform(function ($gatePass) use ($remainingByOrder) {
+            $gatePass->setAttribute(
+                'po_remaining_quantity',
+                $gatePass->purchase_order_id ? (float) ($remainingByOrder[$gatePass->purchase_order_id] ?? 0) : null
+            );
+
+            return $gatePass;
+        });
+
+        return response()->json($page);
     }
 
     public function store(Request $request)

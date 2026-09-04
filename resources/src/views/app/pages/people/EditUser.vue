@@ -459,6 +459,7 @@ export default {
     },
 
     formatPermissionGroup(name) {
+      if (String(name || '').startsWith('daily_reports_')) return 'Reports';
       const first = String(name || '').split('_')[0] || 'Other';
       return this.formatPermissionName(first);
     },
