@@ -33,7 +33,6 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=6144
         run: |
           npm ci
-          npm install --no-save webpack@5.60.0 webpack-cli@4.9.1
           npm run production
 
       - name: Setup SSH
@@ -94,7 +93,16 @@ jobs:
           ssh -p ${{ secrets.HOSTINGER_PORT }} ${{ secrets.HOSTINGER_USER }}@${{ secrets.HOSTINGER_HOST }} << 'EOF'
             cd ${{ secrets.HOSTINGER_PATH }}
 
-            composer install --no-dev --optimize-autoloader --no-interaction
+            composer_dependencies_hash="$(sha256sum composer.json composer.lock | sha256sum | awk '{print $1}')"
+            installed_dependencies_hash="$(cat storage/.composer-dependencies.sha256 2>/dev/null || true)"
+
+            if [ ! -f vendor/autoload.php ] || [ "$composer_dependencies_hash" != "$installed_dependencies_hash" ]; then
+              echo "Composer dependencies changed; installing dependencies..."
+              composer install --no-dev --optimize-autoloader --no-interaction
+              printf '%s\n' "$composer_dependencies_hash" > storage/.composer-dependencies.sha256
+            else
+              echo "Composer dependencies unchanged; skipping composer install."
+            fi
 
             php artisan migrate --force
             php artisan optimize:clear
