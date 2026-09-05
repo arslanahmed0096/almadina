@@ -2888,7 +2888,7 @@ export default {
               GrandTotal: this.GrandTotal,
               details: detailsPayload,
               payment: this.payment,
-              amount: parseFloat(this.payment.amount).toFixed(2),
+              amount: parseFloat((Number(this.payment.amount) || 0).toFixed(2)),
               received_amount: parseFloat(this.GrandTotal).toFixed(2),
               change: this.getPaymentBalance().toFixed(2),
               discount_from_points: this.discount_from_points,
