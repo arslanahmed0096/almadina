@@ -3,6 +3,21 @@
     <breadcumb :page="$t('SuppliersReport')" :folder="$t('Reports')"/>
     <div v-if="isLoading" class="loading_page spinner spinner-primary mr-3"></div>
 
+    <b-card v-if="!isLoading" class="supplier-report-identity mb-3">
+      <div class="d-flex flex-wrap align-items-center justify-content-between">
+        <div>
+          <small class="text-muted text-uppercase">Supplier statement</small>
+          <h4 class="mb-1">{{ provider.provider_name || '---' }}</h4>
+          <span class="text-muted">Code: {{ provider.provider_code || '---' }}</span>
+          <span v-if="provider.provider_phone" class="text-muted ml-3">{{ provider.provider_phone }}</span>
+        </div>
+        <div class="text-right">
+          <small class="text-muted d-block">Total supplier due</small>
+          <strong class="text-primary text-24">{{ formatPriceWithSymbol(currentUser.currency, provider.total_due, 2) }}</strong>
+        </div>
+      </div>
+    </b-card>
+
     <b-row v-if="!isLoading">
       <!-- ICON BG -->
 
@@ -41,10 +56,63 @@
         <b-card class="card-icon-bg card-icon-bg-primary   mb-30 text-center">
           <lucide-icon name="wallet" />
           <div class="content">
-            <p class="text-muted mt-2 mb-0">{{$t('Due')}}</p>
+            <p class="text-muted mt-2 mb-0">Purchase Due</p>
             <p
               class="text-primary text-24 line-height-1 mb-2"
-            >{{currentUser.currency}} {{formatNumber((provider.due),2)}}</p>
+            >{{currentUser.currency}} {{formatNumber((provider.purchase_due),2)}}</p>
+          </div>
+        </b-card>
+      </b-col>
+    </b-row>
+
+    <b-row v-if="!isLoading">
+      <b-col md="12">
+        <b-card class="opening-balance-panel mb-30" no-body>
+          <div class="opening-balance-header">
+            <div>
+              <h5 class="mb-1"><lucide-icon name="wallet" /> Opening Balance Details</h5>
+              <small>Previous supplier dues recorded before regular purchase transactions.</small>
+            </div>
+            <b-badge variant="light" class="opening-balance-date">
+              Effective date: {{ provider.opening_balance_date || 'Not recorded' }}
+            </b-badge>
+          </div>
+
+          <div class="opening-balance-summary">
+            <div class="opening-balance-stat">
+              <small>Original opening balance</small>
+              <strong>{{ formatPriceWithSymbol(currentUser.currency, provider.opening_balance_original, 2) }}</strong>
+            </div>
+            <div class="opening-balance-stat opening-balance-stat--paid">
+              <small>Paid against opening balance</small>
+              <strong>{{ formatPriceWithSymbol(currentUser.currency, provider.opening_balance_paid, 2) }}</strong>
+            </div>
+            <div class="opening-balance-stat opening-balance-stat--remaining">
+              <small>Remaining opening balance</small>
+              <strong>{{ formatPriceWithSymbol(currentUser.currency, provider.opening_balance_remaining, 2) }}</strong>
+            </div>
+            <div class="opening-balance-stat opening-balance-stat--total">
+              <small>Total supplier due</small>
+              <strong>{{ formatPriceWithSymbol(currentUser.currency, provider.total_due, 2) }}</strong>
+            </div>
+          </div>
+
+          <div class="opening-balance-history">
+            <h6>Opening Balance Payment History</h6>
+            <b-table
+              responsive
+              small
+              hover
+              show-empty
+              class="mb-0"
+              :items="opening_balance_payments"
+              :fields="openingPaymentFields"
+              empty-text="No opening-balance payments have been recorded."
+            >
+              <template v-slot:cell(montant)="data">
+                <strong>{{ formatPriceWithSymbol(currentUser.currency, data.item.montant, 2) }}</strong>
+              </template>
+            </b-table>
           </div>
         </b-card>
       </b-col>
@@ -57,6 +125,9 @@
 
             <!-- Purchases Table -->
             <b-tab :title="$t('Purchases')">
+              <b-alert v-if="!purchases.length" show variant="light" class="mb-3">
+                No purchase transactions are recorded for this supplier.
+              </b-alert>
               <vue-good-table
                 mode="remote"
                 :columns="columns_purchases"
@@ -251,6 +322,7 @@ export default {
       returns_supplier: [],
       payments: [],
       purchases: [],
+      opening_balance_payments: [],
 
       search_purchases:"",
       search_payments:"",
@@ -262,7 +334,13 @@ export default {
         total_purchase: 0,
         total_amount: 0,
         total_paid: 0,
-        due: 0
+        due: 0,
+        purchase_due: 0,
+        total_due: 0,
+        opening_balance_original: 0,
+        opening_balance_paid: 0,
+        opening_balance_remaining: 0,
+        opening_balance_date: null
       },
       // Optional price format key for frontend display (loaded from system settings/localStorage)
       price_format_key: null
@@ -271,8 +349,24 @@ export default {
 
   computed: {
     ...mapGetters(["currentUser"]),
+    openingPaymentFields() {
+      return [
+        { key: 'date', label: this.$t('date') },
+        { key: 'Ref', label: this.$t('Reference') },
+        { key: 'payment_method', label: this.$t('ModePaiement') },
+        { key: 'montant', label: this.$t('Amount'), class: 'text-right' },
+        { key: 'notes', label: this.$t('Note') }
+      ];
+    },
     columns_purchases() {
       return [
+        {
+          label: this.$t("date"),
+          field: "date",
+          tdClass: "text-left",
+          thClass: "text-left",
+          sortable: false
+        },
         {
           label: this.$t("Reference"),
           field: "Ref",
@@ -457,6 +551,7 @@ export default {
       pdf.setFont("VazirmatnBold"); 
 
       let columns = [
+        { header: self.$t("date"), dataKey: "date" },
         { header: self.$t("Reference"), dataKey: "Ref" },
         { header: self.$t("Supplier"), dataKey: "provider_name" },
         { header: self.$t("warehouse"), dataKey: "warehouse_name" },
@@ -735,6 +830,7 @@ export default {
         .get(`report/provider/${id}`)
         .then(response => {
           this.provider = response.data.report;
+          this.opening_balance_payments = response.data.report.opening_balance_payments || [];
           this.isLoading = false;
         })
         .catch(response => {
@@ -747,7 +843,8 @@ export default {
     //--------------------------- Event Page Change -------------\\
     PageChangePurchases({ currentPage }) {
       if (this.purchases_page !== currentPage) {
-        this.Get_Sales(currentPage);
+        this.purchases_page = currentPage;
+        this.Get_Purchases(currentPage);
       }
     },
 
@@ -790,6 +887,7 @@ export default {
     //--------------------------- Event Page Change -------------\\
     PageChangePayments({ currentPage }) {
       if (this.Payment_page !== currentPage) {
+        this.Payment_page = currentPage;
         this.Get_Payments(currentPage);
       }
     },
@@ -830,6 +928,7 @@ export default {
     //--------------------------- Event Page Change -------------\\
     PageChangeReturns({ currentPage }) {
       if (this.Return_page !== currentPage) {
+        this.Return_page = currentPage;
         this.Get_Returns(currentPage);
       }
     },
@@ -854,7 +953,7 @@ export default {
           "/report/provider_returns?page=" +
             page +
             "&limit=" +
-            this.limit_payments +
+            this.limit_returns +
             "&search=" +
             this.search_return_purchases +
             "&id=" +
@@ -878,3 +977,110 @@ export default {
   }
 };
 </script>
+
+<style scoped>
+.supplier-report-identity {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+
+.opening-balance-panel {
+  overflow: hidden;
+  border: 1px solid #dbeafe;
+  border-radius: 14px;
+}
+
+.opening-balance-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: linear-gradient(135deg, #1e40af, #2563eb);
+  color: #fff;
+}
+
+.opening-balance-header h5 {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  color: #fff;
+}
+
+.opening-balance-header small {
+  color: #dbeafe;
+}
+
+.opening-balance-date {
+  padding: .5rem .75rem;
+  color: #1e3a8a;
+  font-size: .78rem;
+}
+
+.opening-balance-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .85rem;
+  padding: 1.15rem;
+  background: #f8fafc;
+}
+
+.opening-balance-stat {
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+  padding: .9rem 1rem;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.opening-balance-stat small {
+  color: #64748b;
+}
+
+.opening-balance-stat strong {
+  color: #1e40af;
+  font-size: 1.05rem;
+}
+
+.opening-balance-stat--paid strong {
+  color: #047857;
+}
+
+.opening-balance-stat--remaining strong,
+.opening-balance-stat--total strong {
+  color: #b45309;
+}
+
+.opening-balance-stat--total {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.opening-balance-history {
+  padding: 0 1.15rem 1.15rem;
+}
+
+.opening-balance-history h6 {
+  margin: .25rem 0 .75rem;
+  color: #334155;
+}
+
+@media (max-width: 991px) {
+  .opening-balance-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 575px) {
+  .opening-balance-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .opening-balance-summary {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

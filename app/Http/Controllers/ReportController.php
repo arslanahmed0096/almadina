@@ -217,6 +217,38 @@ class ReportController extends BaseController
 
         $provider = Provider::where('deleted_at', '=', null)->findOrFail($id);
 
+        $openingBalancePaid = ProviderPaymentOpeningBalance::whereNull('deleted_at')
+            ->where('provider_id', $provider->id)
+            ->sum('montant');
+        $openingBalanceRemaining = max(0, (float) ($provider->opening_balance ?? 0));
+
+        $data['provider_id'] = (int) $provider->id;
+        $data['provider_name'] = $provider->name;
+        $data['provider_code'] = $provider->code;
+        $data['provider_phone'] = $provider->phone;
+        $data['provider_email'] = $provider->email;
+        $data['provider_address'] = $provider->adresse;
+        $data['opening_balance_date'] = optional($provider->opening_balance_date)->format('Y-m-d');
+        $data['opening_balance_paid'] = round((float) $openingBalancePaid, 2);
+        $data['opening_balance_remaining'] = round($openingBalanceRemaining, 2);
+        $data['opening_balance_original'] = round($openingBalanceRemaining + (float) $openingBalancePaid, 2);
+        $data['opening_balance_payments'] = ProviderPaymentOpeningBalance::with('payment_method:id,name')
+            ->whereNull('deleted_at')
+            ->where('provider_id', $provider->id)
+            ->orderByDesc('date')
+            ->orderByDesc('id')
+            ->get(['id', 'date', 'Ref', 'montant', 'payment_method_id', 'notes'])
+            ->map(function ($payment) {
+                return [
+                    'id' => (int) $payment->id,
+                    'date' => optional(Carbon::parse($payment->date))->format('Y-m-d'),
+                    'Ref' => $payment->Ref,
+                    'payment_method' => optional($payment->payment_method)->name ?: '---',
+                    'montant' => round((float) $payment->montant, 2),
+                    'notes' => $payment->notes,
+                ];
+            })->values();
+
         $data['total_purchase'] = DB::table('purchases')
             ->where('deleted_at', '=', null)
             ->where('provider_id', $id)
@@ -234,7 +266,9 @@ class ReportController extends BaseController
             ->where('provider_id', $id)
             ->sum('paid_amount');
 
-        $data['due'] = $data['total_amount'] - $data['total_paid'];
+        $data['purchase_due'] = $data['total_amount'] - $data['total_paid'];
+        $data['due'] = $data['purchase_due'];
+        $data['total_due'] = $data['purchase_due'] + $data['opening_balance_remaining'];
 
         return response()->json(['report' => $data]);
 
@@ -1121,19 +1155,9 @@ class ReportController extends BaseController
         $offSet = ($pageStart * $perPage) - $perPage;
         $data = [];
 
-        $user = Auth::user();
-        // New way: Check user's record_view field (user-level boolean)
-        // Backward compatibility: If record_view is null, fall back to role permission check
-        $ShowRecord = $user->hasRecordView();
-
         $purchases = Purchase::where('deleted_at', '=', null)
             ->with('provider', 'warehouse')
             ->where('provider_id', $request->id)
-            ->where(function ($query) use ($ShowRecord) {
-                if (! $ShowRecord) {
-                    return $query->where('user_id', '=', Auth::user()->id);
-                }
-            })
              // Search With Multiple Param
             ->where(function ($query) use ($request) {
                 return $query->when($request->filled('search'), function ($query) use ($request) {
@@ -1164,9 +1188,10 @@ class ReportController extends BaseController
 
         foreach ($purchases as $purchase) {
             $item['id'] = $purchase->id;
+            $item['date'] = $purchase->date;
             $item['Ref'] = $purchase->Ref;
-            $item['warehouse_name'] = $purchase['warehouse']->name;
-            $item['provider_name'] = $purchase['provider']->name;
+            $item['warehouse_name'] = optional($purchase['warehouse'])->name ?: '---';
+            $item['provider_name'] = optional($purchase['provider'])->name ?: '---';
             $item['statut'] = $purchase->statut;
             $item['GrandTotal'] = $purchase->GrandTotal;
             $item['paid_amount'] = $purchase->paid_amount;
@@ -1197,17 +1222,7 @@ class ReportController extends BaseController
         $offSet = ($pageStart * $perPage) - $perPage;
         $data = [];
 
-        $user = Auth::user();
-        // New way: Check user's record_view field (user-level boolean)
-        // Backward compatibility: If record_view is null, fall back to role permission check
-        $ShowRecord = $user->hasRecordView();
-
         $payments = DB::table('payment_purchases')
-            ->where(function ($query) use ($ShowRecord) {
-                if (! $ShowRecord) {
-                    return $query->where('user_id', '=', Auth::user()->id);
-                }
-            })
             ->where('payment_purchases.deleted_at', '=', null)
             ->join('purchases', 'payment_purchases.purchase_id', '=', 'purchases.id')
             ->join('payment_methods', 'payment_purchases.payment_method_id', '=', 'payment_methods.id')
@@ -1254,19 +1269,9 @@ class ReportController extends BaseController
         $offSet = ($pageStart * $perPage) - $perPage;
         $data = [];
 
-        $user = Auth::user();
-        // New way: Check user's record_view field (user-level boolean)
-        // Backward compatibility: If record_view is null, fall back to role permission check
-        $ShowRecord = $user->hasRecordView();
-
         $PurchaseReturn = PurchaseReturn::where('deleted_at', '=', null)
             ->with('purchase', 'provider', 'warehouse')
             ->where('provider_id', $request->id)
-            ->where(function ($query) use ($ShowRecord) {
-                if (! $ShowRecord) {
-                    return $query->where('user_id', '=', Auth::user()->id);
-                }
-            })
             // Search With Multiple Param
             ->where(function ($query) use ($request) {
                 return $query->when($request->filled('search'), function ($query) use ($request) {

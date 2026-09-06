@@ -130,6 +130,34 @@ class ProcurementWorkflowTest extends TestCase
         app(GatePassService::class)->confirm($gate, $this->user);
     }
 
+    public function test_purchase_order_rejects_decimal_quantity(): void
+    {
+        $product = Product::create([
+            'name' => 'Whole Quantity Product',
+            'code' => 'WHOLE-QTY-1',
+            'cost' => 100,
+            'unit_id' => $this->unit->id,
+            'unit_purchase_id' => $this->unit->id,
+            'is_variant' => 0,
+            'is_active' => 1,
+        ]);
+
+        $this->actingAs($this->user, 'api')
+            ->postJson('/api/procurement/purchase-orders', [
+                'order_date' => '2026-09-06',
+                'provider_id' => $this->provider->id,
+                'warehouse_id' => $this->warehouse->id,
+                'items' => [[
+                    'product_id' => $product->id,
+                    'unit_id' => $this->unit->id,
+                    'quantity' => 1.5,
+                    'unit_price' => 100,
+                ]],
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('items.0.quantity');
+    }
+
     public function test_first_gate_pass_automatically_issues_an_open_draft_purchase_order(): void
     {
         $product = Product::create([

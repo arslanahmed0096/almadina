@@ -139,7 +139,7 @@ class PurchaseOrderController extends Controller
             'notes' => 'nullable|string|max:5000', 'terms' => 'nullable|string|max:10000', 'reason' => 'nullable|string|max:2000',
             'items' => 'required|array|min:1', 'items.*.product_id' => 'required|integer|exists:products,id',
             'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id', 'items.*.unit_id' => 'nullable|integer|exists:units,id',
-            'items.*.quantity' => 'required|numeric|gt:0|decimal:0,6', 'items.*.unit_price' => 'nullable|numeric|min:0|decimal:0,6',
+            'items.*.quantity' => 'required|integer|min:1', 'items.*.unit_price' => 'nullable|numeric|min:0|decimal:0,6',
             'items.*.discount' => 'nullable|numeric|min:0|decimal:0,6', 'items.*.discount_method' => ['nullable', Rule::in(['fixed', 'percentage'])],
             'items.*.tax_id' => 'nullable|integer|exists:taxes,id', 'items.*.notes' => 'nullable|string|max:1000',
         ];

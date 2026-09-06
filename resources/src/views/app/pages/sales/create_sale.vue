@@ -134,6 +134,48 @@
                   </validation-provider>
                 </b-col>
 
+                <b-col v-if="selectedClientHasZeroCreditLimit" cols="12" class="mb-3">
+                  <div class="sale-credit-limit-action">
+                    <div>
+                      <strong>This customer has no credit limit.</strong>
+                      <div class="small text-muted">
+                        Unpaid items cannot be shipped until an authorized user adds a credit limit.
+                      </div>
+                    </div>
+                    <div v-if="canUpdateCustomerCreditLimit" class="sale-credit-limit-controls">
+                      <b-button
+                        v-if="!creditLimitEditorOpen"
+                        type="button"
+                        size="sm"
+                        variant="outline-primary"
+                        @click="openCreditLimitEditor"
+                      >
+                        Add Credit Limit
+                      </b-button>
+                      <template v-else>
+                        <b-input-group size="sm" :prepend="currentUser && currentUser.currency ? currentUser.currency : ''">
+                          <b-form-input
+                            v-model="creditLimitAmount"
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            placeholder="Enter credit limit"
+                            :disabled="creditLimitSaving"
+                            @keyup.enter="saveInitialCreditLimit"
+                          />
+                        </b-input-group>
+                        <b-button type="button" size="sm" variant="primary" :disabled="creditLimitSaving" @click="saveInitialCreditLimit">
+                          <span v-if="creditLimitSaving" class="spinner sm spinner-white mr-1"></span>
+                          Save
+                        </b-button>
+                        <b-button type="button" size="sm" variant="light" :disabled="creditLimitSaving" @click="closeCreditLimitEditor">Cancel</b-button>
+                      </template>
+                    </div>
+                    <small v-else class="text-muted">You do not have permission to add customer credit.</small>
+                    <div v-if="creditLimitError" class="text-danger small w-100">{{ creditLimitError }}</div>
+                  </div>
+                </b-col>
+
                    <!-- Product -->
                 <b-col md="12" class="mb-5">
                   <h6>{{$t('ProductName')}}</h6>
@@ -1176,6 +1218,11 @@ export default {
       // Credit control
       selectedClientCreditLimit: 0,
       selectedClientNetBalance: 0,
+      selectedClientCreditLoading: false,
+      creditLimitEditorOpen: false,
+      creditLimitAmount: "",
+      creditLimitSaving: false,
+      creditLimitError: "",
       creditPolicy: { allowed_credit_days: 30, is_active: true },
       timer:null,
       total: 0,
@@ -1266,6 +1313,17 @@ export default {
         ? this.creditPolicy.allowed_values
         : [5, 10, 15, 20, 25, 30];
       return values.map(value => ({ value: Number(value), text: `${value} days` }));
+    },
+
+    selectedClientHasZeroCreditLimit() {
+      return !!this.selectedClientId
+        && !this.selectedClientCreditLoading
+        && Number(this.selectedClientCreditLimit || 0) <= 0;
+    },
+
+    canUpdateCustomerCreditLimit() {
+      return Array.isArray(this.currentUserPermissions)
+        && this.currentUserPermissions.includes("customer_credit_limit_update");
     },
 
     customerOptions() {
@@ -1577,6 +1635,10 @@ export default {
     },
 
     async Selected_customer(selectedClientId) {
+      this.closeCreditLimitEditor();
+      this.selectedClientCreditLimit = 0;
+      this.selectedClientNetBalance = 0;
+      this.selectedClientCreditLoading = !!selectedClientId;
       this.payment.payment_method_id = 2;
       this.savedPaymentMethods= [];
       this.selectedClientPoints = 0;
@@ -1599,6 +1661,8 @@ export default {
           const response = await axios.get(`/get_points_client/${selectedClientId}`);
           const data = response.data;
 
+          if (String(this.selectedClientId) !== String(selectedClientId)) return;
+
           if (data.is_royalty_eligible) {
             this.selectedClientPoints = data.points;
             this.initialClientPoints = data.points;
@@ -1612,26 +1676,86 @@ export default {
           console.error('Error fetching client points:', error);
         }
 
+        if (String(this.selectedClientId) !== String(selectedClientId)) return;
+
         // Fetch client credit limit and current balance
         try {
           const briefResponse = await axios.get(`/clients/${selectedClientId}/brief`);
           const briefData = briefResponse.data;
-          this.selectedClientCreditLimit = parseFloat(briefData.credit_limit || 0);
-          this.selectedClientNetBalance = parseFloat(briefData.netBalance || 0);
+          if (String(this.selectedClientId) === String(selectedClientId)) {
+            this.selectedClientCreditLimit = parseFloat(briefData.credit_limit || 0);
+            this.selectedClientNetBalance = parseFloat(briefData.netBalance || 0);
+          }
         } catch (error) {
           console.error('Error fetching client credit limit:', error);
-          this.selectedClientCreditLimit = 0;
-          this.selectedClientNetBalance = 0;
+          if (String(this.selectedClientId) === String(selectedClientId)) {
+            this.selectedClientCreditLimit = 0;
+            this.selectedClientNetBalance = 0;
+          }
+        } finally {
+          if (String(this.selectedClientId) === String(selectedClientId)) {
+            this.selectedClientCreditLoading = false;
+          }
         }
 
       } else {
         this.selectedClientId = "";
         this.selectedClientCreditLimit = 0;
         this.selectedClientNetBalance = 0;
+        this.selectedClientCreditLoading = false;
       }
 
       // ✅ Recalculate totals after client change
       this.CalculTotal();
+    },
+
+    openCreditLimitEditor() {
+      if (!this.canUpdateCustomerCreditLimit) return;
+
+      const requestedCredit = Number(this.requestedCreditAmount || 0);
+      const suggestedLimit = Math.max(
+        Number(this.selectedClientNetBalance || 0) + requestedCredit,
+        requestedCredit,
+        0
+      );
+
+      this.creditLimitAmount = suggestedLimit > 0 ? suggestedLimit.toFixed(2) : "";
+      this.creditLimitError = "";
+      this.creditLimitEditorOpen = true;
+    },
+
+    closeCreditLimitEditor() {
+      this.creditLimitEditorOpen = false;
+      this.creditLimitAmount = "";
+      this.creditLimitError = "";
+    },
+
+    saveInitialCreditLimit() {
+      const customerId = this.selectedClientId;
+      const amount = Number(this.creditLimitAmount);
+
+      if (!this.canUpdateCustomerCreditLimit || !customerId) return;
+      if (!Number.isFinite(amount) || amount <= 0) {
+        this.creditLimitError = "Enter a credit limit greater than zero.";
+        return;
+      }
+
+      this.creditLimitSaving = true;
+      this.creditLimitError = "";
+      axios.post(`/customers/${customerId}/initial-credit-limit`, { credit_limit: amount })
+        .then(response => {
+          if (String(this.selectedClientId) === String(customerId)) {
+            this.selectedClientCreditLimit = Number(response.data.credit_limit || amount);
+          }
+          this.makeToast("success", response.data.message, this.$t("Success"));
+          this.closeCreditLimitEditor();
+        })
+        .catch(error => {
+          this.creditLimitError = this.saleCreationErrorMessage(error);
+        })
+        .finally(() => {
+          this.creditLimitSaving = false;
+        });
     },
 
 
@@ -3116,6 +3240,28 @@ export default {
   .warn { color: #b45309; font-size: 12px; }
   .ok { color: #065f46; font-size: 12px; }
   .result { font-size: 13px; color: #1e3a8a; background: #eef2ff; border: 1px dashed #c7d2fe; border-radius: 10px; padding: 8px 10px; }
+
+  .sale-credit-limit-action {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid #f6c86b;
+    border-radius: 8px;
+    background: #fffbeb;
+  }
+
+  .sale-credit-limit-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .sale-credit-limit-controls .input-group {
+    width: 240px;
+  }
 
   .table-responsive::after {
     content: '';

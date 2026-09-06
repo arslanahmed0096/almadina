@@ -126,9 +126,11 @@
                     </b-input-group-prepend>
                     <b-form-input
                       type="number"
-                      step="0.000001"
-                      min="0.000001"
+                      step="1"
+                      min="1"
                       v-model.number="line.quantity"
+                      @input="normalizeQuantity(line)"
+                      @keydown="preventNonIntegerInput"
                       required
                     />
                     <b-input-group-append>
@@ -253,7 +255,7 @@ export default {
             variant_name: item.variant_name,
             sku: item.sku,
             unit_name: item.unit_name,
-            quantity: Number(item.ordered_quantity),
+            quantity: this.wholeQuantity(item.ordered_quantity),
             rb_price: Number(item.company_rb_price || this.catalogRbPrice(item.product_id, item.product_variant_id)),
             mrp_price: Number(item.unit_price)
           }))
@@ -459,12 +461,28 @@ export default {
     },
 
     increment(line) {
-      line.quantity = Number(line.quantity || 0) + 1;
+      line.quantity = this.wholeQuantity(line.quantity) + 1;
     },
 
     decrement(line) {
-      const quantity = Number(line.quantity || 0);
+      const quantity = this.wholeQuantity(line.quantity);
       if (quantity > 1) line.quantity = quantity - 1;
+    },
+
+    wholeQuantity(value) {
+      const quantity = Number(value);
+      return Number.isFinite(quantity) ? Math.max(1, Math.round(quantity)) : 1;
+    },
+
+    normalizeQuantity(line) {
+      if (line.quantity === '' || line.quantity === null) return;
+      line.quantity = this.wholeQuantity(line.quantity);
+    },
+
+    preventNonIntegerInput(event) {
+      if (['.', ',', 'e', 'E', '+', '-'].includes(event.key)) {
+        event.preventDefault();
+      }
     },
 
     removeLine(index) {
@@ -511,6 +529,9 @@ export default {
       if (!this.form.provider_id) return 'Select a supplier.';
       if (!this.form.warehouse_id) return 'Select a destination warehouse.';
       if (!this.form.items.length) return 'Add at least one product.';
+      if (this.form.items.some(line => !Number.isInteger(Number(line.quantity)) || Number(line.quantity) < 1)) {
+        return 'Product quantity must be a whole number of 1 or more.';
+      }
       return null;
     },
 
@@ -528,7 +549,7 @@ export default {
           product_id: line.product_id,
           product_variant_id: line.product_variant_id,
           unit_id: line.unit_id,
-          quantity: line.quantity,
+          quantity: this.wholeQuantity(line.quantity),
           unit_price: line.mrp_price,
           discount: 0,
           discount_method: 'fixed',
