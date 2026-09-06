@@ -6,14 +6,18 @@
       <b-card-body>
         <b-row align-v="end">
           <b-col md="2" class="mb-2 report-filter">
-            <label class="font-weight-bold">Report Date</label>
-            <b-form-input v-model="filters.date" type="date" @change="fetchReport" />
+            <label class="font-weight-bold">From Date</label>
+            <b-form-input v-model="filters.start_date" type="date" @change="fetchReport" />
           </b-col>
-          <b-col md="3" class="mb-2 report-filter">
+          <b-col md="2" class="mb-2 report-filter">
+            <label class="font-weight-bold">To Date</label>
+            <b-form-input v-model="filters.end_date" type="date" @change="fetchReport" />
+          </b-col>
+          <b-col md="2" class="mb-2 report-filter">
             <label class="font-weight-bold">Branch</label>
             <b-form-select v-model="filters.warehouse_id" :options="warehouseOptions" @change="fetchReport" />
           </b-col>
-          <b-col md="3" class="mb-2 report-filter">
+          <b-col md="2" class="mb-2 report-filter">
             <label class="font-weight-bold">Supplier</label>
             <b-form-select v-model="filters.provider_id" :options="supplierOptions" @change="fetchReport" />
           </b-col>
@@ -27,6 +31,14 @@
             <b-button v-if="canExport" variant="success" @click="exportCsv">
               <lucide-icon name="file-spreadsheet" class="mr-1" /> Excel CSV
             </b-button>
+          </b-col>
+        </b-row>
+        <b-row>
+          <b-col cols="12" class="quick-range">
+            <span class="font-weight-bold mr-2">Quick Range:</span>
+            <b-button size="sm" variant="outline-primary" @click="setDatePreset('today')">Today</b-button>
+            <b-button size="sm" variant="outline-primary" @click="setDatePreset('week')">This Week</b-button>
+            <b-button size="sm" variant="outline-primary" @click="setDatePreset('last_month')">Last Month</b-button>
           </b-col>
         </b-row>
       </b-card-body>
@@ -87,12 +99,12 @@
             <td>{{ row.payment_method }}</td>
             <td class="amount">{{ money(row.amount) }}</td>
           </tr>
-          <tr v-if="!report.outflows.length"><td colspan="6" class="empty-row">No expenses or outgoing payments for this day.</td></tr>
+          <tr v-if="!report.outflows.length"><td colspan="6" class="empty-row">No expenses or outgoing payments for the selected period.</td></tr>
           <tr class="total-row"><td colspan="5">TOTAL EXPENSES AND PAYMENTS</td><td class="amount">{{ money(report.totals.total_outflows) }}</td></tr>
         </tbody>
       </table>
 
-      <div class="section-title">DAILY SUMMARY</div>
+      <div class="section-title">PERIOD SUMMARY</div>
       <table class="report-table summary-table">
         <tbody>
           <tr><th>Operating Expenses</th><td class="amount">{{ money(report.totals.operating_expenses) }}</td></tr>
@@ -115,7 +127,7 @@
           <tr v-for="row in report.payment_methods" :key="row.payment_method">
             <td>{{ row.payment_method }}</td><td class="amount">{{ money(row.inflow) }}</td><td class="amount">{{ money(row.outflow) }}</td><td class="amount">{{ money(row.net) }}</td>
           </tr>
-          <tr v-if="!report.payment_methods.length"><td colspan="4" class="empty-row">No payment activity for this day.</td></tr>
+          <tr v-if="!report.payment_methods.length"><td colspan="4" class="empty-row">No payment activity for the selected period.</td></tr>
         </tbody>
       </table>
 
@@ -134,7 +146,7 @@ export default {
     const localDate = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
     return {
       loading: false,
-      filters: { date: localDate, warehouse_id: null, provider_id: null },
+      filters: { start_date: localDate, end_date: localDate, warehouse_id: null, provider_id: null },
       warehouses: [],
       suppliers: [],
       report: null,
@@ -154,15 +166,50 @@ export default {
       );
     },
     displayDate() {
-      const parts = String(this.report.date || "").split("-");
-      return parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : this.report.date;
+      const start = this.formatDisplayDate(this.report.start_date || this.report.date);
+      const end = this.formatDisplayDate(this.report.end_date || this.report.date);
+      return start === end ? start : `${start} to ${end}`;
     }
   },
   created() {
     this.fetchReport();
   },
   methods: {
+    localDateString(date) {
+      return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    },
+    formatDisplayDate(value) {
+      const parts = String(value || "").split("-");
+      return parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : value;
+    },
+    setDatePreset(preset) {
+      const today = new Date();
+      let start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      let end = new Date(start);
+
+      if (preset === "week") {
+        const daysSinceMonday = (start.getDay() + 6) % 7;
+        start.setDate(start.getDate() - daysSinceMonday);
+      } else if (preset === "last_month") {
+        start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        end = new Date(today.getFullYear(), today.getMonth(), 0);
+      }
+
+      this.filters.start_date = this.localDateString(start);
+      this.filters.end_date = this.localDateString(end);
+      this.fetchReport();
+    },
     fetchReport() {
+      if (!this.filters.start_date || !this.filters.end_date || this.filters.end_date < this.filters.start_date) {
+        if (this.$bvToast) {
+          this.$bvToast.toast("The To Date must be on or after the From Date.", {
+            title: "Daily Reports",
+            variant: "warning",
+            solid: true
+          });
+        }
+        return;
+      }
       this.loading = true;
       NProgress.start();
       axios.get("report/daily", { params: this.filters })
@@ -195,7 +242,7 @@ export default {
     },
     exportCsv() {
       const rows = [
-        ["Daily Report", this.report.date, this.report.day_name, this.report.scope, this.report.supplier_scope],
+        ["Daily Report", this.report.start_date, this.report.end_date, this.report.day_name, this.report.scope, this.report.supplier_scope],
         [],
         ["Cash Available", "Amount"],
         ["Opening Register Balance", this.report.totals.opening_balance],
@@ -230,7 +277,7 @@ export default {
       const csv = "\ufeff" + rows.map(row => row.map(escape).join(",")).join("\r\n");
       const link = document.createElement("a");
       link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-      link.download = `daily-report-${this.report.date}.csv`;
+      link.download = `daily-report-${this.report.start_date}-to-${this.report.end_date}.csv`;
       link.click();
       URL.revokeObjectURL(link.href);
     }
@@ -242,6 +289,8 @@ export default {
 .daily-report-page { padding: 16px; }
 .filter-card, .report-sheet { border: 1px solid #d5dde5; border-radius: 10px; background: #fff; }
 .report-filter label { min-height: 21px; }
+.quick-range { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.quick-range .btn { margin: 0; }
 .report-actions { display: flex; align-items: flex-end; justify-content: flex-end; gap: 10px; }
 .report-actions .btn { margin: 0; white-space: nowrap; }
 .report-sheet { max-width: 1120px; margin: 0 auto; padding: 18px; color: #142b45; }

@@ -113,7 +113,7 @@
             </b-col>
 
             <!-- Opening Balance (Previous Dues) -->
-            <b-col md="6" sm="12">
+            <b-col v-if="canManageOpeningBalance" md="6" sm="12">
                 <b-form-group :label="$t('Opening_Balance_Previous_Dues')">
                   <b-form-input
                     type="number"
@@ -242,23 +242,26 @@ export default {
     //---------------------------- Create Provider  -----------------------\\
     Create_Provider() {
       this.SubmitProcessing = true;
+      const payload = {
+        account_title: this.provider.account_title,
+        name: this.provider.name,
+        email: this.provider.email,
+        phone: this.provider.phone,
+        tax_number: this.provider.tax_number,
+        tax_status: this.provider.tax_status,
+        strn_number: this.provider.strn_number,
+        ntn_number: this.provider.ntn_number,
+        category_ids: this.provider.category_ids,
+        country: this.provider.country,
+        city: this.provider.city,
+        adresse: this.provider.adresse,
+        credit_limit: parseFloat(this.provider.credit_limit) || 0
+      };
+      if (this.canManageOpeningBalance) {
+        payload.opening_balance = parseFloat(this.provider.opening_balance) || 0;
+      }
       axios
-        .post("providers", {
-          account_title: this.provider.account_title,
-          name: this.provider.name,
-          email: this.provider.email,
-          phone: this.provider.phone,
-          tax_number: this.provider.tax_number,
-          tax_status: this.provider.tax_status,
-          strn_number: this.provider.strn_number,
-          ntn_number: this.provider.ntn_number,
-          category_ids: this.provider.category_ids,
-          country: this.provider.country,
-          city: this.provider.city,
-          adresse: this.provider.adresse,
-          opening_balance: parseFloat(this.provider.opening_balance) || 0,
-          credit_limit: parseFloat(this.provider.credit_limit) || 0
-        })
+        .post("providers", payload)
         .then(response => {
           const providerId = response.data.id || response.data.provider?.id;
           
@@ -348,6 +351,10 @@ export default {
   },
 
   computed: {
+    canManageOpeningBalance() {
+      const permissions = this.$store.getters.currentUserPermissions || [];
+      return permissions.includes('supplier_opening_balance');
+    },
     categoryOptions() {
       return this.categories.map(category => ({
         label: category.name,

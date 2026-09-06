@@ -125,6 +125,14 @@
                 </b-dropdown-item>
 
                 <b-dropdown-item
+                  v-if="currentUserPermissions && currentUserPermissions.includes('supplier_opening_balance')"
+                  @click="openOpeningBalanceModal(props.row)"
+                >
+                  <lucide-icon class="nav-icon font-weight-bold mr-2" name="wallet" />
+                  {{$t('Opening_Balance')}}
+                </b-dropdown-item>
+
+                <b-dropdown-item
                  v-if="currentUserPermissions && currentUserPermissions.includes('Suppliers_edit')"
                   @click="Edit_Provider(props.row)"
                 >
@@ -200,6 +208,78 @@
         </b-row>
       </div>
     </b-sidebar>
+
+    <!-- Supplier Opening Balance Modal -->
+    <validation-observer ref="supplierOpeningBalanceForm">
+      <b-modal
+        id="supplier-opening-balance-modal"
+        hide-footer
+        centered
+        size="md"
+        :title="$t('Opening_Balance')"
+      >
+        <b-form @submit.prevent="submitOpeningBalance">
+          <div class="opening-balance-supplier mb-3">
+            <small class="text-muted d-block">{{$t('Supplier')}}</small>
+            <strong>{{ openingBalanceForm.provider_name }}</strong>
+          </div>
+
+          <validation-provider
+            name="Opening Balance"
+            :rules="{ required: true, regex: /^\d+(\.\d{0,2})?$/ }"
+            v-slot="validationContext"
+          >
+            <b-form-group :label="$t('Opening_Balance') + ' *'">
+              <b-input-group :prepend="currentUser.currency || ''">
+                <b-form-input
+                  v-model="openingBalanceForm.opening_balance"
+                  type="text"
+                  inputmode="decimal"
+                  autocomplete="off"
+                  placeholder="0.00"
+                  :state="getValidationState(validationContext)"
+                  aria-describedby="supplier-opening-balance-feedback"
+                  @input="sanitizeOpeningBalance"
+                  @blur="formatOpeningBalance"
+                />
+              </b-input-group>
+              <b-form-invalid-feedback id="supplier-opening-balance-feedback" :state="getValidationState(validationContext)">
+                {{ validationContext.errors[0] }}
+              </b-form-invalid-feedback>
+              <small class="text-muted">Enter a numeric value with up to two decimal places.</small>
+            </b-form-group>
+          </validation-provider>
+
+          <validation-provider name="Date" :rules="{ required: true }" v-slot="validationContext">
+            <b-form-group :label="$t('date') + ' *'">
+              <b-form-input
+                v-model="openingBalanceForm.date"
+                type="date"
+                :state="getValidationState(validationContext)"
+                aria-describedby="supplier-opening-balance-date-feedback"
+              />
+              <b-form-invalid-feedback id="supplier-opening-balance-date-feedback">
+                {{ validationContext.errors[0] }}
+              </b-form-invalid-feedback>
+            </b-form-group>
+          </validation-provider>
+
+          <div class="d-flex justify-content-end mt-4">
+            <b-button
+              variant="secondary"
+              class="mr-2"
+              :disabled="openingBalanceProcessing"
+              @click="$bvModal.hide('supplier-opening-balance-modal')"
+            >{{$t('Cancel')}}</b-button>
+            <b-button variant="primary" type="submit" :disabled="openingBalanceProcessing">
+              <b-spinner v-if="openingBalanceProcessing" small class="mr-2" />
+              <lucide-icon v-else class="mr-2" name="check" />
+              {{$t('submit')}}
+            </b-button>
+          </div>
+        </b-form>
+      </b-modal>
+    </validation-observer>
 
 
     <!-- Modal Pay_due-->
@@ -535,6 +615,8 @@
               <tr><td>Tax status</td><th>{{ provider.tax_status === 'gst' ? 'GST Registered' : 'Non-GST' }}</th></tr>
               <tr v-if="provider.strn_number"><td>GST / STRN</td><th>{{ provider.strn_number }}</th></tr>
               <tr v-if="provider.ntn_number"><td>NTN</td><th>{{ provider.ntn_number }}</th></tr>
+              <tr><td>{{$t('Opening_Balance')}}</td><th>{{currentUser.currency}} {{formatNumber(provider.opening_balance || 0, 2)}}</th></tr>
+              <tr v-if="provider.opening_balance_date"><td>{{$t('date')}}</td><th>{{provider.opening_balance_date}}</th></tr>
                <tr>
                 <!-- Total_Purchase_Due -->
                 <td>{{$t('Total_Purchase_Due')}}</td>
@@ -672,6 +754,7 @@ export default {
       ImportProcessing:false,
       paymentProcessing:false,
       payment_return_Processing:false,
+      openingBalanceProcessing:false,
       serverParams: {
         columnFilters: {},
         sort: {
@@ -705,7 +788,15 @@ export default {
         tax_number: "",
         country: "",
         city: "",
-        adresse: ""
+        adresse: "",
+        opening_balance: 0,
+        opening_balance_date: null
+      },
+      openingBalanceForm: {
+        provider_id: null,
+        provider_name: "",
+        opening_balance: "0.00",
+        date: ""
       },
       payment: {
         provider_id: "",
@@ -1042,6 +1133,78 @@ export default {
     //------------------------------ Navigate to Edit Supplier Page -------------------------------\\
     Edit_Provider(provider) {
       this.$router.push({ name: 'Edit_Supplier', params: { id: provider.id } });
+    },
+
+    openOpeningBalanceModal(provider) {
+      const today = new Date();
+      const localDate = new Date(today.getTime() - today.getTimezoneOffset() * 60000)
+        .toISOString()
+        .slice(0, 10);
+
+      this.openingBalanceForm = {
+        provider_id: provider.id,
+        provider_name: provider.name,
+        opening_balance: Number(provider.opening_balance || 0).toFixed(2),
+        date: provider.opening_balance_date || localDate
+      };
+      this.openingBalanceProcessing = false;
+      this.$bvModal.show('supplier-opening-balance-modal');
+      this.$nextTick(() => {
+        if (this.$refs.supplierOpeningBalanceForm) {
+          this.$refs.supplierOpeningBalanceForm.reset();
+        }
+      });
+    },
+
+    sanitizeOpeningBalance(value) {
+      const raw = String(value == null ? '' : value);
+      const hasDecimalPoint = raw.includes('.');
+      const parts = raw.replace(/[^\d.]/g, '').split('.');
+      let whole = parts.shift() || (hasDecimalPoint ? '0' : '');
+      whole = whole.replace(/^0+(?=\d)/, '');
+      const decimals = parts.join('').slice(0, 2);
+      this.openingBalanceForm.opening_balance = whole + (hasDecimalPoint ? `.${decimals}` : '');
+    },
+
+    formatOpeningBalance() {
+      const amount = Number(this.openingBalanceForm.opening_balance);
+      if (Number.isFinite(amount) && amount >= 0) {
+        this.openingBalanceForm.opening_balance = amount.toFixed(2);
+      }
+    },
+
+    submitOpeningBalance() {
+      this.$refs.supplierOpeningBalanceForm.validate().then(success => {
+        if (!success || this.openingBalanceProcessing) {
+          return;
+        }
+
+        this.openingBalanceProcessing = true;
+        axios
+          .post(`providers/${this.openingBalanceForm.provider_id}/opening-balance`, {
+            opening_balance: Number(this.openingBalanceForm.opening_balance).toFixed(2),
+            date: this.openingBalanceForm.date
+          })
+          .then(response => {
+            const provider = this.providers.find(item => item.id === this.openingBalanceForm.provider_id);
+            if (provider) {
+              this.$set(provider, 'opening_balance', response.data.opening_balance);
+              this.$set(provider, 'opening_balance_date', response.data.opening_balance_date);
+            }
+            this.$bvModal.hide('supplier-opening-balance-modal');
+            this.makeToast('success', this.$t('Successfully_Updated'), this.$t('Success'));
+          })
+          .catch(error => {
+            const errors = error.response && error.response.data && error.response.data.errors;
+            const message = errors
+              ? Object.values(errors).reduce((all, messages) => all.concat(messages), [])[0]
+              : this.$t('Failed_to_update_opening_balance');
+            this.makeToast('danger', message || this.$t('InvalidData'), this.$t('Failed'));
+          })
+          .finally(() => {
+            this.openingBalanceProcessing = false;
+          });
+      });
     },
 
     //----------------------------  Get all Providers  -----------------------\\

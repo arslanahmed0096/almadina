@@ -97,6 +97,16 @@
               <lucide-icon class="text-info" name="eye" />
             </router-link>
 
+            <b-button
+              v-if="can('product_stock_check')"
+              v-b-tooltip.hover
+              title="Check Product Stock"
+              class="btn btn-sm btn-outline-primary action-btn"
+              @click="openStockCheck(props.row)"
+            >
+              <lucide-icon name="database" />
+            </b-button>
+
             <router-link
               v-if="can('products_view')"
               v-b-tooltip.hover
@@ -204,6 +214,101 @@
           </span>
         </template>
       </vue-good-table>
+
+      <!-- Product stock by branch -->
+      <b-modal
+        id="ProductStockCheckModal"
+        size="xl"
+        hide-footer
+        hide-header
+        centered
+        modal-class="product-stock-check-modal"
+        body-class="product-stock-check-modal-body"
+      >
+        <div class="stock-check-shell">
+          <header class="stock-check-header">
+            <div class="stock-check-header__identity">
+              <span class="stock-check-header__icon"><lucide-icon name="database" /></span>
+              <div>
+                <small>INVENTORY BY BRANCH</small>
+                <h3>Check Product Stock</h3>
+                <p>Current stock available in every assigned branch.</p>
+              </div>
+            </div>
+            <button type="button" class="stock-check-close" aria-label="Close" @click="$bvModal.hide('ProductStockCheckModal')">
+              <lucide-icon name="x" />
+            </button>
+          </header>
+
+          <div class="stock-check-content">
+            <div v-if="stockCheckLoading" class="stock-check-loading">
+              <div class="spinner spinner-primary"></div>
+            </div>
+
+            <template v-else>
+              <div class="stock-check-product">
+                <div>
+                  <span class="stock-check-product__avatar"><lucide-icon name="package" /></span>
+                  <span>
+                    <small>SELECTED PRODUCT</small>
+                    <strong>{{ stockCheckProduct.name }}</strong>
+                  </span>
+                </div>
+                <code>{{ stockCheckProduct.code }}</code>
+              </div>
+
+              <section v-if="stockCheckProduct.type === 'is_single'" class="stock-check-section">
+                <div class="stock-check-section__header">
+                  <span><lucide-icon name="database" /> {{ $t('Warehouse_Stock') || 'Warehouse Stock' }}</span>
+                  <b-badge variant="info">
+                    {{ $t('Total') || 'Total' }}: {{ formatNumber(stockCheckTotal, 2) }} {{ stockCheckProduct.unit }}
+                  </b-badge>
+                </div>
+                <div class="stock-check-grid">
+                  <article v-for="warehouse in warehouseStock" :key="warehouse.warehouse_id" class="stock-check-card">
+                    <span class="stock-check-card__icon"><lucide-icon name="store" /></span>
+                    <div>
+                      <small>{{ warehouse.warehouse }}</small>
+                      <strong>{{ formatNumber(warehouse.quantity || 0, 2) }} <em>{{ stockCheckProduct.unit }}</em></strong>
+                    </div>
+                  </article>
+                </div>
+              </section>
+
+              <section v-else-if="stockCheckProduct.type === 'is_variant'" class="stock-check-section">
+                <div class="stock-check-section__header">
+                  <span><lucide-icon name="database" /> {{ $t('Warehouse_Variants_Stock') || 'Warehouse Variants Stock' }}</span>
+                </div>
+                <div class="table-responsive">
+                  <table class="table table-hover mb-0 stock-check-table">
+                    <thead>
+                      <tr>
+                        <th>{{ $t('warehouse') }}</th>
+                        <th>{{ $t('Variant') }}</th>
+                        <th>{{ $t('Code') }}</th>
+                        <th class="text-right">{{ $t('Quantity') }}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="row in variantStock" :key="`${row.warehouse_id}-${row.variant_id}`">
+                        <td><lucide-icon name="store" /> {{ row.warehouse }}</td>
+                        <td><b-badge variant="light" class="stock-check-variant">{{ row.variant }}</b-badge></td>
+                        <td><code>{{ row.code }}</code></td>
+                        <td class="text-right stock-check-quantity">{{ formatNumber(row.quantity || 0, 2) }} {{ stockCheckProduct.unit }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <div v-else class="stock-check-empty">
+                <lucide-icon name="info" />
+                <p>This product type does not maintain warehouse stock.</p>
+              </div>
+            </template>
+          </div>
+        </div>
+      </b-modal>
 
       <b-modal
         id="PricingLevelModal"
@@ -507,6 +612,16 @@ export default {
       isExportingAll: false,
       pricingLoading: false,
       pricingSubmitting: false,
+      stockCheckLoading: false,
+      stockCheckProduct: {
+        id: null,
+        name: "",
+        code: "",
+        type: "",
+        unit: ""
+      },
+      warehouseStock: [],
+      variantStock: [],
       pricingForm: {
         id: null,
         name: "",
@@ -532,6 +647,9 @@ export default {
         { value: "az", text: "Product Name: A-Z" },
         { value: "za", text: "Product Name: Z-A" }
       ];
+    },
+    stockCheckTotal() {
+      return this.warehouseStock.reduce((total, row) => total + (Number(row.quantity) || 0), 0);
     },
     columns() {
       const columns = [
@@ -577,6 +695,35 @@ export default {
   },
   methods: {
     can(p) { return this.currentUserPermissions && this.currentUserPermissions.includes(p); },
+
+    openStockCheck(row) {
+      this.stockCheckLoading = true;
+      this.stockCheckProduct = {
+        id: row.id,
+        name: row.name,
+        code: row.code,
+        type: row.product_type || "",
+        unit: row.unit || ""
+      };
+      this.warehouseStock = [];
+      this.variantStock = [];
+      this.$bvModal.show("ProductStockCheckModal");
+
+      axios.get(`products/${row.id}/stock-check`)
+        .then(response => {
+          this.stockCheckProduct = response.data.product || this.stockCheckProduct;
+          this.warehouseStock = response.data.warehouse_stock || [];
+          this.variantStock = response.data.variant_stock || [];
+        })
+        .catch(error => {
+          this.$bvModal.hide("ProductStockCheckModal");
+          const message = error.response?.data?.message || "Unable to load product stock.";
+          this.makeToast("danger", message, this.$t("Failed"));
+        })
+        .finally(() => {
+          this.stockCheckLoading = false;
+        });
+    },
 
     normalizePricing(pricing) {
       const numericFields = [
@@ -1122,6 +1269,203 @@ export default {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+.stock-check-shell {
+  min-height: 360px;
+  color: #0f172a;
+  background: #f8fafc;
+}
+.stock-check-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.4rem 1.65rem;
+  background: linear-gradient(135deg, #0369a1, #0284c7 52%, #0ea5e9);
+  color: #fff;
+}
+.stock-check-header__identity,
+.stock-check-header__identity > div,
+.stock-check-product > div,
+.stock-check-product > div > span:last-child {
+  display: flex;
+}
+.stock-check-header__identity,
+.stock-check-product > div {
+  align-items: center;
+  gap: 0.85rem;
+}
+.stock-check-header__identity > div,
+.stock-check-product > div > span:last-child {
+  flex-direction: column;
+}
+.stock-check-header__icon,
+.stock-check-product__avatar,
+.stock-check-card__icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.stock-check-header__icon {
+  width: 52px;
+  height: 52px;
+  border: 1px solid rgba(255,255,255,.28);
+  border-radius: 14px;
+  background: rgba(255,255,255,.15);
+}
+.stock-check-header small {
+  color: #bae6fd;
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .1em;
+}
+.stock-check-header h3 {
+  margin: .1rem 0;
+  color: #fff;
+  font-size: 1.4rem;
+}
+.stock-check-header p {
+  margin: 0;
+  color: rgba(255,255,255,.78);
+  font-size: .84rem;
+}
+.stock-check-close {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid rgba(255,255,255,.25);
+  border-radius: 10px;
+  background: rgba(255,255,255,.12);
+  color: #fff;
+  cursor: pointer;
+}
+.stock-check-content {
+  padding: 1.4rem 1.65rem 1.65rem;
+}
+.stock-check-loading {
+  min-height: 280px;
+  display: grid;
+  place-items: center;
+}
+.stock-check-product {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: .9rem 1rem;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  background: #fff;
+}
+.stock-check-product__avatar,
+.stock-check-card__icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: #0ea5e9;
+  color: #fff;
+}
+.stock-check-product small {
+  color: #64748b;
+  font-size: .68rem;
+  letter-spacing: .06em;
+}
+.stock-check-product code {
+  padding: .3rem .55rem;
+  border-radius: 6px;
+  background: #e0f2fe;
+  color: #075985;
+}
+.stock-check-section {
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #fff;
+}
+.stock-check-section__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  padding: .9rem 1.1rem;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+  font-weight: 700;
+}
+.stock-check-section__header > span {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+}
+.stock-check-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: .8rem;
+  padding: 1.15rem;
+}
+.stock-check-card {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .9rem 1rem;
+  border: 1px solid #bae6fd;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
+}
+.stock-check-card div {
+  display: flex;
+  flex-direction: column;
+}
+.stock-check-card small {
+  color: #64748b;
+  font-size: .72rem;
+  font-weight: 650;
+  text-transform: uppercase;
+}
+.stock-check-card strong {
+  color: #0c4a6e;
+  font-size: 1.12rem;
+}
+.stock-check-card em {
+  color: #64748b;
+  font-size: .75rem;
+  font-style: normal;
+  font-weight: 500;
+}
+.stock-check-table th {
+  border-top: 0;
+  background: #f8fafc;
+  color: #475569;
+  font-size: .75rem;
+  text-transform: uppercase;
+}
+.stock-check-table td {
+  vertical-align: middle;
+}
+.stock-check-table td:first-child svg {
+  width: 16px;
+  color: #0ea5e9;
+}
+.stock-check-variant {
+  color: #6d28d9;
+}
+.stock-check-quantity {
+  color: #0c4a6e;
+  font-weight: 750;
+}
+.stock-check-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .55rem;
+  min-height: 180px;
+  color: #64748b;
+}
+.stock-check-empty p {
+  margin: 0;
+}
 .pricing-level-shell {
   color: #0f172a;
   background: #f8fafc;
@@ -1412,6 +1756,23 @@ export default {
 
 <style>
 /* BootstrapVue teleports modal wrappers to body, so wrapper sizing must be unscoped. */
+.product-stock-check-modal .modal-dialog {
+  width: calc(100vw - 64px) !important;
+  max-width: 1120px !important;
+  margin: 32px auto !important;
+}
+.product-stock-check-modal .modal-content {
+  max-height: calc(100vh - 64px);
+  overflow: hidden;
+  border: 0 !important;
+  border-radius: 18px !important;
+  box-shadow: 0 26px 65px -22px rgba(15, 23, 42, .48) !important;
+}
+.product-stock-check-modal .product-stock-check-modal-body {
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  padding: 0 !important;
+}
 .pricing-level-modal .modal-dialog {
   width: calc(100vw - 48px) !important;
   max-width: 1400px !important;
@@ -1453,6 +1814,10 @@ export default {
   background: #1e1b4b;
 }
 @media (max-width: 767px) {
+  .product-stock-check-modal .modal-dialog {
+    width: calc(100vw - 20px) !important;
+    margin: 10px auto !important;
+  }
   .pricing-level-modal .modal-dialog {
     width: calc(100vw - 20px) !important;
     margin: 10px auto !important;

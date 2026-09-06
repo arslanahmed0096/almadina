@@ -152,6 +152,8 @@ class ProvidersController extends BaseController
             $item['country'] = $provider->country;
             $item['city'] = $provider->city;
             $item['adresse'] = $provider->adresse;
+            $item['opening_balance'] = round((float) ($provider->opening_balance ?? 0), 2);
+            $item['opening_balance_date'] = optional($provider->opening_balance_date)->format('Y-m-d');
             $data[] = $item;
         }
 
@@ -188,10 +190,14 @@ class ProvidersController extends BaseController
     public function store(Request $request)
     {
         $this->authorizeForUser($request->user('api'), 'create', Provider::class);
+        if ($request->has('opening_balance')) {
+            $this->authorizeForUser($request->user('api'), 'supplier_opening_balance', Provider::class);
+        }
 
         $validated = $request->validate([
             'name' => 'required',
             'tax_status' => 'nullable|in:gst,non_gst',
+            'opening_balance' => 'nullable|numeric|min:0',
             'category_ids' => 'nullable|array',
             'category_ids.*' => [
                 'integer',
@@ -249,15 +255,45 @@ class ProvidersController extends BaseController
 
     }
 
+    public function updateOpeningBalance(Request $request, $id)
+    {
+        $this->authorizeForUser($request->user('api'), 'supplier_opening_balance', Provider::class);
+
+        $validated = $request->validate([
+            'opening_balance' => ['required', 'numeric', 'min:0', 'decimal:0,2'],
+            'date' => ['required', 'date_format:Y-m-d'],
+        ]);
+
+        $provider = DB::transaction(function () use ($id, $validated) {
+            $provider = Provider::whereNull('deleted_at')->lockForUpdate()->findOrFail($id);
+            $provider->opening_balance = round((float) $validated['opening_balance'], 2);
+            $provider->opening_balance_date = $validated['date'];
+            $provider->save();
+
+            return $provider;
+        });
+
+        return response()->json([
+            'success' => true,
+            'provider_id' => (int) $provider->id,
+            'opening_balance' => round((float) $provider->opening_balance, 2),
+            'opening_balance_date' => optional($provider->opening_balance_date)->format('Y-m-d'),
+        ]);
+    }
+
     // ----------- Update Supplier-------\\
 
     public function update(Request $request, $id)
     {
         $this->authorizeForUser($request->user('api'), 'update', Provider::class);
+        if ($request->has('opening_balance')) {
+            $this->authorizeForUser($request->user('api'), 'supplier_opening_balance', Provider::class);
+        }
 
         $validated = $request->validate([
             'name' => 'required',
             'tax_status' => 'nullable|in:gst,non_gst',
+            'opening_balance' => 'nullable|numeric|min:0',
             'category_ids' => 'nullable|array',
             'category_ids.*' => [
                 'integer',
@@ -269,7 +305,7 @@ class ProvidersController extends BaseController
 
         DB::transaction(function () use ($request, $validated, $taxStatus, $id) {
             $provider = Provider::whereNull('deleted_at')->findOrFail($id);
-            $provider->update([
+            $attributes = [
                 'name' => $request['name'],
                 'account_title' => $request['account_title'] ?? null,
                 'adresse' => $request['adresse'],
@@ -282,7 +318,11 @@ class ProvidersController extends BaseController
                 'strn_number' => $taxStatus === 'gst' ? $request['strn_number'] : null,
                 'ntn_number' => $taxStatus === 'gst' ? $request['ntn_number'] : null,
                 'credit_limit' => $request->input('credit_limit', 0),
-            ]);
+            ];
+            if ($request->has('opening_balance')) {
+                $attributes['opening_balance'] = $request->input('opening_balance');
+            }
+            $provider->update($attributes);
 
             $provider->categories()->sync($validated['category_ids'] ?? []);
         });

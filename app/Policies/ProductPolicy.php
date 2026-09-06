@@ -78,6 +78,12 @@ class ProductPolicy
         return $user->hasRole($permission->roles);
     }
 
+    public function product_stock_check(User $user): bool
+    {
+        return $user->isSuperAdmin()
+            || $user->effectivePermissionNames()->contains('product_stock_check');
+    }
+
     public function barcode(User $user)
     {
         $permission = Permission::where('name', 'barcode_view')->first();

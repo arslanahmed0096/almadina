@@ -99,6 +99,12 @@ class ProviderPolicy
         return $user->hasRole($permission->roles);
     }
 
+    public function supplier_opening_balance(User $user): bool
+    {
+        return $user->isSuperAdmin()
+            || $user->effectivePermissionNames()->contains('supplier_opening_balance');
+    }
+
     public function Top_Suppliers_Report(User $user)
     {
         $permission = Permission::where('name', 'Top_Suppliers_Report')->first();

@@ -10,12 +10,20 @@ class DailyReportService
 {
     public function build(Carbon $date, Collection $warehouses, bool $includeGlobalBalances, ?int $providerId = null): array
     {
-        $day = $date->toDateString();
+        return $this->buildRange($date, $date, $warehouses, $includeGlobalBalances, $providerId);
+    }
+
+    public function buildRange(Carbon $startDate, Carbon $endDate, Collection $warehouses, bool $includeGlobalBalances, ?int $providerId = null): array
+    {
+        $startDate = $startDate->copy()->startOfDay();
+        $endDate = $endDate->copy()->endOfDay();
+        $startDay = $startDate->toDateString();
+        $endDay = $endDate->toDateString();
         $warehouseIds = $warehouses->pluck('id')->map(fn ($id) => (int) $id)->values();
 
         $sales = DB::table('sales')
             ->whereNull('deleted_at')
-            ->where('date', $day)
+            ->whereBetween('date', [$startDay, $endDay])
             ->where('statut', 'completed')
             ->whereIn('warehouse_id', $warehouseIds)
             ->selectRaw('warehouse_id, SUM(GrandTotal) AS amount')
@@ -23,7 +31,7 @@ class DailyReportService
             ->pluck('amount', 'warehouse_id');
         $returns = DB::table('sale_returns')
             ->whereNull('deleted_at')
-            ->where('date', $day)
+            ->whereBetween('date', [$startDay, $endDay])
             ->where('statut', 'completed')
             ->whereIn('warehouse_id', $warehouseIds)
             ->selectRaw('warehouse_id, SUM(GrandTotal) AS amount')
@@ -45,7 +53,7 @@ class DailyReportService
 
         $registers = DB::table('cash_registers')
             ->whereIn('warehouse_id', $warehouseIds)
-            ->whereDate('opened_at', $day)
+            ->whereBetween('opened_at', [$startDate, $endDate])
             ->selectRaw('COALESCE(SUM(opening_balance), 0) AS opening_balance')
             ->selectRaw('COALESCE(SUM(cash_in), 0) AS cash_in')
             ->selectRaw('COALESCE(SUM(cash_out), 0) AS cash_out')
@@ -59,7 +67,7 @@ class DailyReportService
                 ->leftJoin('payment_methods', 'payment_methods.id', '=', 'payment_sales.payment_method_id')
                 ->whereNull('payment_sales.deleted_at')
                 ->whereNull('sales.deleted_at')
-                ->where('payment_sales.date', $day)
+                ->whereBetween('payment_sales.date', [$startDay, $endDay])
                 ->whereIn('sales.warehouse_id', $warehouseIds),
             'payment_sales'
         );
@@ -68,7 +76,7 @@ class DailyReportService
                 DB::table('client_opening_balance_payments')
                     ->leftJoin('payment_methods', 'payment_methods.id', '=', 'client_opening_balance_payments.payment_method_id')
                     ->whereNull('client_opening_balance_payments.deleted_at')
-                    ->where('client_opening_balance_payments.date', $day),
+                    ->whereBetween('client_opening_balance_payments.date', [$startDay, $endDay]),
                 'client_opening_balance_payments',
                 'montant'
             )
@@ -79,7 +87,7 @@ class DailyReportService
                 ->leftJoin('payment_methods', 'payment_methods.id', '=', 'payment_purchase_returns.payment_method_id')
                 ->whereNull('payment_purchase_returns.deleted_at')
                 ->whereNull('purchase_returns.deleted_at')
-                ->where('payment_purchase_returns.date', $day)
+                ->whereBetween('payment_purchase_returns.date', [$startDay, $endDay])
                 ->when($providerId, fn ($query) => $query->where('purchase_returns.provider_id', $providerId))
                 ->whereIn('purchase_returns.warehouse_id', $warehouseIds),
             'payment_purchase_returns'
@@ -88,7 +96,7 @@ class DailyReportService
             DB::table('expenses')
                 ->leftJoin('payment_methods', 'payment_methods.id', '=', 'expenses.payment_method_id')
                 ->whereNull('expenses.deleted_at')
-                ->where('expenses.date', $day)
+                ->whereBetween('expenses.date', [$startDay, $endDay])
                 ->whereIn('expenses.warehouse_id', $warehouseIds),
             'expenses',
             'amount'
@@ -99,7 +107,7 @@ class DailyReportService
                 ->leftJoin('payment_methods', 'payment_methods.id', '=', 'payment_purchases.payment_method_id')
                 ->whereNull('payment_purchases.deleted_at')
                 ->whereNull('purchases.deleted_at')
-                ->where('payment_purchases.date', $day)
+                ->whereBetween('payment_purchases.date', [$startDay, $endDay])
                 ->when($providerId, fn ($query) => $query->where('purchases.provider_id', $providerId))
                 ->whereIn('purchases.warehouse_id', $warehouseIds),
             'payment_purchases'
@@ -109,7 +117,7 @@ class DailyReportService
                 DB::table('provider_opening_balance_payments')
                     ->leftJoin('payment_methods', 'payment_methods.id', '=', 'provider_opening_balance_payments.payment_method_id')
                     ->whereNull('provider_opening_balance_payments.deleted_at')
-                    ->where('provider_opening_balance_payments.date', $day)
+                    ->whereBetween('provider_opening_balance_payments.date', [$startDay, $endDay])
                     ->when($providerId, fn ($query) => $query->where('provider_opening_balance_payments.provider_id', $providerId)),
                 'provider_opening_balance_payments',
                 'montant'
@@ -121,7 +129,7 @@ class DailyReportService
                 ->leftJoin('payment_methods', 'payment_methods.id', '=', 'payment_sale_returns.payment_method_id')
                 ->whereNull('payment_sale_returns.deleted_at')
                 ->whereNull('sale_returns.deleted_at')
-                ->where('payment_sale_returns.date', $day)
+                ->whereBetween('payment_sale_returns.date', [$startDay, $endDay])
                 ->whereIn('sale_returns.warehouse_id', $warehouseIds),
             'payment_sale_returns'
         );
@@ -132,7 +140,7 @@ class DailyReportService
             ->leftJoin('warehouses', 'warehouses.id', '=', 'expenses.warehouse_id')
             ->leftJoin('payment_methods', 'payment_methods.id', '=', 'expenses.payment_method_id')
             ->whereNull('expenses.deleted_at')
-            ->where('expenses.date', $day)
+            ->whereBetween('expenses.date', [$startDay, $endDay])
             ->whereIn('expenses.warehouse_id', $warehouseIds)
             ->orderBy('expenses.id')
             ->get([
@@ -159,7 +167,7 @@ class DailyReportService
             ->leftJoin('payment_methods', 'payment_methods.id', '=', 'payment_purchases.payment_method_id')
             ->whereNull('payment_purchases.deleted_at')
             ->whereNull('purchases.deleted_at')
-            ->where('payment_purchases.date', $day)
+            ->whereBetween('payment_purchases.date', [$startDay, $endDay])
             ->when($providerId, fn ($query) => $query->where('purchases.provider_id', $providerId))
             ->whereIn('purchases.warehouse_id', $warehouseIds)
             ->orderBy('payment_purchases.id')
@@ -185,7 +193,7 @@ class DailyReportService
                 ->leftJoin('providers', 'providers.id', '=', 'provider_opening_balance_payments.provider_id')
                 ->leftJoin('payment_methods', 'payment_methods.id', '=', 'provider_opening_balance_payments.payment_method_id')
                 ->whereNull('provider_opening_balance_payments.deleted_at')
-                ->where('provider_opening_balance_payments.date', $day)
+                ->whereBetween('provider_opening_balance_payments.date', [$startDay, $endDay])
                 ->when($providerId, fn ($query) => $query->where('provider_opening_balance_payments.provider_id', $providerId))
                 ->orderBy('provider_opening_balance_payments.id')
                 ->get([
@@ -214,7 +222,7 @@ class DailyReportService
             ->leftJoin('payment_methods', 'payment_methods.id', '=', 'payment_sale_returns.payment_method_id')
             ->whereNull('payment_sale_returns.deleted_at')
             ->whereNull('sale_returns.deleted_at')
-            ->where('payment_sale_returns.date', $day)
+            ->whereBetween('payment_sale_returns.date', [$startDay, $endDay])
             ->whereIn('sale_returns.warehouse_id', $warehouseIds)
             ->orderBy('payment_sale_returns.id')
             ->get([
@@ -299,8 +307,12 @@ class DailyReportService
             : 'All suppliers';
 
         return [
-            'date' => $day,
-            'day_name' => $date->format('l'),
+            'date' => $startDay,
+            'start_date' => $startDay,
+            'end_date' => $endDay,
+            'day_name' => $startDay === $endDay
+                ? $startDate->format('l')
+                : ($startDate->diffInDays($endDate->copy()->startOfDay()) + 1).' days',
             'scope' => $warehouses->count() === 1 ? $warehouses->first()->name : 'All permitted branches',
             'supplier_scope' => $supplierScope,
             'sales_by_branch' => $salesByBranch,

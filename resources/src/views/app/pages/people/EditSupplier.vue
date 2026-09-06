@@ -114,6 +114,21 @@
               </b-form-group>
             </b-col>
 
+            <!-- Opening Balance (Previous Dues) -->
+            <b-col v-if="canManageOpeningBalance" md="6" sm="12">
+                <b-form-group :label="$t('Opening_Balance_Previous_Dues')">
+                  <b-form-input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    :label="$t('Opening_Balance')"
+                    v-model.number="provider.opening_balance"
+                    placeholder="0.00"
+                  ></b-form-input>
+                  <small class="text-muted">{{$t('Enter_the_supplier_previous_outstanding_balance_from_before_system_start')}}</small>
+                </b-form-group>
+            </b-col>
+
             <!-- Credit Limit -->
             <b-col md="6" sm="12">
                 <b-form-group :label="$t('Credit_Limit')">
@@ -197,7 +212,8 @@ export default {
         country: "",
         city: "",
         adresse: "",
-        credit_limit: 0
+        credit_limit: 0,
+        opening_balance: 0
       },
     };
   },
@@ -233,22 +249,26 @@ export default {
     //--------------------------- Update Provider -----------------------\\
     Update_provider() {
       this.SubmitProcessing = true;
+      const payload = {
+        name: this.provider.name,
+        account_title: this.provider.account_title,
+        email: this.provider.email,
+        tax_number: this.provider.tax_number,
+        tax_status: this.provider.tax_status,
+        strn_number: this.provider.strn_number,
+        ntn_number: this.provider.ntn_number,
+        category_ids: this.provider.category_ids,
+        phone: this.provider.phone,
+        country: this.provider.country,
+        city: this.provider.city,
+        adresse: this.provider.adresse,
+        credit_limit: parseFloat(this.provider.credit_limit) || 0
+      };
+      if (this.canManageOpeningBalance) {
+        payload.opening_balance = parseFloat(this.provider.opening_balance) || 0;
+      }
       axios
-        .put("providers/" + this.provider.id, {
-          name: this.provider.name,
-          account_title: this.provider.account_title,
-          email: this.provider.email,
-          tax_number: this.provider.tax_number,
-          tax_status: this.provider.tax_status,
-          strn_number: this.provider.strn_number,
-          ntn_number: this.provider.ntn_number,
-          category_ids: this.provider.category_ids,
-          phone: this.provider.phone,
-          country: this.provider.country,
-          city: this.provider.city,
-          adresse: this.provider.adresse,
-          credit_limit: parseFloat(this.provider.credit_limit) || 0
-        })
+        .put("providers/" + this.provider.id, payload)
         .then(response => {
           // Save custom field values if any
           if (Object.keys(this.customFieldValues).length > 0) {
@@ -304,7 +324,8 @@ export default {
             country: response.data.provider?.country || "",
             city: response.data.provider?.city || "",
             adresse: response.data.provider?.adresse || "",
-            credit_limit: response.data.provider?.credit_limit || 0
+            credit_limit: response.data.provider?.credit_limit || 0,
+            opening_balance: response.data.provider?.opening_balance || 0
           };
           // CustomFieldsForm component will handle loading values
           NProgress.done();
@@ -356,6 +377,10 @@ export default {
   },
 
   computed: {
+    canManageOpeningBalance() {
+      const permissions = this.$store.getters.currentUserPermissions || [];
+      return permissions.includes('supplier_opening_balance');
+    },
     categoryOptions() {
       return this.categories.map(category => ({
         label: category.name,

@@ -16,6 +16,8 @@ class DailyReportController extends Controller
     {
         $data = $request->validate([
             'date' => ['nullable', 'date_format:Y-m-d'],
+            'start_date' => ['nullable', 'date_format:Y-m-d'],
+            'end_date' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:start_date'],
             'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
             'provider_id' => ['nullable', 'integer', 'exists:providers,id'],
         ]);
@@ -36,12 +38,15 @@ class DailyReportController extends Controller
             $reportWarehouses = $warehouses;
         }
 
-        $date = Carbon::createFromFormat('Y-m-d', $data['date'] ?? now()->toDateString())->startOfDay();
+        $startDateValue = $data['start_date'] ?? $data['date'] ?? now()->toDateString();
+        $endDateValue = $data['end_date'] ?? $startDateValue;
+        $startDate = Carbon::createFromFormat('Y-m-d', $startDateValue)->startOfDay();
+        $endDate = Carbon::createFromFormat('Y-m-d', $endDateValue)->endOfDay();
         $includeGlobalBalances = (bool) $user->is_all_warehouses && ! $selectedWarehouseId;
         $selectedProviderId = isset($data['provider_id']) ? (int) $data['provider_id'] : null;
 
         return response()->json([
-            'report' => $service->build($date, $reportWarehouses, $includeGlobalBalances, $selectedProviderId),
+            'report' => $service->buildRange($startDate, $endDate, $reportWarehouses, $includeGlobalBalances, $selectedProviderId),
             'warehouses' => $warehouses,
             'suppliers' => Provider::whereNull('deleted_at')->orderBy('name')->get(['id', 'name']),
             'currency' => (new helpers)->Get_Currency_Code(),

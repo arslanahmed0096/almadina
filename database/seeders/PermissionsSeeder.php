@@ -949,6 +949,16 @@ class PermissionsSeeder extends Seeder
                     'name' => 'daily_reports_export',
                     'label' => 'Print and export Daily Reports',
                 ],
+                [
+                    'id' => 219,
+                    'name' => 'supplier_opening_balance',
+                    'label' => 'Manage Supplier Opening Balance',
+                ],
+                [
+                    'id' => 220,
+                    'name' => 'product_stock_check',
+                    'label' => 'Check Product Stock',
+                ],
 
             ]
         );

@@ -1791,6 +1791,85 @@ class ProductsController extends BaseController
 
     // --------------  Show Product Details ---------------\\
 
+    public function stockCheck(Request $request, $id)
+    {
+        $user = $request->user('api');
+        $this->authorizeForUser($user, 'product_stock_check', Product::class);
+
+        $product = Product::with('unit')
+            ->visibleTo($user)
+            ->whereNull('deleted_at')
+            ->findOrFail($id);
+
+        if ($user->is_all_warehouses) {
+            $warehouses = Warehouse::whereNull('deleted_at')->orderBy('name')->get(['id', 'name']);
+        } else {
+            $warehouseIds = UserWarehouse::where('user_id', $user->id)->pluck('warehouse_id');
+            $warehouses = Warehouse::whereNull('deleted_at')
+                ->whereIn('id', $warehouseIds)
+                ->orderBy('name')
+                ->get(['id', 'name']);
+        }
+
+        $stock = DB::table('product_warehouse')
+            ->whereNull('deleted_at')
+            ->where('product_id', $product->id)
+            ->whereIn('warehouse_id', $warehouses->pluck('id'))
+            ->select('warehouse_id', 'product_variant_id', DB::raw('SUM(qte) AS quantity'))
+            ->groupBy('warehouse_id', 'product_variant_id')
+            ->get();
+
+        $unit = optional($product->unit)->ShortName ?: '';
+        $warehouseStock = [];
+        $variantStock = [];
+
+        if ($product->type === 'is_variant') {
+            $variants = ProductVariant::where('product_id', $product->id)
+                ->whereNull('deleted_at')
+                ->orderBy('name')
+                ->get(['id', 'name', 'code']);
+
+            foreach ($warehouses as $warehouse) {
+                foreach ($variants as $variant) {
+                    $quantity = $stock
+                        ->where('warehouse_id', $warehouse->id)
+                        ->where('product_variant_id', $variant->id)
+                        ->sum('quantity');
+
+                    $variantStock[] = [
+                        'warehouse_id' => (int) $warehouse->id,
+                        'warehouse' => $warehouse->name,
+                        'variant_id' => (int) $variant->id,
+                        'variant' => $variant->name,
+                        'code' => $variant->code,
+                        'quantity' => round((float) $quantity, 2),
+                    ];
+                }
+            }
+        } elseif ($product->type === 'is_single') {
+            foreach ($warehouses as $warehouse) {
+                $quantity = $stock->where('warehouse_id', $warehouse->id)->sum('quantity');
+                $warehouseStock[] = [
+                    'warehouse_id' => (int) $warehouse->id,
+                    'warehouse' => $warehouse->name,
+                    'quantity' => round((float) $quantity, 2),
+                ];
+            }
+        }
+
+        return response()->json([
+            'product' => [
+                'id' => (int) $product->id,
+                'name' => $product->name,
+                'code' => $product->code,
+                'type' => $product->type,
+                'unit' => $unit,
+            ],
+            'warehouse_stock' => $warehouseStock,
+            'variant_stock' => $variantStock,
+        ]);
+    }
+
     public function Get_Products_Details(Request $request, $id)
     {
 

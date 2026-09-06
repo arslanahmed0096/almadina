@@ -12,12 +12,13 @@ class Provider extends Model
         'name', 'code', 'adresse', 'phone', 'country', 'email', 'city', 'tax_number', 'tax_status',
         'strn_number', 'ntn_number',
         'account_title',
-        'opening_balance', 'credit_limit',
+        'opening_balance', 'opening_balance_date', 'credit_limit',
     ];
 
     protected $casts = [
         'code' => 'integer',
         'opening_balance' => 'double',
+        'opening_balance_date' => 'date:Y-m-d',
         'credit_limit' => 'double',
     ];
 

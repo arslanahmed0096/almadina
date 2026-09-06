@@ -128,6 +128,46 @@ class DailyReportTest extends TestCase
         $this->assertSame(430.0, $supplierReport['totals']['supplier_payable']);
     }
 
+    public function test_it_aggregates_activity_across_an_inclusive_date_range(): void
+    {
+        DB::table('warehouses')->insert(['id' => 1, 'name' => 'Plaza Branch']);
+        DB::table('payment_methods')->insert(['id' => 1, 'name' => 'Cash']);
+        DB::table('clients')->insert(['id' => 1, 'name' => 'Customer', 'opening_balance' => 0]);
+        DB::table('providers')->insert(['id' => 1, 'name' => 'Supplier', 'opening_balance' => 0]);
+
+        DB::table('sales')->insert([
+            ['id' => 1, 'date' => '2026-09-03', 'warehouse_id' => 1, 'GrandTotal' => 100, 'paid_amount' => 50, 'statut' => 'completed'],
+            ['id' => 2, 'date' => '2026-09-04', 'warehouse_id' => 1, 'GrandTotal' => 200, 'paid_amount' => 100, 'statut' => 'completed'],
+            ['id' => 3, 'date' => '2026-09-05', 'warehouse_id' => 1, 'GrandTotal' => 400, 'paid_amount' => 200, 'statut' => 'completed'],
+        ]);
+        DB::table('payment_sales')->insert([
+            ['id' => 1, 'sale_id' => 1, 'date' => '2026-09-03', 'montant' => 50, 'payment_method_id' => 1],
+            ['id' => 2, 'sale_id' => 2, 'date' => '2026-09-04', 'montant' => 100, 'payment_method_id' => 1],
+            ['id' => 3, 'sale_id' => 3, 'date' => '2026-09-05', 'montant' => 200, 'payment_method_id' => 1],
+        ]);
+        DB::table('expenses')->insert([
+            ['id' => 1, 'date' => '2026-09-03', 'Ref' => 'EXP-1', 'details' => 'Fuel', 'amount' => 10, 'warehouse_id' => 1, 'expense_category_id' => null, 'payment_method_id' => 1],
+            ['id' => 2, 'date' => '2026-09-04', 'Ref' => 'EXP-2', 'details' => 'Food', 'amount' => 20, 'warehouse_id' => 1, 'expense_category_id' => null, 'payment_method_id' => 1],
+            ['id' => 3, 'date' => '2026-09-05', 'Ref' => 'EXP-3', 'details' => 'Travel', 'amount' => 40, 'warehouse_id' => 1, 'expense_category_id' => null, 'payment_method_id' => 1],
+        ]);
+
+        $warehouses = DB::table('warehouses')->get();
+        $report = app(DailyReportService::class)->buildRange(
+            Carbon::parse('2026-09-03'),
+            Carbon::parse('2026-09-04'),
+            $warehouses,
+            false
+        );
+
+        $this->assertSame('2026-09-03', $report['start_date']);
+        $this->assertSame('2026-09-04', $report['end_date']);
+        $this->assertSame('2 days', $report['day_name']);
+        $this->assertSame(300.0, $report['totals']['gross_sales']);
+        $this->assertSame(150.0, $report['totals']['customer_receipts']);
+        $this->assertSame(30.0, $report['totals']['operating_expenses']);
+        $this->assertCount(2, $report['outflows']);
+    }
+
     private function createSchema(): void
     {
         Schema::create('warehouses', fn (Blueprint $t) => $this->base($t, fn () => $t->string('name')));

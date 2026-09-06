@@ -277,6 +277,19 @@
                                 <span class="checkmark"></span>
                               </label>
                             </b-col>
+                            <!-- Check Product Stock -->
+                            <b-col md="6">
+                              <label class="checkbox checkbox-outline-primary">
+                                <input
+                                  type="checkbox"
+                                  checked
+                                  v-model="permissions"
+                                  value="product_stock_check"
+                                >
+                                <span>Check Product Stock</span>
+                                <span class="checkmark"></span>
+                              </label>
+                            </b-col>
                             <!--Products ADD -->
                             <b-col md="6">
                               <label class="checkbox checkbox-outline-primary">
@@ -2487,6 +2500,20 @@
                                   value="Suppliers_import"
                                 >
                                 <span>{{$t('Import_Suppliers')}}</span>
+                                <span class="checkmark"></span>
+                              </label>
+                            </b-col>
+
+                            <!-- Manage Supplier Opening Balance -->
+                            <b-col md="6">
+                              <label class="checkbox checkbox-outline-primary">
+                                <input
+                                  type="checkbox"
+                                  checked
+                                  v-model="permissions"
+                                  value="supplier_opening_balance"
+                                >
+                                <span>{{$t('Opening_Balance')}}</span>
                                 <span class="checkmark"></span>
                               </label>
                             </b-col>
