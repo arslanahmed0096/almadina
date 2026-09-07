@@ -198,7 +198,9 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
     Route::get('report/client_returns', 'ReportController@Returns_Client');
     Route::get('report/provider', 'ReportController@Providers_Report');
     Route::get('report/provider/{id}', 'ReportController@Provider_Report_detail');
+    Route::get('report/provider_statement_excel/{id}', 'ReportController@exportProviderStatement');
     Route::get('report/provider_purchases', 'ReportController@Purchases_Provider');
+    Route::get('report/provider_procurement', 'ReportController@Procurement_Provider');
     Route::get('report/provider_payments', 'ReportController@Payments_Provider');
     Route::get('report/provider_returns', 'ReportController@Returns_Provider');
     Route::get('report/sales', 'ReportController@Report_Sales');
@@ -276,6 +278,8 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
     Route::get('report/stock_transfer', 'ReportController@stockTransferReport');
     Route::get('report/stock_adjustment', 'ReportController@stockAdjustmentReport');
     Route::get('report/top_suppliers', 'ReportController@topSuppliersReport');
+    Route::get('report/supplier_year_comparison', 'ReportController@supplierYearComparison');
+    Route::get('report/supplier_year_comparison_excel', 'ReportController@exportSupplierYearComparison');
     Route::get('report/customer_loyalty_points', 'ReportController@customerLoyaltyPoints');
     Route::get('get_product_detail/{id}', 'ProductsController@Get_Products_Details');
 
@@ -697,6 +701,7 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
     Route::post('procurement/gate-passes/{gatePass}/confirm', [GatePassController::class, 'confirm']);
     Route::post('procurement/gate-passes/{gatePass}/reject', [GatePassController::class, 'reject']);
     Route::post('procurement/gate-passes/{gatePass}/cancel', [GatePassController::class, 'cancel']);
+    Route::delete('procurement/gate-passes/{gatePass}', [GatePassController::class, 'destroy']);
     Route::post('procurement/gate-passes/{gatePass}/attachment', [GatePassController::class, 'replaceAttachment']);
     Route::get('procurement/gate-passes/{gatePass}/attachment', [GatePassController::class, 'downloadAttachment']);
     // Supplier invoices are recorded directly as Purchases from confirmed Gate Passes.

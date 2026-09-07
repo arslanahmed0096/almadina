@@ -184,7 +184,11 @@ class ClientController extends BaseController
                 // Ensure email is unique in ecommerce_clients table (exclude soft-deleted)
                 Rule::unique('ecommerce_clients', 'email')->whereNull('deleted_at'),
             ],
+            'phone' => $this->customerPhoneRules(),
             'credit_limit' => ['nullable', 'numeric', 'min:0'],
+        ], [
+            'phone.required' => 'The phone number is required.',
+            'phone.regex' => 'The phone number must contain exactly 11 digits.',
         ]);
 
         if ((float) $request->input('credit_limit', 0) > 0) {
@@ -265,7 +269,7 @@ class ClientController extends BaseController
             'username' => ['nullable', 'string', 'max:255'],
             'company_name' => ['nullable', 'string', 'max:255'],
             'adresse' => ['nullable', 'string', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:50'],
+            'phone' => $this->customerPhoneRules((int) $id),
             'email' => [
                 'nullable', 'email', 'max:255',
                 // Ensure email is unique in clients table (ignore current client, exclude soft-deleted)
@@ -290,6 +294,9 @@ class ClientController extends BaseController
 
             // flags
             'is_royalty_eligible' => ['nullable'],
+        ], [
+            'phone.required' => 'The phone number is required.',
+            'phone.regex' => 'The phone number must contain exactly 11 digits.',
         ]);
 
         // Normalize boolean flag from various inputs: '1', 'true', true, etc.
@@ -874,6 +881,34 @@ class ClientController extends BaseController
         }
 
         return $digits;
+    }
+
+    private function customerPhoneUniquenessKey(?string $phone): string
+    {
+        return CustomerPhoneNormalizer::identityKey($phone)
+            ?? (preg_replace('/\D+/', '', (string) $phone) ?? '');
+    }
+
+    private function customerPhoneRules(?int $ignoreClientId = null): array
+    {
+        return [
+            'bail',
+            'required',
+            'string',
+            'regex:/^\d{11}$/',
+            function (string $attribute, mixed $value, \Closure $fail) use ($ignoreClientId) {
+                $phoneKey = $this->customerPhoneUniquenessKey((string) $value);
+                $duplicate = Client::whereNull('deleted_at')
+                    ->when($ignoreClientId, fn ($query) => $query->where('id', '<>', $ignoreClientId))
+                    ->select(['id', 'phone'])
+                    ->cursor()
+                    ->contains(fn ($client) => $this->customerPhoneUniquenessKey($client->phone) === $phoneKey);
+
+                if ($duplicate) {
+                    $fail('This phone number is already registered for another customer.');
+                }
+            },
+        ];
     }
 
     // ------------- clients_pay_due -------------\\

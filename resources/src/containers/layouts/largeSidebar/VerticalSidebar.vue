@@ -1447,6 +1447,12 @@
                   <span>{{ $t('SuppliersReport') }}</span>
                 </router-link>
               </li>
+              <li class="submenu-item" v-if="currentUserPermissions && currentUserPermissions.includes('Reports_suppliers')">
+                <router-link :to="{ name: 'supplier_year_comparison_report' }" class="submenu-link">
+                  <lucide-icon class="submenu-icon" name="bar-chart-3" />
+                  <span>Supplier Sales &amp; Payments</span>
+                </router-link>
+              </li>
               <li class="submenu-item" v-if="currentUserPermissions && currentUserPermissions.includes('Top_Suppliers_Report')">
                 <router-link :to="{ name: 'top_suppliers_report' }" class="submenu-link">
                   <lucide-icon class="submenu-icon" name="star" />

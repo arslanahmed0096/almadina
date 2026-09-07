@@ -20,6 +20,17 @@
                   class="btn btn-sm btn-outline-success ml-1"
                   :to="{ path: '/app/purchases/store', query: { gate_pass: row.number } }"
                 ><lucide-icon name="file-plus" /> Invoice</router-link>
+                <b-button
+                  v-if="kind === 'gates' && row.can_delete"
+                  size="sm"
+                  variant="outline-danger"
+                  class="ml-1"
+                  :disabled="deletingGatePassId === row.id"
+                  @click="deleteGatePass(row)"
+                >
+                  <span v-if="deletingGatePassId === row.id" class="spinner-border spinner-border-sm mr-1" aria-hidden="true"></span>
+                  <lucide-icon v-else name="trash-2" /> Delete
+                </b-button>
               </td>
             </tr>
             <tr v-if="!rows.length"><td :colspan="columns.length + 1" class="text-center text-muted py-5">No records found</td></tr>
@@ -35,7 +46,7 @@
 import { mapGetters } from 'vuex';
 
 export default {
-  data: () => ({ rows: [], total: 0, page: 1, limit: 20, search: '' }),
+  data: () => ({ rows: [], total: 0, page: 1, limit: 20, search: '', deletingGatePassId: null }),
   computed: {
     ...mapGetters(['currentUserPermissions']),
     kind() { return this.$route.meta.kind; },
@@ -86,6 +97,37 @@ export default {
       return result ?? '-';
     },
     label(value) { return String(value || '').replaceAll('_', ' ').replace(/\b\w/g, char => char.toUpperCase()); },
+    async deleteGatePass(row) {
+      const confirmed = await this.$bvModal.msgBoxConfirm(
+        `Delete Gate Pass ${row.number}? This action cannot be undone.`,
+        {
+          title: 'Delete Gate Pass',
+          okTitle: 'Delete',
+          okVariant: 'danger',
+          cancelTitle: 'Cancel',
+          cancelVariant: 'outline-secondary',
+          centered: true
+        }
+      );
+      if (!confirmed) return;
+
+      this.deletingGatePassId = row.id;
+      try {
+        const response = await axios.delete(`procurement/gate-passes/${row.id}`);
+        this.$bvToast.toast(response.data.message || 'Gate Pass deleted successfully.', {
+          title: 'Deleted', variant: 'success', solid: true
+        });
+        const targetPage = this.rows.length === 1 && this.page > 1 ? this.page - 1 : this.page;
+        this.load(targetPage);
+      } catch (error) {
+        const message = error.response?.data?.message
+          || Object.values(error.response?.data?.errors || {}).flat()[0]
+          || 'Unable to delete this Gate Pass.';
+        this.$bvToast.toast(message, { title: 'Delete failed', variant: 'danger', solid: true });
+      } finally {
+        this.deletingGatePassId = null;
+      }
+    },
     detailUrl(row) {
       if (this.kind === 'orders') return '/app/procurement/purchase-orders/' + row.id;
       if (this.kind === 'gates') return '/app/procurement/gate-passes/' + row.id;

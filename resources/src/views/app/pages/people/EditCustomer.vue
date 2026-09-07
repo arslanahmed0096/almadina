@@ -88,13 +88,25 @@
 
             <!-- Customer Phone -->
             <b-col md="6" sm="12">
-                <b-form-group :label="$t('Phone')">
+              <validation-provider
+                name="Phone"
+                rules="required|digits:11"
+                v-slot="validationContext"
+              >
+                <b-form-group :label="$t('Phone') + ' *'">
                   <b-form-input
-                    label="Phone"
+                    type="tel"
+                    inputmode="numeric"
+                    maxlength="11"
+                    pattern="[0-9]{11}"
+                    :state="getValidationState(validationContext)"
+                    aria-describedby="phone-feedback"
                     v-model="client.phone"
-                    :placeholder="$t('Phone')"
+                    placeholder="11 digit phone number"
                   ></b-form-input>
+                  <b-form-invalid-feedback id="phone-feedback">{{ validationContext.errors[0] }}</b-form-invalid-feedback>
                 </b-form-group>
+              </validation-provider>
             </b-col>
 
             <!-- Customer Country -->
@@ -357,7 +369,11 @@ export default {
           }
         })
         .catch(error => {
-          this.makeToast("danger", this.$t("InvalidData"), this.$t("Failed"));
+          const validationError = error.response && error.response.data && error.response.data.errors
+            ? Object.values(error.response.data.errors)[0]
+            : null;
+          const message = Array.isArray(validationError) ? validationError[0] : validationError;
+          this.makeToast("danger", message || this.$t("InvalidData"), this.$t("Failed"));
           this.SubmitProcessing = false;
         });
     },

@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Exports\SupplierStatementExport;
+use App\Exports\SupplierYearComparisonExport;
+use App\Services\Reports\SupplierYearComparisonService;
 use Illuminate\Support\Facades\Schema;
 use App\Models\Account;
 use App\Models\Adjustment;
@@ -55,6 +58,7 @@ use Carbon\Carbon;
 use DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Maatwebsite\Excel\Facades\Excel;
 
 class ReportController extends BaseController
 {
@@ -232,7 +236,11 @@ class ReportController extends BaseController
         $data['opening_balance_paid'] = round((float) $openingBalancePaid, 2);
         $data['opening_balance_remaining'] = round($openingBalanceRemaining, 2);
         $data['opening_balance_original'] = round($openingBalanceRemaining + (float) $openingBalancePaid, 2);
-        $data['opening_balance_payments'] = ProviderPaymentOpeningBalance::with('payment_method:id,name')
+        $openingBalancePaymentQuery = ProviderPaymentOpeningBalance::with('payment_method:id,name');
+        if (Schema::hasTable('accounts')) {
+            $openingBalancePaymentQuery->with('account:id,account_name,account_num');
+        }
+        $data['opening_balance_payments'] = $openingBalancePaymentQuery
             ->whereNull('deleted_at')
             ->where('provider_id', $provider->id)
             ->orderByDesc('date')
@@ -244,6 +252,9 @@ class ReportController extends BaseController
                     'date' => optional(Carbon::parse($payment->date))->format('Y-m-d'),
                     'Ref' => $payment->Ref,
                     'payment_method' => optional($payment->payment_method)->name ?: '---',
+                    'account' => $payment->relationLoaded('account') && $payment->account
+                        ? trim($payment->account->account_name.' '.($payment->account->account_num ? '('.$payment->account->account_num.')' : ''))
+                        : '---',
                     'montant' => round((float) $payment->montant, 2),
                     'notes' => $payment->notes,
                 ];
@@ -1155,8 +1166,23 @@ class ReportController extends BaseController
         $offSet = ($pageStart * $perPage) - $perPage;
         $data = [];
 
+        $relations = ['provider', 'warehouse'];
+        if (Schema::hasTable('purchase_details')) {
+            $relations[] = 'details.product';
+            $relations[] = 'details.variant';
+        }
+        if (Schema::hasTable('purchase_orders') && Schema::hasColumn('purchases', 'purchase_order_id')) {
+            $relations[] = 'purchaseOrder:id,number';
+        }
+        if (Schema::hasTable('gate_passes') && Schema::hasColumn('purchases', 'gate_pass_id')) {
+            $relations[] = 'gatePass:id,number,supplier_gate_pass_number';
+        }
+        if (Schema::hasTable('supplier_invoices') && Schema::hasColumn('purchases', 'supplier_invoice_id')) {
+            $relations[] = 'supplierInvoice:id,supplier_invoice_number,tax_type,tax_total';
+        }
+
         $purchases = Purchase::where('deleted_at', '=', null)
-            ->with('provider', 'warehouse')
+            ->with($relations)
             ->where('provider_id', $request->id)
              // Search With Multiple Param
             ->where(function ($query) use ($request) {
@@ -1187,6 +1213,9 @@ class ReportController extends BaseController
             ->get();
 
         foreach ($purchases as $purchase) {
+            $purchaseOrder = $purchase->relationLoaded('purchaseOrder') ? $purchase->purchaseOrder : null;
+            $gatePass = $purchase->relationLoaded('gatePass') ? $purchase->gatePass : null;
+            $supplierInvoice = $purchase->relationLoaded('supplierInvoice') ? $purchase->supplierInvoice : null;
             $item['id'] = $purchase->id;
             $item['date'] = $purchase->date;
             $item['Ref'] = $purchase->Ref;
@@ -1197,6 +1226,36 @@ class ReportController extends BaseController
             $item['paid_amount'] = $purchase->paid_amount;
             $item['due'] = $purchase->GrandTotal - $purchase->paid_amount;
             $item['payment_status'] = $purchase->payment_statut;
+            $item['supplier_invoice_number'] = optional($supplierInvoice)->supplier_invoice_number
+                ?: ($purchase->sales_tax_invoice_no ?? '---');
+            $item['purchase_order_id'] = $purchase->purchase_order_id ?? null;
+            $item['purchase_order_number'] = optional($purchaseOrder)->number ?: '---';
+            $item['gate_pass_id'] = $purchase->gate_pass_id ?? null;
+            $item['gate_pass_number'] = optional($gatePass)->number ?: '---';
+            $item['supplier_gate_pass_number'] = optional($gatePass)->supplier_gate_pass_number
+                ?: ($purchase->delivery_note_no ?? '---');
+            $item['invoice_tax_type'] = $purchase->invoice_tax_type ?? optional($supplierInvoice)->tax_type;
+            $item['tax_total'] = round((float) ($purchase->TaxNet ?? optional($supplierInvoice)->tax_total ?? 0), 2);
+            $item['discount_total'] = round((float) ($purchase->discount ?? 0), 2);
+            $item['items'] = $purchase->relationLoaded('details')
+                ? $purchase->details->map(function ($detail) {
+                    $variant = optional($detail->variant)->name;
+                    $name = optional($detail->product)->name ?: '---';
+
+                    return [
+                        'id' => (int) $detail->id,
+                        'product' => trim($name.($variant ? ' - '.$variant : '')),
+                        'quantity' => (float) $detail->quantity,
+                        'unit_price' => round((float) $detail->cost, 2),
+                        'discount' => round((float) $detail->discount, 2),
+                        'discount_method' => $detail->discount_method,
+                        'tax_rate' => round((float) $detail->TaxNet, 2),
+                        'tax_amount' => round((float) $detail->sales_tax, 2),
+                        'line_total' => round((float) $detail->total, 2),
+                    ];
+                })->values()
+                : collect();
+            $item['products_summary'] = collect($item['items'])->pluck('product')->filter()->implode(', ') ?: '---';
 
             $data[] = $item;
         }
@@ -1206,6 +1265,337 @@ class ReportController extends BaseController
             'purchases' => $data,
         ]);
 
+    }
+
+    // ----------------- Export Provider Statement -----------------------\\
+
+    public function exportProviderStatement(Request $request, $id)
+    {
+        $this->authorizeForUser($request->user('api'), 'Reports_suppliers', Provider::class);
+
+        $provider = Provider::whereNull('deleted_at')->findOrFail($id);
+        $entries = collect();
+
+        $openingPayments = ProviderPaymentOpeningBalance::whereNull('deleted_at')
+            ->where('provider_id', $provider->id)
+            ->orderBy('date')
+            ->orderBy('id')
+            ->get(['id', 'date', 'Ref', 'montant', 'notes']);
+
+        $originalOpeningBalance = (float) ($provider->opening_balance ?? 0)
+            + (float) $openingPayments->sum('montant');
+
+        if ($originalOpeningBalance != 0.0) {
+            $entries->push([
+                'sort_date' => optional($provider->opening_balance_date)->format('Y-m-d') ?: '0000-00-00',
+                'sort_rank' => 0,
+                'sort_id' => 0,
+                'type' => 'Opening Balance',
+                'date' => optional($provider->opening_balance_date)->format('Y-m-d') ?: '',
+                'description' => 'Opening Balance',
+                'debit' => $originalOpeningBalance < 0 ? abs($originalOpeningBalance) : 0,
+                'credit' => $originalOpeningBalance > 0 ? $originalOpeningBalance : 0,
+            ]);
+        }
+
+        foreach ($openingPayments as $payment) {
+            $entries->push([
+                'sort_date' => (string) $payment->date,
+                'sort_rank' => 4,
+                'sort_id' => (int) $payment->id,
+                'type' => 'Opening Balance Payment',
+                'date' => (string) $payment->date,
+                'description' => $this->supplierStatementDescription('Opening balance payment', $payment->Ref, $payment->notes),
+                'debit' => (float) $payment->montant,
+                'credit' => 0,
+            ]);
+        }
+
+        Purchase::whereNull('deleted_at')
+            ->where('provider_id', $provider->id)
+            ->where('statut', 'received')
+            ->orderBy('date')
+            ->orderBy('id')
+            ->get(['id', 'date', 'Ref', 'GrandTotal', 'notes'])
+            ->each(function ($purchase) use ($entries) {
+                $entries->push([
+                    'sort_date' => (string) $purchase->date,
+                    'sort_rank' => 1,
+                    'sort_id' => (int) $purchase->id,
+                    'type' => 'Purchase',
+                    'date' => (string) $purchase->date,
+                    'description' => $this->supplierStatementDescription('Purchase', $purchase->Ref, $purchase->notes),
+                    'debit' => 0,
+                    'credit' => (float) $purchase->GrandTotal,
+                ]);
+            });
+
+        DB::table('payment_purchases')
+            ->join('purchases', 'purchases.id', '=', 'payment_purchases.purchase_id')
+            ->whereNull('payment_purchases.deleted_at')
+            ->whereNull('purchases.deleted_at')
+            ->where('purchases.provider_id', $provider->id)
+            ->where('purchases.statut', 'received')
+            ->orderBy('payment_purchases.date')
+            ->orderBy('payment_purchases.id')
+            ->get([
+                'payment_purchases.id', 'payment_purchases.date', 'payment_purchases.Ref',
+                'payment_purchases.montant', 'payment_purchases.notes', 'purchases.Ref as purchase_ref',
+            ])
+            ->each(function ($payment) use ($entries) {
+                $entries->push([
+                    'sort_date' => (string) $payment->date,
+                    'sort_rank' => 3,
+                    'sort_id' => (int) $payment->id,
+                    'type' => 'Supplier Payment',
+                    'date' => (string) $payment->date,
+                    'description' => $this->supplierStatementDescription('Payment for '.$payment->purchase_ref, $payment->Ref, $payment->notes),
+                    'debit' => (float) $payment->montant,
+                    'credit' => 0,
+                ]);
+            });
+
+        PurchaseReturn::whereNull('deleted_at')
+            ->where('provider_id', $provider->id)
+            ->where('statut', 'completed')
+            ->orderBy('date')
+            ->orderBy('id')
+            ->get(['id', 'date', 'Ref', 'GrandTotal', 'notes'])
+            ->each(function ($return) use ($entries) {
+                $entries->push([
+                    'sort_date' => (string) $return->date,
+                    'sort_rank' => 2,
+                    'sort_id' => (int) $return->id,
+                    'type' => 'Purchase Return',
+                    'date' => (string) $return->date,
+                    'description' => $this->supplierStatementDescription('Purchase return', $return->Ref, $return->notes),
+                    'debit' => (float) $return->GrandTotal,
+                    'credit' => 0,
+                ]);
+            });
+
+        DB::table('payment_purchase_returns')
+            ->join('purchase_returns', 'purchase_returns.id', '=', 'payment_purchase_returns.purchase_return_id')
+            ->whereNull('payment_purchase_returns.deleted_at')
+            ->whereNull('purchase_returns.deleted_at')
+            ->where('purchase_returns.provider_id', $provider->id)
+            ->where('purchase_returns.statut', 'completed')
+            ->orderBy('payment_purchase_returns.date')
+            ->orderBy('payment_purchase_returns.id')
+            ->get([
+                'payment_purchase_returns.id', 'payment_purchase_returns.date', 'payment_purchase_returns.Ref',
+                'payment_purchase_returns.montant', 'payment_purchase_returns.notes', 'purchase_returns.Ref as return_ref',
+            ])
+            ->each(function ($payment) use ($entries) {
+                $entries->push([
+                    'sort_date' => (string) $payment->date,
+                    'sort_rank' => 5,
+                    'sort_id' => (int) $payment->id,
+                    'type' => 'Return Refund',
+                    'date' => (string) $payment->date,
+                    'description' => $this->supplierStatementDescription('Refund for '.$payment->return_ref, $payment->Ref, $payment->notes),
+                    'debit' => 0,
+                    'credit' => (float) $payment->montant,
+                ]);
+            });
+
+        $balance = 0.0;
+        $entries = $entries
+            ->sortBy(fn ($entry) => sprintf('%s-%02d-%010d', $entry['sort_date'], $entry['sort_rank'], $entry['sort_id']))
+            ->values()
+            ->map(function ($entry) use (&$balance) {
+                $entry['debit'] = round((float) $entry['debit'], 2);
+                $entry['credit'] = round((float) $entry['credit'], 2);
+                $balance = round($balance + $entry['credit'] - $entry['debit'], 2);
+                $entry['balance'] = $balance;
+
+                return $entry;
+            });
+
+        $safeName = preg_replace('/[^A-Za-z0-9_-]+/', '-', $provider->name) ?: 'supplier';
+
+        return Excel::download(
+            new SupplierStatementExport($provider->name, $entries),
+            'supplier-statement-'.$safeName.'.xlsx'
+        );
+    }
+
+    private function supplierStatementDescription(string $label, ?string $reference, ?string $notes): string
+    {
+        return collect([$label, $reference, $notes])
+            ->filter(fn ($value) => $value !== null && trim((string) $value) !== '')
+            ->map(fn ($value) => trim((string) $value))
+            ->implode(' - ');
+    }
+
+    public function supplierYearComparison(Request $request, SupplierYearComparisonService $service)
+    {
+        $this->authorizeForUser($request->user('api'), 'Reports_suppliers', Provider::class);
+        $filters = $this->validateSupplierYearComparison($request);
+
+        return response()->json($service->generate(
+            $request->user('api'),
+            (int) $filters['baseline_year'],
+            (int) $filters['comparison_year'],
+            isset($filters['supplier_id']) ? (int) $filters['supplier_id'] : null,
+            isset($filters['warehouse_id']) ? (int) $filters['warehouse_id'] : null
+        ));
+    }
+
+    public function exportSupplierYearComparison(Request $request, SupplierYearComparisonService $service)
+    {
+        $this->authorizeForUser($request->user('api'), 'Reports_suppliers', Provider::class);
+        $filters = $this->validateSupplierYearComparison($request);
+        $report = $service->generate(
+            $request->user('api'),
+            (int) $filters['baseline_year'],
+            (int) $filters['comparison_year'],
+            isset($filters['supplier_id']) ? (int) $filters['supplier_id'] : null,
+            isset($filters['warehouse_id']) ? (int) $filters['warehouse_id'] : null
+        );
+
+        return Excel::download(
+            new SupplierYearComparisonExport($report),
+            "supplier-wise-sales-payments-{$filters['baseline_year']}-vs-{$filters['comparison_year']}.xlsx"
+        );
+    }
+
+    private function validateSupplierYearComparison(Request $request): array
+    {
+        $request->merge([
+            'baseline_year' => $request->input('baseline_year', now()->year - 1),
+            'comparison_year' => $request->input('comparison_year', now()->year),
+        ]);
+
+        return $request->validate([
+            'baseline_year' => ['required', 'integer', 'between:2000,2100'],
+            'comparison_year' => ['required', 'integer', 'between:2000,2100', 'different:baseline_year'],
+            'supplier_id' => ['nullable', 'integer', 'exists:providers,id'],
+            'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
+        ]);
+    }
+
+    // -------------------- Procurement trail by Provider -------------\\
+
+    public function Procurement_Provider(Request $request)
+    {
+        $this->authorizeForUser($request->user('api'), 'Reports_suppliers', Provider::class);
+
+        $type = (string) $request->get('type', 'purchase_orders');
+        abort_unless(in_array($type, ['purchase_orders', 'gate_passes', 'supplier_invoices'], true), 422, 'Invalid supplier report section.');
+
+        $requiredTables = [
+            'purchase_orders' => ['purchase_orders', 'purchase_order_items'],
+            'gate_passes' => ['gate_passes', 'gate_pass_items'],
+            'supplier_invoices' => ['supplier_invoices', 'supplier_invoice_items'],
+        ];
+        if (collect($requiredTables[$type])->contains(fn ($table) => ! Schema::hasTable($table))) {
+            return response()->json(['rows' => [], 'totalRows' => 0]);
+        }
+
+        $providerId = (int) $request->id;
+        $search = trim((string) $request->get('search', ''));
+        $page = max(1, (int) $request->get('page', 1));
+        $limit = (int) $request->get('limit', 10);
+
+        if ($type === 'purchase_orders') {
+            $query = DB::table('purchase_order_items as item')
+                ->join('purchase_orders as po', 'po.id', '=', 'item.purchase_order_id')
+                ->leftJoin('warehouses as warehouse', 'warehouse.id', '=', 'po.warehouse_id')
+                ->where('po.provider_id', $providerId)
+                ->when($search !== '', function ($query) use ($search) {
+                    $query->where(function ($query) use ($search) {
+                        $query->where('po.number', 'like', "%{$search}%")
+                            ->orWhere('po.status', 'like', "%{$search}%")
+                            ->orWhere('item.product_name', 'like', "%{$search}%")
+                            ->orWhere('item.variant_name', 'like', "%{$search}%")
+                            ->orWhere('item.sku', 'like', "%{$search}%")
+                            ->orWhere('warehouse.name', 'like', "%{$search}%");
+                    });
+                })
+                ->select(
+                    'item.id', 'po.id as purchase_order_id', 'po.number as purchase_order_number',
+                    'po.order_date', 'po.expected_delivery_date', 'po.status', 'warehouse.name as warehouse_name',
+                    'po.subtotal as order_subtotal', 'po.discount_total as order_discount_total',
+                    'po.tax_total as order_tax_total', 'po.grand_total as order_grand_total',
+                    'item.product_name', 'item.variant_name', 'item.sku', 'item.unit_name',
+                    'item.ordered_quantity', 'item.unit_price', 'item.discount', 'item.discount_method',
+                    'item.tax_name', 'item.tax_rate', 'item.tax_amount', 'item.line_subtotal', 'item.line_total'
+                )
+                ->orderByDesc('po.id')->orderBy('item.id');
+        } elseif ($type === 'gate_passes') {
+            $query = DB::table('gate_pass_items as item')
+                ->join('gate_passes as gate', 'gate.id', '=', 'item.gate_pass_id')
+                ->leftJoin('purchase_orders as po', 'po.id', '=', 'gate.purchase_order_id')
+                ->leftJoin('warehouses as warehouse', 'warehouse.id', '=', 'gate.warehouse_id')
+                ->where('gate.provider_id', $providerId)
+                ->when($search !== '', function ($query) use ($search) {
+                    $query->where(function ($query) use ($search) {
+                        $query->where('gate.number', 'like', "%{$search}%")
+                            ->orWhere('gate.supplier_gate_pass_number', 'like', "%{$search}%")
+                            ->orWhere('po.number', 'like', "%{$search}%")
+                            ->orWhere('gate.status', 'like', "%{$search}%")
+                            ->orWhere('item.product_name', 'like', "%{$search}%")
+                            ->orWhere('item.variant_name', 'like', "%{$search}%")
+                            ->orWhere('item.sku', 'like', "%{$search}%");
+                    });
+                })
+                ->select(
+                    'item.id', 'gate.id as gate_pass_id', 'gate.number as gate_pass_number',
+                    'gate.supplier_gate_pass_number', 'gate.delivered_at', 'gate.status', 'gate.receipt_type',
+                    'gate.bilty_number', 'gate.vehicle_number', 'gate.driver_name',
+                    'po.id as purchase_order_id', 'po.number as purchase_order_number', 'warehouse.name as warehouse_name',
+                    'item.product_name', 'item.variant_name', 'item.sku', 'item.unit_name',
+                    'item.delivered_quantity', 'item.accepted_quantity', 'item.rejected_quantity', 'item.short_quantity'
+                )
+                ->orderByDesc('gate.id')->orderBy('item.id');
+        } else {
+            $query = DB::table('supplier_invoice_items as item')
+                ->join('supplier_invoices as invoice', 'invoice.id', '=', 'item.supplier_invoice_id')
+                ->leftJoin('purchase_orders as po', 'po.id', '=', 'invoice.purchase_order_id')
+                ->leftJoin('gate_passes as gate', 'gate.id', '=', 'invoice.gate_pass_id')
+                ->leftJoin('purchases as purchase', 'purchase.supplier_invoice_id', '=', 'invoice.id')
+                ->where('invoice.provider_id', $providerId)
+                ->when($search !== '', function ($query) use ($search) {
+                    $query->where(function ($query) use ($search) {
+                        $query->where('invoice.supplier_invoice_number', 'like', "%{$search}%")
+                            ->orWhere('invoice.number', 'like', "%{$search}%")
+                            ->orWhere('invoice.status', 'like', "%{$search}%")
+                            ->orWhere('invoice.tax_type', 'like', "%{$search}%")
+                            ->orWhere('po.number', 'like', "%{$search}%")
+                            ->orWhere('gate.number', 'like', "%{$search}%")
+                            ->orWhere('purchase.Ref', 'like', "%{$search}%")
+                            ->orWhere('item.product_name', 'like', "%{$search}%")
+                            ->orWhere('item.variant_name', 'like', "%{$search}%")
+                            ->orWhere('item.sku', 'like', "%{$search}%");
+                    });
+                })
+                ->select(
+                    'item.id', 'invoice.id as supplier_invoice_id', 'invoice.number as internal_invoice_number',
+                    'invoice.supplier_invoice_number', 'invoice.invoice_date', 'invoice.due_date',
+                    'invoice.tax_type', 'invoice.status', 'invoice.subtotal as invoice_subtotal',
+                    'invoice.discount_total as invoice_discount_total', 'invoice.tax_total as invoice_tax_total',
+                    'invoice.other_charges', 'invoice.freight_charges', 'invoice.grand_total as invoice_grand_total',
+                    'po.id as purchase_order_id', 'po.number as purchase_order_number',
+                    'gate.id as gate_pass_id', 'gate.number as gate_pass_number',
+                    'purchase.id as purchase_id', 'purchase.Ref as purchase_reference',
+                    'item.product_name', 'item.variant_name', 'item.sku', 'item.quantity', 'item.unit_cost',
+                    'item.discount', 'item.discount_method', 'item.tax_name', 'item.tax_rate',
+                    'item.tax_amount', 'item.line_subtotal', 'item.line_total'
+                )
+                ->orderByDesc('invoice.id')->orderBy('item.id');
+        }
+
+        $totalRows = (clone $query)->count();
+        if ($limit !== -1) {
+            $limit = min(100, max(1, $limit));
+            $query->offset(($page - 1) * $limit)->limit($limit);
+        }
+
+        return response()->json([
+            'rows' => $query->get(),
+            'totalRows' => $totalRows,
+        ]);
     }
 
     // -------------------- Get Payments By Provider -------------\\
@@ -1222,23 +1612,66 @@ class ReportController extends BaseController
         $offSet = ($pageStart * $perPage) - $perPage;
         $data = [];
 
+        $hasAccounts = Schema::hasTable('accounts');
+        $hasSupplierInvoices = Schema::hasTable('supplier_invoices')
+            && Schema::hasColumn('purchases', 'supplier_invoice_id');
+        $hasPurchaseOrders = Schema::hasTable('purchase_orders')
+            && Schema::hasColumn('purchases', 'purchase_order_id');
+        $hasGatePasses = Schema::hasTable('gate_passes')
+            && Schema::hasColumn('purchases', 'gate_pass_id');
+
         $payments = DB::table('payment_purchases')
             ->where('payment_purchases.deleted_at', '=', null)
             ->join('purchases', 'payment_purchases.purchase_id', '=', 'purchases.id')
-            ->join('payment_methods', 'payment_purchases.payment_method_id', '=', 'payment_methods.id')
-            ->where('purchases.provider_id', $request->id)
+            ->leftJoin('payment_methods', 'payment_purchases.payment_method_id', '=', 'payment_methods.id');
+        if ($hasAccounts) {
+            $payments->leftJoin('accounts', 'payment_purchases.account_id', '=', 'accounts.id');
+        }
+        if ($hasSupplierInvoices) {
+            $payments->leftJoin('supplier_invoices', 'purchases.supplier_invoice_id', '=', 'supplier_invoices.id');
+        }
+        if ($hasPurchaseOrders) {
+            $payments->leftJoin('purchase_orders', 'purchases.purchase_order_id', '=', 'purchase_orders.id');
+        }
+        if ($hasGatePasses) {
+            $payments->leftJoin('gate_passes', 'purchases.gate_pass_id', '=', 'gate_passes.id');
+        }
+        $payments->where('purchases.provider_id', $request->id)
              // Search With Multiple Param
-            ->where(function ($query) use ($request) {
-                return $query->when($request->filled('search'), function ($query) use ($request) {
-                    return $query->where('payment_purchases.Ref', 'LIKE', "%{$request->search}%")
+            ->where(function ($query) use ($request, $hasAccounts, $hasSupplierInvoices) {
+                return $query->when($request->filled('search'), function ($query) use ($request, $hasAccounts, $hasSupplierInvoices) {
+                    $query->where('payment_purchases.Ref', 'LIKE', "%{$request->search}%")
                         ->orWhere('payment_purchases.date', 'LIKE', "%{$request->search}%")
+                        ->orWhere('purchases.Ref', 'LIKE', "%{$request->search}%")
                         ->orWhere('payment_methods.name', 'LIKE', "%{$request->search}%");
+                    if ($hasAccounts) {
+                        $query->orWhere('accounts.account_name', 'LIKE', "%{$request->search}%")
+                            ->orWhere('accounts.account_num', 'LIKE', "%{$request->search}%");
+                    }
+                    if ($hasSupplierInvoices) {
+                        $query->orWhere('supplier_invoices.supplier_invoice_number', 'LIKE', "%{$request->search}%");
+                    }
+
+                    return $query;
                 });
             })
             ->select(
-                'payment_purchases.date', 'payment_purchases.Ref AS Ref', 'purchases.Ref AS purchase_Ref',
+                'payment_purchases.id', 'payment_purchases.date', 'payment_purchases.Ref AS Ref',
+                'payment_purchases.notes', 'purchases.id as purchase_id', 'purchases.Ref AS purchase_Ref',
                 'payment_methods.name as payment_method', 'payment_purchases.montant'
             );
+        $payments->addSelect($hasAccounts
+            ? ['accounts.account_name', 'accounts.account_num']
+            : [DB::raw("NULL as account_name"), DB::raw("NULL as account_num")]);
+        $payments->addSelect($hasSupplierInvoices
+            ? ['supplier_invoices.id as supplier_invoice_id', 'supplier_invoices.supplier_invoice_number']
+            : [DB::raw("NULL as supplier_invoice_id"), DB::raw("NULL as supplier_invoice_number")]);
+        $payments->addSelect($hasPurchaseOrders
+            ? ['purchase_orders.id as purchase_order_id', 'purchase_orders.number as purchase_order_number']
+            : [DB::raw("NULL as purchase_order_id"), DB::raw("NULL as purchase_order_number")]);
+        $payments->addSelect($hasGatePasses
+            ? ['gate_passes.id as gate_pass_id', 'gate_passes.number as gate_pass_number']
+            : [DB::raw("NULL as gate_pass_id"), DB::raw("NULL as gate_pass_number")]);
 
         $totalRows = $payments->count();
         if ($perPage == '-1') {

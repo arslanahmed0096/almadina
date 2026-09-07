@@ -62,11 +62,13 @@ class GatePassController extends Controller
                     - (float) ($invoiceReceived[$item->id] ?? 0)
             )));
         }
-        $page->getCollection()->transform(function ($gatePass) use ($remainingByOrder) {
+        $canDelete = $request->user('api')->isSuperAdmin();
+        $page->getCollection()->transform(function ($gatePass) use ($remainingByOrder, $canDelete) {
             $gatePass->setAttribute(
                 'po_remaining_quantity',
                 $gatePass->purchase_order_id ? (float) ($remainingByOrder[$gatePass->purchase_order_id] ?? 0) : null
             );
+            $gatePass->setAttribute('can_delete', $canDelete);
 
             return $gatePass;
         });
@@ -167,6 +169,63 @@ class GatePassController extends Controller
         $data = $request->validate(['reason' => 'required|string|max:2000']);
 
         return response()->json(['gate_pass' => $this->service->cancel($gatePass, $request->user('api'), $data['reason'])]);
+    }
+
+    public function destroy(Request $request, GatePass $gatePass)
+    {
+        $user = $request->user('api');
+        abort_unless($user && $user->isSuperAdmin(), 403, 'Only the Super Admin can delete Gate Passes.');
+
+        $attachmentPath = $gatePass->attachment_path;
+        $purchaseOrderId = $gatePass->purchase_order_id;
+
+        DB::transaction(function () use ($gatePass) {
+            $gatePass = GatePass::with('items')->lockForUpdate()->findOrFail($gatePass->id);
+            $gatePassItemIds = $gatePass->items->pluck('id');
+
+            if ($gatePass->supplierInvoices()->exists()) {
+                abort(422, 'This Gate Pass is linked to a supplier invoice and cannot be deleted.');
+            }
+
+            $hasPurchase = $gatePass->purchases()->exists()
+                || DB::table('purchases')
+                    ->whereNull('deleted_at')
+                    ->where('gate_pass_id', $gatePass->id)
+                    ->exists();
+            if ($hasPurchase) {
+                abort(422, 'This Gate Pass is linked to a purchase and cannot be deleted.');
+            }
+
+            if (DB::table('procurement_stock_movements')->where('gate_pass_id', $gatePass->id)->exists()) {
+                abort(422, 'This Gate Pass has posted stock. Cancel it to reverse stock before attempting removal.');
+            }
+
+            if ($gatePassItemIds->isNotEmpty()
+                && DB::table('purchase_gate_pass_items')->whereIn('gate_pass_item_id', $gatePassItemIds)->exists()) {
+                abort(422, 'This Gate Pass has quantities linked to a purchase and cannot be deleted.');
+            }
+
+            $snapshot = $gatePass->toArray();
+            $this->audit->record(
+                $gatePass,
+                'deleted_by_super_admin',
+                $snapshot,
+                [],
+                'Removed from the Gate Pass listing by Super Admin.',
+                $gatePass->purchase_order_id
+            );
+            $gatePass->items()->delete();
+            $gatePass->delete();
+        });
+
+        if ($attachmentPath) {
+            Storage::disk('local')->delete($attachmentPath);
+        }
+        if ($purchaseOrderId) {
+            $this->progress->refreshStatus(PurchaseOrder::findOrFail($purchaseOrderId));
+        }
+
+        return response()->json(['message' => 'Gate Pass deleted successfully.']);
     }
 
     public function replaceAttachment(Request $request, GatePass $gatePass)

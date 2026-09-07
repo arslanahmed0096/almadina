@@ -2258,6 +2258,16 @@
             </router-link>
           </li>
 
+          <li
+            class="nav-item"
+            v-if="currentUserPermissions && currentUserPermissions.includes('Reports_suppliers')"
+          >
+            <router-link tag="a" class :to="{ name: 'supplier_year_comparison_report' }">
+              <lucide-icon class="nav-icon" name="bar-chart-3" />
+              <span class="item-name">Supplier Sales &amp; Payments</span>
+            </router-link>
+          </li>
+
            <li
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('Top_products')"

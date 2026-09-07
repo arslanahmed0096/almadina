@@ -2537,6 +2537,15 @@ const baseRoutes = [
                             )
                     },
                     {
+                        name: "supplier_year_comparison_report",
+                        path: "supplier_year_comparison",
+                        component: () =>
+                            import(
+                                /* webpackChunkName: "supplier_year_comparison_report" */
+                                "./views/app/pages/reports/Supplier_Year_Comparison_Report"
+                            )
+                    },
+                    {
                         name: "detail_supplier_report",
                         path: "detail_supplier/:id",
                         component: () =>

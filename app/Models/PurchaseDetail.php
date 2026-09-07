@@ -41,6 +41,11 @@ class PurchaseDetail extends Model
         return $this->belongsTo('App\Models\Product');
     }
 
+    public function variant()
+    {
+        return $this->belongsTo('App\Models\ProductVariant', 'product_variant_id');
+    }
+
     public function purchaseOrderItem()
     {
         return $this->belongsTo(PurchaseOrderItem::class);

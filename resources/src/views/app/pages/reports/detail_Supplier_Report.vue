@@ -14,6 +14,18 @@
         <div class="text-right">
           <small class="text-muted d-block">Total supplier due</small>
           <strong class="text-primary text-24">{{ formatPriceWithSymbol(currentUser.currency, provider.total_due, 2) }}</strong>
+          <div class="mt-2">
+            <b-button
+              size="sm"
+              variant="success"
+              :disabled="exportingStatement"
+              @click="exportSupplierStatement"
+            >
+              <span v-if="exportingStatement" class="spinner-border spinner-border-sm mr-1" aria-hidden="true"></span>
+              <lucide-icon v-else name="download" />
+              Export Supplier Statement
+            </b-button>
+          </div>
         </div>
       </div>
     </b-card>
@@ -123,6 +135,143 @@
         <b-card class="card mb-30" header-bg-variant="transparent ">
           <b-tabs active-nav-item-class="nav nav-tabs" content-class="mt-3">
 
+            <!-- Purchase Order Lines -->
+            <b-tab title="Purchase Orders">
+              <vue-good-table
+                mode="remote"
+                :columns="columns_purchase_orders"
+                :totalRows="totalRows_purchase_orders"
+                :rows="purchase_orders"
+                @on-page-change="PageChangePurchaseOrders"
+                @on-per-page-change="onPerPageChangePurchaseOrders"
+                @on-search="onSearch_purchase_orders"
+                :search-options="{ placeholder: $t('Search_this_table'), enabled: true }"
+                :pagination-options="{ enabled: true, mode: 'records', nextLabel: 'next', prevLabel: 'prev' }"
+                styleClass="tableOne table-hover vgt-table supplier-detail-table"
+              >
+                <div slot="table-actions" class="mt-2 mb-3">
+                  <b-button @click="printTableOnly('purchase_orders')" size="sm" variant="outline-secondary ripple m-1">
+                    <lucide-icon name="printer" /> {{ $t("print") }}
+                  </b-button>
+                </div>
+                <template slot="table-row" slot-scope="props">
+                  <div v-if="props.column.field === 'purchase_order_number'">
+                    <router-link v-if="canViewPurchaseOrders" :to="'/app/procurement/purchase-orders/' + props.row.purchase_order_id">{{ props.row.purchase_order_number }}</router-link>
+                    <span v-else>{{ props.row.purchase_order_number }}</span>
+                  </div>
+                  <div v-else-if="props.column.field === 'product_name'" class="product-cell">
+                    <strong>{{ props.row.product_name }}</strong>
+                    <small v-if="props.row.variant_name || props.row.sku" class="d-block text-muted">
+                      {{ props.row.variant_name || '' }}<span v-if="props.row.sku"> · {{ props.row.sku }}</span>
+                    </small>
+                  </div>
+                  <div v-else-if="props.column.field === 'unit_price' || props.column.field === 'line_total' || props.column.field === 'order_grand_total'">
+                    {{ formatPriceWithSymbol(currentUser.currency, props.row[props.column.field], 2) }}
+                  </div>
+                  <div v-else-if="props.column.field === 'discount'">{{ discountLabel(props.row) }}</div>
+                  <div v-else-if="props.column.field === 'tax_amount'">{{ taxLabel(props.row) }}</div>
+                  <div v-else-if="props.column.field === 'status'"><b-badge variant="light">{{ readableStatus(props.row.status) }}</b-badge></div>
+                </template>
+              </vue-good-table>
+            </b-tab>
+
+            <!-- Gate Pass Lines -->
+            <b-tab title="Gate Passes">
+              <vue-good-table
+                mode="remote"
+                :columns="columns_gate_passes"
+                :totalRows="totalRows_gate_passes"
+                :rows="gate_passes"
+                @on-page-change="PageChangeGatePasses"
+                @on-per-page-change="onPerPageChangeGatePasses"
+                @on-search="onSearch_gate_passes"
+                :search-options="{ placeholder: $t('Search_this_table'), enabled: true }"
+                :pagination-options="{ enabled: true, mode: 'records', nextLabel: 'next', prevLabel: 'prev' }"
+                styleClass="tableOne table-hover vgt-table supplier-detail-table"
+              >
+                <div slot="table-actions" class="mt-2 mb-3">
+                  <b-button @click="printTableOnly('gate_passes')" size="sm" variant="outline-secondary ripple m-1">
+                    <lucide-icon name="printer" /> {{ $t("print") }}
+                  </b-button>
+                </div>
+                <template slot="table-row" slot-scope="props">
+                  <div v-if="props.column.field === 'gate_pass_number'">
+                    <router-link v-if="canViewGatePasses" :to="'/app/procurement/gate-passes/' + props.row.gate_pass_id">{{ props.row.gate_pass_number }}</router-link>
+                    <span v-else>{{ props.row.gate_pass_number }}</span>
+                  </div>
+                  <div v-else-if="props.column.field === 'purchase_order_number' && props.row.purchase_order_id">
+                    <router-link v-if="canViewPurchaseOrders" :to="'/app/procurement/purchase-orders/' + props.row.purchase_order_id">{{ props.row.purchase_order_number }}</router-link>
+                    <span v-else>{{ props.row.purchase_order_number }}</span>
+                  </div>
+                  <div v-else-if="props.column.field === 'supplier_invoice_number' && props.row.supplier_invoice_id">
+                    <router-link v-if="canViewSupplierInvoices" :to="'/app/procurement/supplier-invoices/' + props.row.supplier_invoice_id">{{ props.row.supplier_invoice_number }}</router-link>
+                    <span v-else>{{ props.row.supplier_invoice_number }}</span>
+                  </div>
+                  <div v-else-if="props.column.field === 'product_name'" class="product-cell">
+                    <strong>{{ props.row.product_name }}</strong>
+                    <small v-if="props.row.variant_name || props.row.sku" class="d-block text-muted">
+                      {{ props.row.variant_name || '' }}<span v-if="props.row.sku"> · {{ props.row.sku }}</span>
+                    </small>
+                  </div>
+                  <div v-else-if="props.column.field === 'status'"><b-badge variant="light">{{ readableStatus(props.row.status) }}</b-badge></div>
+                </template>
+              </vue-good-table>
+            </b-tab>
+
+            <!-- Supplier Invoice Lines -->
+            <b-tab title="Supplier Invoices">
+              <vue-good-table
+                mode="remote"
+                :columns="columns_supplier_invoices"
+                :totalRows="totalRows_supplier_invoices"
+                :rows="supplier_invoices"
+                @on-page-change="PageChangeSupplierInvoices"
+                @on-per-page-change="onPerPageChangeSupplierInvoices"
+                @on-search="onSearch_supplier_invoices"
+                :search-options="{ placeholder: $t('Search_this_table'), enabled: true }"
+                :pagination-options="{ enabled: true, mode: 'records', nextLabel: 'next', prevLabel: 'prev' }"
+                styleClass="tableOne table-hover vgt-table supplier-detail-table"
+              >
+                <div slot="table-actions" class="mt-2 mb-3">
+                  <b-button @click="printTableOnly('supplier_invoices')" size="sm" variant="outline-secondary ripple m-1">
+                    <lucide-icon name="printer" /> {{ $t("print") }}
+                  </b-button>
+                </div>
+                <template slot="table-row" slot-scope="props">
+                  <div v-if="props.column.field === 'supplier_invoice_number'">
+                    <router-link v-if="canViewSupplierInvoices" :to="'/app/procurement/supplier-invoices/' + props.row.supplier_invoice_id">{{ props.row.supplier_invoice_number }}</router-link>
+                    <span v-else>{{ props.row.supplier_invoice_number }}</span>
+                  </div>
+                  <div v-else-if="props.column.field === 'purchase_reference' && props.row.purchase_id">
+                    <router-link :to="'/app/purchases/detail/' + props.row.purchase_id">{{ props.row.purchase_reference }}</router-link>
+                  </div>
+                  <div v-else-if="props.column.field === 'purchase_order_number' && props.row.purchase_order_id">
+                    <router-link v-if="canViewPurchaseOrders" :to="'/app/procurement/purchase-orders/' + props.row.purchase_order_id">{{ props.row.purchase_order_number }}</router-link>
+                    <span v-else>{{ props.row.purchase_order_number }}</span>
+                  </div>
+                  <div v-else-if="props.column.field === 'gate_pass_number' && props.row.gate_pass_id">
+                    <router-link v-if="canViewGatePasses" :to="'/app/procurement/gate-passes/' + props.row.gate_pass_id">{{ props.row.gate_pass_number }}</router-link>
+                    <span v-else>{{ props.row.gate_pass_number }}</span>
+                  </div>
+                  <div v-else-if="props.column.field === 'product_name'" class="product-cell">
+                    <strong>{{ props.row.product_name }}</strong>
+                    <small v-if="props.row.variant_name || props.row.sku" class="d-block text-muted">
+                      {{ props.row.variant_name || '' }}<span v-if="props.row.sku"> · {{ props.row.sku }}</span>
+                    </small>
+                  </div>
+                  <div v-else-if="props.column.field === 'unit_cost' || props.column.field === 'line_total' || props.column.field === 'invoice_grand_total'">
+                    {{ formatPriceWithSymbol(currentUser.currency, props.row[props.column.field], 2) }}
+                  </div>
+                  <div v-else-if="props.column.field === 'discount'">{{ discountLabel(props.row) }}</div>
+                  <div v-else-if="props.column.field === 'tax_amount'">{{ taxLabel(props.row) }}</div>
+                  <div v-else-if="props.column.field === 'tax_type'">
+                    <b-badge :variant="props.row.tax_type === 'gst' ? 'success' : 'secondary'">{{ props.row.tax_type === 'gst' ? 'GST Invoice' : 'Non-GST Invoice' }}</b-badge>
+                  </div>
+                  <div v-else-if="props.column.field === 'status'"><b-badge variant="light">{{ readableStatus(props.row.status) }}</b-badge></div>
+                </template>
+              </vue-good-table>
+            </b-tab>
+
             <!-- Purchases Table -->
             <b-tab :title="$t('Purchases')">
               <b-alert v-if="!purchases.length" show variant="light" class="mb-3">
@@ -179,12 +328,30 @@
                     >{{$t('partial')}}</span>
                     <span v-else class="badge badge-outline-warning">{{$t('Unpaid')}}</span>
                   </div>
-                   <div v-else-if="props.column.field == 'Ref'">
+                  <div v-else-if="props.column.field == 'Ref'">
                     <router-link
                       :to="'/app/purchases/detail/'+props.row.id"
                     >
                       <span class="ul-btn__text ml-1">{{props.row.Ref}}</span>
                     </router-link>
+                  </div>
+                  <div v-else-if="props.column.field === 'purchase_order_number' && props.row.purchase_order_id">
+                    <router-link v-if="canViewPurchaseOrders" :to="'/app/procurement/purchase-orders/' + props.row.purchase_order_id">{{ props.row.purchase_order_number }}</router-link>
+                    <span v-else>{{ props.row.purchase_order_number }}</span>
+                  </div>
+                  <div v-else-if="props.column.field === 'gate_pass_number' && props.row.gate_pass_id">
+                    <router-link v-if="canViewGatePasses" :to="'/app/procurement/gate-passes/' + props.row.gate_pass_id">{{ props.row.gate_pass_number }}</router-link>
+                    <span v-else>{{ props.row.gate_pass_number }}</span>
+                  </div>
+                  <div v-else-if="props.column.field === 'products_summary'" class="products-summary" :title="props.row.products_summary">
+                    {{ props.row.products_summary }}
+                  </div>
+                  <div v-else-if="props.column.field === 'discount_total' || props.column.field === 'tax_total' || props.column.field === 'GrandTotal' || props.column.field === 'paid_amount' || props.column.field === 'due'">
+                    {{ formatPriceWithSymbol(currentUser.currency, props.row[props.column.field], 2) }}
+                  </div>
+                  <div v-else-if="props.column.field === 'invoice_tax_type'">
+                    <b-badge v-if="props.row.invoice_tax_type" :variant="props.row.invoice_tax_type === 'gst' ? 'success' : 'secondary'">{{ props.row.invoice_tax_type === 'gst' ? 'GST' : 'Non-GST' }}</b-badge>
+                    <span v-else>---</span>
                   </div>
                 </template>
               </vue-good-table>
@@ -212,7 +379,7 @@
                 }"
                 styleClass="tableOne table-hover vgt-table"
               >
-               <div slot="table-actions" class="mt-2 mb-3">
+              <div slot="table-actions" class="mt-2 mb-3">
                 <b-button @click="printTableOnly('returns')" size="sm" variant="outline-secondary ripple m-1">
                   <lucide-icon name="printer" /> {{ $t("print") }}
                 </b-button>
@@ -259,7 +426,7 @@
             </b-tab>
             
             <!-- Payments Table -->
-            <b-tab :title="$t('PurchaseInvoice')">
+            <b-tab title="Supplier Payments">
               <vue-good-table
                 mode="remote"
                 :columns="columns_payments"
@@ -288,6 +455,20 @@
                   <lucide-icon name="copy" /> PDF
                 </b-button>
               </div>
+                <template slot="table-row" slot-scope="props">
+                  <div v-if="props.column.field === 'purchase_Ref'">
+                    <router-link :to="'/app/purchases/detail/' + props.row.purchase_id">{{ props.row.purchase_Ref }}</router-link>
+                  </div>
+                  <div v-else-if="props.column.field === 'supplier_invoice_number' && props.row.supplier_invoice_id">
+                    <router-link v-if="canViewSupplierInvoices" :to="'/app/procurement/supplier-invoices/' + props.row.supplier_invoice_id">{{ props.row.supplier_invoice_number }}</router-link>
+                    <span v-else>{{ props.row.supplier_invoice_number }}</span>
+                  </div>
+                  <div v-else-if="props.column.field === 'account_name'">
+                    <strong>{{ props.row.account_name || '---' }}</strong>
+                    <small v-if="props.row.account_num" class="d-block text-muted">{{ props.row.account_num }}</small>
+                  </div>
+                  <div v-else-if="props.column.field === 'montant'">{{ formatPriceWithSymbol(currentUser.currency, props.row.montant, 2) }}</div>
+                </template>
               </vue-good-table>
             </b-tab>
           </b-tabs>
@@ -312,21 +493,37 @@ export default {
       totalRows_purchases: "",
       totalRows_returns: "",
       totalRows_payments: "",
+      totalRows_purchase_orders: 0,
+      totalRows_gate_passes: 0,
+      totalRows_supplier_invoices: 0,
       limit_returns: "10",
       limit_purchases: "10",
       limit_payments: "10",
+      limit_purchase_orders: "10",
+      limit_gate_passes: "10",
+      limit_supplier_invoices: "10",
       purchases_page: 1,
       Return_page: 1,
       Payment_page: 1,
+      PurchaseOrder_page: 1,
+      GatePass_page: 1,
+      SupplierInvoice_page: 1,
       isLoading: true,
+      exportingStatement: false,
       returns_supplier: [],
       payments: [],
       purchases: [],
+      purchase_orders: [],
+      gate_passes: [],
+      supplier_invoices: [],
       opening_balance_payments: [],
 
       search_purchases:"",
       search_payments:"",
       search_return_purchases:"",
+      search_purchase_orders: "",
+      search_gate_passes: "",
+      search_supplier_invoices: "",
 
       provider: {
         id: "",
@@ -348,14 +545,72 @@ export default {
   },
 
   computed: {
-    ...mapGetters(["currentUser"]),
+    ...mapGetters(["currentUser", "currentUserPermissions"]),
+    canViewPurchaseOrders() {
+      return (this.currentUserPermissions || []).includes('purchase_orders_view');
+    },
+    canViewGatePasses() {
+      return (this.currentUserPermissions || []).includes('gate_passes_view');
+    },
+    canViewSupplierInvoices() {
+      return (this.currentUserPermissions || []).includes('supplier_invoices_view');
+    },
     openingPaymentFields() {
       return [
         { key: 'date', label: this.$t('date') },
         { key: 'Ref', label: this.$t('Reference') },
         { key: 'payment_method', label: this.$t('ModePaiement') },
+        { key: 'account', label: 'Cash / Bank Account' },
         { key: 'montant', label: this.$t('Amount'), class: 'text-right' },
         { key: 'notes', label: this.$t('Note') }
+      ];
+    },
+    columns_purchase_orders() {
+      return [
+        { label: 'Order Date', field: 'order_date', sortable: false },
+        { label: 'Purchase Order', field: 'purchase_order_number', sortable: false },
+        { label: this.$t('warehouse'), field: 'warehouse_name', sortable: false },
+        { label: 'Product / Model', field: 'product_name', sortable: false },
+        { label: 'Qty', field: 'ordered_quantity', type: 'decimal', sortable: false },
+        { label: 'Unit Price', field: 'unit_price', sortable: false },
+        { label: 'Discount', field: 'discount', sortable: false },
+        { label: 'GST / Tax', field: 'tax_amount', sortable: false },
+        { label: 'Line Total', field: 'line_total', sortable: false },
+        { label: 'Order Total', field: 'order_grand_total', sortable: false },
+        { label: this.$t('Status'), field: 'status', sortable: false }
+      ];
+    },
+    columns_gate_passes() {
+      return [
+        { label: 'Delivered At', field: 'delivered_at', sortable: false },
+        { label: 'Gate Pass', field: 'gate_pass_number', sortable: false },
+        { label: 'Supplier Gate Pass', field: 'supplier_gate_pass_number', sortable: false },
+        { label: 'Purchase Order', field: 'purchase_order_number', sortable: false },
+        { label: this.$t('warehouse'), field: 'warehouse_name', sortable: false },
+        { label: 'Product / Model', field: 'product_name', sortable: false },
+        { label: 'Delivered', field: 'delivered_quantity', type: 'decimal', sortable: false },
+        { label: 'Accepted', field: 'accepted_quantity', type: 'decimal', sortable: false },
+        { label: 'Rejected', field: 'rejected_quantity', type: 'decimal', sortable: false },
+        { label: 'Short', field: 'short_quantity', type: 'decimal', sortable: false },
+        { label: this.$t('Status'), field: 'status', sortable: false }
+      ];
+    },
+    columns_supplier_invoices() {
+      return [
+        { label: 'Invoice Date', field: 'invoice_date', sortable: false },
+        { label: 'Supplier Invoice', field: 'supplier_invoice_number', sortable: false },
+        { label: 'Purchase', field: 'purchase_reference', sortable: false },
+        { label: 'Purchase Order', field: 'purchase_order_number', sortable: false },
+        { label: 'Gate Pass', field: 'gate_pass_number', sortable: false },
+        { label: 'Product / Model', field: 'product_name', sortable: false },
+        { label: 'Qty', field: 'quantity', type: 'decimal', sortable: false },
+        { label: 'Unit Cost', field: 'unit_cost', sortable: false },
+        { label: 'Discount', field: 'discount', sortable: false },
+        { label: 'GST / Tax', field: 'tax_amount', sortable: false },
+        { label: 'Tax Type', field: 'tax_type', sortable: false },
+        { label: 'Line Total', field: 'line_total', sortable: false },
+        { label: 'Invoice Total', field: 'invoice_grand_total', sortable: false },
+        { label: this.$t('Status'), field: 'status', sortable: false }
       ];
     },
     columns_purchases() {
@@ -387,7 +642,13 @@ export default {
           tdClass: "text-left",
           thClass: "text-left"
         },
-       
+        { label: 'Supplier Invoice', field: 'supplier_invoice_number', sortable: false },
+        { label: 'Purchase Order', field: 'purchase_order_number', sortable: false },
+        { label: 'Gate Pass', field: 'gate_pass_number', sortable: false },
+        { label: 'Products', field: 'products_summary', sortable: false },
+        { label: 'Discount', field: 'discount_total', sortable: false },
+        { label: 'GST / Tax', field: 'tax_total', sortable: false },
+        { label: 'Tax Type', field: 'invoice_tax_type', sortable: false },
         {
           label: this.$t("Total"),
           field: "GrandTotal",
@@ -521,10 +782,20 @@ export default {
           sortable: false
         },
         {
+          label: 'Supplier Invoice',
+          field: 'supplier_invoice_number',
+          sortable: false
+        },
+        {
           label: this.$t("ModePaiement"),
           field: "payment_method",
           tdClass: "text-left",
           thClass: "text-left",
+          sortable: false
+        },
+        {
+          label: 'Cash / Bank Account',
+          field: 'account_name',
           sortable: false
         },
         {
@@ -534,12 +805,50 @@ export default {
           thClass: "text-left",
           type: "decimal",
           sortable: false
+        },
+        {
+          label: this.$t("Note"),
+          field: "notes",
+          sortable: false
         }
       ];
     }
   },
 
   methods: {
+
+    async exportSupplierStatement() {
+      this.exportingStatement = true;
+
+      try {
+        const response = await axios.get(
+          `report/provider_statement_excel/${this.$route.params.id}`,
+          { responseType: 'blob' }
+        );
+        const url = window.URL.createObjectURL(new Blob([response.data], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        }));
+        const link = document.createElement('a');
+        const safeName = String(this.provider.provider_name || 'supplier')
+          .replace(/[^a-z0-9_-]+/gi, '-')
+          .replace(/^-+|-+$/g, '');
+
+        link.href = url;
+        link.setAttribute('download', `supplier-statement-${safeName || 'supplier'}.xlsx`);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+      } catch (error) {
+        this.$bvToast.toast('Unable to export the supplier statement.', {
+          title: 'Export failed',
+          variant: 'danger',
+          solid: true
+        });
+      } finally {
+        this.exportingStatement = false;
+      }
+    },
 
       //---------------------- Purchases PDF -------------------------------\\
     Purchase_PDF() {
@@ -553,8 +862,14 @@ export default {
       let columns = [
         { header: self.$t("date"), dataKey: "date" },
         { header: self.$t("Reference"), dataKey: "Ref" },
-        { header: self.$t("Supplier"), dataKey: "provider_name" },
         { header: self.$t("warehouse"), dataKey: "warehouse_name" },
+        { header: "Supplier Invoice", dataKey: "supplier_invoice_number" },
+        { header: "Purchase Order", dataKey: "purchase_order_number" },
+        { header: "Gate Pass", dataKey: "gate_pass_number" },
+        { header: "Products", dataKey: "products_summary" },
+        { header: "Discount", dataKey: "discount_total" },
+        { header: "GST / Tax", dataKey: "tax_total" },
+        { header: "Tax Type", dataKey: "invoice_tax_type" },
         { header: self.$t("Total"), dataKey: "GrandTotal" },
         { header: self.$t("Paid"), dataKey: "paid_amount" },
         { header: self.$t("Due"), dataKey: "due" },
@@ -644,8 +959,12 @@ export default {
         { header: self.$t("date"), dataKey: "date" },
         { header: self.$t("Reference"), dataKey: "Ref" },
         { header: self.$t("Purchase"), dataKey: "purchase_Ref" },
+        { header: "Supplier Invoice", dataKey: "supplier_invoice_number" },
         { header: self.$t("ModePaiement"), dataKey: "payment_method" },
+        { header: "Cash / Bank Account", dataKey: "account_name" },
+        { header: "Account Number", dataKey: "account_num" },
         { header: self.$t("Amount"), dataKey: "montant" },
+        { header: self.$t("Note"), dataKey: "notes" },
       ];
 
       autoTable(pdf, {
@@ -709,6 +1028,27 @@ export default {
       return safeSymbol ? `${safeSymbol} ${value}` : value;
     },
 
+    readableStatus(value) {
+      return String(value || '---')
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, character => character.toUpperCase());
+    },
+
+    discountLabel(row) {
+      const amount = Number(row.discount || 0);
+      if (row.discount_method === 'percentage' || String(row.discount_method) === '1') {
+        return `${this.formatNumber(amount, 2)}%`;
+      }
+      return this.formatPriceWithSymbol(this.currentUser.currency, amount, 2);
+    },
+
+    taxLabel(row) {
+      const name = row.tax_name || (row.tax_type === 'gst' ? 'GST' : 'Tax');
+      const rate = Number(row.tax_rate || 0);
+      const amount = this.formatPriceWithSymbol(this.currentUser.currency, row.tax_amount || 0, 2);
+      return `${name}${rate ? ` ${this.formatNumber(rate, 2)}%` : ''} · ${amount}`;
+    },
+
     //------ Print Table Only - Print data with all columns based on table type
     printTableOnly(tableType) {
       let title, rows, columns;
@@ -717,12 +1057,24 @@ export default {
         title = `${this.$t("Reports")} / ${this.$t("SuppliersReport")} / ${this.$t("Purchases")}`;
         rows = Array.isArray(this.purchases) ? this.purchases : [];
         columns = this.columns_purchases;
+      } else if (tableType === 'purchase_orders') {
+        title = `${this.$t("Reports")} / ${this.$t("SuppliersReport")} / Purchase Orders`;
+        rows = Array.isArray(this.purchase_orders) ? this.purchase_orders : [];
+        columns = this.columns_purchase_orders;
+      } else if (tableType === 'gate_passes') {
+        title = `${this.$t("Reports")} / ${this.$t("SuppliersReport")} / Gate Passes`;
+        rows = Array.isArray(this.gate_passes) ? this.gate_passes : [];
+        columns = this.columns_gate_passes;
+      } else if (tableType === 'supplier_invoices') {
+        title = `${this.$t("Reports")} / ${this.$t("SuppliersReport")} / Supplier Invoices`;
+        rows = Array.isArray(this.supplier_invoices) ? this.supplier_invoices : [];
+        columns = this.columns_supplier_invoices;
       } else if (tableType === 'returns') {
         title = `${this.$t("Reports")} / ${this.$t("SuppliersReport")} / ${this.$t("Returns")}`;
         rows = Array.isArray(this.returns_supplier) ? this.returns_supplier : [];
         columns = this.columns_returns;
       } else if (tableType === 'payments') {
-        title = `${this.$t("Reports")} / ${this.$t("SuppliersReport")} / ${this.$t("PurchaseInvoice")}`;
+        title = `${this.$t("Reports")} / ${this.$t("SuppliersReport")} / Supplier Payments`;
         rows = Array.isArray(this.payments) ? this.payments : [];
         columns = this.columns_payments;
       } else {
@@ -760,7 +1112,22 @@ export default {
             if (row.payment_status === 'paid') cellValue = this.$t('Paid');
             else if (row.payment_status === 'partial') cellValue = this.$t('partial');
             else cellValue = this.$t('Unpaid');
-          } else if (['GrandTotal', 'paid_amount', 'due', 'montant'].includes(col.field)) {
+          } else if (col.field === 'product_name') {
+            cellValue = `${row.product_name || ''}${row.variant_name ? ` - ${row.variant_name}` : ''}${row.sku ? ` (${row.sku})` : ''}`;
+          } else if (col.field === 'discount') {
+            cellValue = this.discountLabel(row);
+          } else if (col.field === 'tax_amount') {
+            cellValue = this.taxLabel(row);
+          } else if (col.field === 'account_name') {
+            cellValue = `${row.account_name || '---'}${row.account_num ? ` (${row.account_num})` : ''}`;
+          } else if (col.field === 'tax_type' || col.field === 'invoice_tax_type') {
+            cellValue = row[col.field] ? (row[col.field] === 'gst' ? 'GST' : 'Non-GST') : '---';
+          } else if (col.field === 'status') {
+            cellValue = this.readableStatus(row.status);
+          } else if ([
+            'GrandTotal', 'paid_amount', 'due', 'montant', 'unit_price', 'unit_cost',
+            'line_total', 'order_grand_total', 'invoice_grand_total', 'discount_total', 'tax_total'
+          ].includes(col.field)) {
             // Format monetary values
             cellValue = this.formatPriceDisplay(row[col.field] || 0, 2);
           } else {
@@ -838,6 +1205,75 @@ export default {
             this.isLoading = false;
           }, 500);
         });
+    },
+
+    Get_Procurement(type, page) {
+      const propertyMap = {
+        purchase_orders: ['purchase_orders', 'totalRows_purchase_orders', 'limit_purchase_orders', 'search_purchase_orders'],
+        gate_passes: ['gate_passes', 'totalRows_gate_passes', 'limit_gate_passes', 'search_gate_passes'],
+        supplier_invoices: ['supplier_invoices', 'totalRows_supplier_invoices', 'limit_supplier_invoices', 'search_supplier_invoices']
+      };
+      const properties = propertyMap[type];
+      if (!properties) return;
+
+      axios.get('report/provider_procurement', {
+        params: {
+          type,
+          page,
+          limit: this[properties[2]],
+          search: this[properties[3]],
+          id: this.$route.params.id
+        }
+      }).then(response => {
+        this[properties[0]] = response.data.rows || [];
+        this[properties[1]] = response.data.totalRows || 0;
+      }).catch(() => {
+        this[properties[0]] = [];
+        this[properties[1]] = 0;
+      });
+    },
+
+    PageChangePurchaseOrders({ currentPage }) {
+      this.PurchaseOrder_page = currentPage;
+      this.Get_Procurement('purchase_orders', currentPage);
+    },
+    onPerPageChangePurchaseOrders({ currentPerPage }) {
+      this.limit_purchase_orders = currentPerPage;
+      this.PurchaseOrder_page = 1;
+      this.Get_Procurement('purchase_orders', 1);
+    },
+    onSearch_purchase_orders({ searchTerm }) {
+      this.search_purchase_orders = searchTerm;
+      this.PurchaseOrder_page = 1;
+      this.Get_Procurement('purchase_orders', 1);
+    },
+    PageChangeGatePasses({ currentPage }) {
+      this.GatePass_page = currentPage;
+      this.Get_Procurement('gate_passes', currentPage);
+    },
+    onPerPageChangeGatePasses({ currentPerPage }) {
+      this.limit_gate_passes = currentPerPage;
+      this.GatePass_page = 1;
+      this.Get_Procurement('gate_passes', 1);
+    },
+    onSearch_gate_passes({ searchTerm }) {
+      this.search_gate_passes = searchTerm;
+      this.GatePass_page = 1;
+      this.Get_Procurement('gate_passes', 1);
+    },
+    PageChangeSupplierInvoices({ currentPage }) {
+      this.SupplierInvoice_page = currentPage;
+      this.Get_Procurement('supplier_invoices', currentPage);
+    },
+    onPerPageChangeSupplierInvoices({ currentPerPage }) {
+      this.limit_supplier_invoices = currentPerPage;
+      this.SupplierInvoice_page = 1;
+      this.Get_Procurement('supplier_invoices', 1);
+    },
+    onSearch_supplier_invoices({ searchTerm }) {
+      this.search_supplier_invoices = searchTerm;
+      this.SupplierInvoice_page = 1;
+      this.Get_Procurement('supplier_invoices', 1);
     },
 
     //--------------------------- Event Page Change -------------\\
@@ -971,6 +1407,9 @@ export default {
 
   created: function() {
     this.Get_Reports();
+    this.Get_Procurement('purchase_orders', 1);
+    this.Get_Procurement('gate_passes', 1);
+    this.Get_Procurement('supplier_invoices', 1);
     this.Get_Purchases(1);
     this.Get_Payments(1);
     this.Get_Returns(1);
@@ -1065,6 +1504,23 @@ export default {
 .opening-balance-history h6 {
   margin: .25rem 0 .75rem;
   color: #334155;
+}
+
+.product-cell {
+  min-width: 180px;
+}
+
+.products-summary {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+::v-deep .supplier-detail-table th,
+::v-deep .supplier-detail-table td {
+  white-space: nowrap;
+  vertical-align: middle;
 }
 
 @media (max-width: 991px) {

@@ -179,6 +179,58 @@ class ProcurementWorkflowTest extends TestCase
         $this->assertSame('pending_verification', $gatePass->status);
     }
 
+    public function test_super_admin_can_delete_an_unposted_duplicate_gate_pass_from_the_listing(): void
+    {
+        [$order] = $this->singleLineOrder(10);
+        $gatePass = app(GatePassService::class)->create($order, [
+            'delivered_at' => '2026-09-07 10:00:00',
+            'submit_for_verification' => true,
+            'items' => [[
+                'purchase_order_item_id' => $order->items[0]->id,
+                'delivered_quantity' => 5,
+                'accepted_quantity' => 5,
+            ]],
+        ], $this->user);
+
+        $this->actingAs($this->user, 'api')
+            ->getJson('/api/procurement/gate-passes?limit=20')
+            ->assertOk()
+            ->assertJsonPath('data.0.can_delete', true);
+
+        $this->actingAs($this->user, 'api')
+            ->deleteJson('/api/procurement/gate-passes/'.$gatePass->id)
+            ->assertOk()
+            ->assertJsonPath('message', 'Gate Pass deleted successfully.');
+
+        $this->assertDatabaseMissing('gate_passes', ['id' => $gatePass->id]);
+        $this->assertDatabaseMissing('gate_pass_items', ['gate_pass_id' => $gatePass->id]);
+        $this->assertDatabaseHas('procurement_audits', [
+            'auditable_id' => $gatePass->id,
+            'action' => 'deleted_by_super_admin',
+        ]);
+    }
+
+    public function test_super_admin_cannot_delete_a_gate_pass_that_has_posted_stock(): void
+    {
+        [$order] = $this->singleLineOrder(10);
+        $gatePass = app(GatePassService::class)->create($order, [
+            'delivered_at' => '2026-09-07 10:00:00',
+            'items' => [[
+                'purchase_order_item_id' => $order->items[0]->id,
+                'delivered_quantity' => 5,
+                'accepted_quantity' => 5,
+            ]],
+        ], $this->user);
+        app(GatePassService::class)->confirm($gatePass, $this->user);
+
+        $this->actingAs($this->user, 'api')
+            ->deleteJson('/api/procurement/gate-passes/'.$gatePass->id)
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'This Gate Pass has posted stock. Cancel it to reverse stock before attempting removal.');
+
+        $this->assertDatabaseHas('gate_passes', ['id' => $gatePass->id]);
+    }
+
     public function test_direct_gate_pass_can_receive_stock_and_flow_to_supplier_invoice_without_purchase_order(): void
     {
         $product = Product::create([
