@@ -582,17 +582,17 @@
               >{{parseFloat(payment.received_amount - payment.montant).toFixed(2)}}</p>
             </b-col>
 
-            <!-- Account -->
-            <b-col lg="6" md="6" sm="12">
-              <validation-provider name="Account">
-                <b-form-group slot-scope="{ valid, errors }" :label="$t('Account')">
+            <!-- Payment account -->
+            <b-col lg="6" md="6" sm="12" v-if="paymentAccountType">
+              <validation-provider :name="paymentAccountLabel" :rules="{ required: true }">
+                <b-form-group slot-scope="{ valid, errors }" :label="paymentAccountLabel + ' *'">
                   <v-select
                     :class="{'is-invalid': !!errors.length}"
                     :state="errors[0] ? false : (valid ? true : null)"
                     v-model="payment.account_id"
                     :reduce="label => label.value"
-                    :placeholder="$t('Choose_Account')"
-                    :options="accounts.map(accounts => ({label: accounts.account_name, value: accounts.id}))"
+                    :placeholder="'Choose ' + paymentAccountLabel"
+                    :options="paymentAccountOptions"
                   />
                   <b-form-invalid-feedback>{{ errors[0] }}</b-form-invalid-feedback>
                 </b-form-group>
@@ -1934,6 +1934,30 @@ export default {
   computed: {
     ...mapGetters(["currentUserPermissions", "currentUser"]),
 
+    selectedPaymentMethod() {
+      return this.payment_methods.find(method => String(method.id) === String(this.payment.payment_method_id)) || null;
+    },
+
+    paymentAccountType() {
+      const name = this.selectedPaymentMethod ? String(this.selectedPaymentMethod.name || '').toLowerCase() : '';
+      if (name.includes('easypaisa') || name.includes('easy paisa')) return 'easypaisa';
+      if (this.selectedPaymentMethod && (Number(this.selectedPaymentMethod.id) === 6 || name.includes('bank'))) return 'bank';
+      return null;
+    },
+
+    paymentAccountLabel() {
+      return this.paymentAccountType === 'easypaisa' ? 'Easypaisa Account / Number' : 'Bank Account';
+    },
+
+    paymentAccountOptions() {
+      return this.accounts
+        .filter(account => (account.account_type || 'bank') === this.paymentAccountType)
+        .map(account => ({
+          label: `${account.account_name}${account.account_num ? ` (${account.account_num})` : ''}`,
+          value: account.id,
+        }));
+    },
+
     shipmentItems() {
       if (Array.isArray(this.shipmentEligibility.all_items)) {
         return this.shipmentEligibility.all_items;
@@ -3253,6 +3277,10 @@ export default {
       axios
         .get("payment_sale_get_number")
         .then(({ data }) => (this.payment.Ref = data));
+    },
+
+    Selected_PaymentMethod() {
+      this.payment.account_id = '';
     },
 
 

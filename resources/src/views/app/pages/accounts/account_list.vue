@@ -56,6 +56,23 @@
       <b-modal hide-footer size="md" id="New_Account" :title="editmode?$t('Edit'):$t('Add')">
         <b-form @submit.prevent="Submit_Account">
           <b-row>
+            <!-- Account type -->
+            <b-col md="12">
+              <validation-provider name="Account type" :rules="{ required: true }" v-slot="validationContext">
+                <b-form-group label="Account Type *">
+                  <v-select
+                    v-model="account.account_type"
+                    :reduce="option => option.value"
+                    :options="accountTypeOptions"
+                    :clearable="false"
+                    :state="getValidationState(validationContext)"
+                    placeholder="Choose account type"
+                  />
+                  <b-form-invalid-feedback>{{ validationContext.errors[0] }}</b-form-invalid-feedback>
+                </b-form-group>
+              </validation-provider>
+            </b-col>
+
             <!-- account_num -->
             <b-col md="12">
               <validation-provider
@@ -63,9 +80,9 @@
                 :rules="{ required: true}"
                 v-slot="validationContext"
               >
-                <b-form-group :label="$t('account_num') + ' ' + '*'">
+                <b-form-group :label="accountNumberLabel + ' *'">
                   <b-form-input
-                    :placeholder="$t('Enter_account_num')"
+                    :placeholder="'Enter ' + accountNumberLabel.toLowerCase()"
                     :state="getValidationState(validationContext)"
                     aria-describedby="account_num-feedback"
                     label="account_num"
@@ -180,12 +197,26 @@ export default {
         id: "",
         account_num: "",
         account_name: "",
+        account_type: "bank",
         initial_balance: 0,
         note: ""
       }
     };
   },
   computed: {
+    accountTypeOptions() {
+      return [
+        { label: 'Bank', value: 'bank' },
+        { label: 'Easypaisa', value: 'easypaisa' },
+        { label: 'Cash', value: 'cash' },
+        { label: 'Other', value: 'other' },
+      ];
+    },
+    accountNumberLabel() {
+      if (this.account.account_type === 'easypaisa') return 'Easypaisa Number';
+      if (this.account.account_type === 'bank') return 'Bank Account Number / IBAN';
+      return this.$t('account_num');
+    },
     columns() {
       return [
         {
@@ -197,6 +228,13 @@ export default {
         {
           label: this.$t("account_name"),
           field: "account_name",
+          tdClass: "text-left",
+          thClass: "text-left"
+        },
+        {
+          label: "Type",
+          field: "account_type",
+          formatFn: this.formatAccountType,
           tdClass: "text-left",
           thClass: "text-left"
         },
@@ -225,6 +263,10 @@ export default {
   },
 
   methods: {
+    formatAccountType(type) {
+      const labels = { bank: 'Bank', easypaisa: 'Easypaisa', cash: 'Cash', other: 'Other' };
+      return labels[type] || type || 'Bank';
+    },
     //---- update Params Table
     updateParams(newProps) {
       this.serverParams = Object.assign({}, this.serverParams, newProps);
@@ -366,6 +408,7 @@ export default {
         .post("accounts", {
           account_num: this.account.account_num,
           account_name: this.account.account_name,
+          account_type: this.account.account_type,
           initial_balance: this.account.initial_balance,
           note: this.account.note,
         })
@@ -391,6 +434,7 @@ export default {
         .put("accounts/" + this.account.id, {
           account_num: this.account.account_num,
           account_name: this.account.account_name,
+          account_type: this.account.account_type,
           note: this.account.note,
         })
         .then(response => {
@@ -415,6 +459,7 @@ export default {
         id: "",
         account_num: "",
         account_name: "",
+        account_type: "bank",
         initial_balance: 0,
         note: "",
       };

@@ -280,6 +280,8 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
     Route::get('report/top_suppliers', 'ReportController@topSuppliersReport');
     Route::get('report/supplier_year_comparison', 'ReportController@supplierYearComparison');
     Route::get('report/supplier_year_comparison_excel', 'ReportController@exportSupplierYearComparison');
+    Route::get('report/branch_year_comparison', 'ReportController@branchYearComparison');
+    Route::get('report/branch_year_comparison_excel', 'ReportController@exportBranchYearComparison');
     Route::get('report/customer_loyalty_points', 'ReportController@customerLoyaltyPoints');
     Route::get('get_product_detail/{id}', 'ProductsController@Get_Products_Details');
 

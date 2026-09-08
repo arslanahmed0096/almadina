@@ -2172,6 +2172,16 @@
 
           <li
             class="nav-item"
+            v-if="currentUserPermissions && currentUserPermissions.includes('Reports_sales')"
+          >
+            <router-link tag="a" class :to="{ name: 'branch_year_comparison_report' }">
+              <lucide-icon class="nav-icon" name="bar-chart-3" />
+              <span class="item-name">Branch Performance Comparison</span>
+            </router-link>
+          </li>
+
+          <li
+            class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('product_sales_report')"
           >
             <router-link tag="a" class to="/app/reports/product_sales_report">

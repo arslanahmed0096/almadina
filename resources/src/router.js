@@ -2478,6 +2478,15 @@ const baseRoutes = [
                                 "./views/app/pages/reports/sales_report"
                             )
                     },
+                    {
+                        name: "branch_year_comparison_report",
+                        path: "branch_year_comparison",
+                        component: () =>
+                            import(
+                                /* webpackChunkName: "branch_year_comparison_report" */
+                                "./views/app/pages/reports/Branch_Year_Comparison_Report"
+                            )
+                    },
 
                     {
                         name: "product_sales_report",

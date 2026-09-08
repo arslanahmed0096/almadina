@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Mail\CustomEmail;
 use App\Services\BatchService;
 use App\Services\CustomerCreditService;
+use App\Services\PaymentAccountService;
 use App\Services\SaleReturnEligibilityService;
 use App\Models\Account;
 use App\Models\Client;
@@ -201,7 +202,7 @@ class SalesController extends BaseController
 
         $stripe_key = config('app.STRIPE_KEY');
         $customers = Client::where('deleted_at', '=', null)->get(['id', 'name', 'phone']);
-        $accounts = Account::where('deleted_at', '=', null)->orderBy('id', 'desc')->get(['id', 'account_name']);
+        $accounts = Account::where('deleted_at', '=', null)->orderBy('id', 'desc')->get(['id', 'account_name', 'account_num', 'account_type']);
         $payment_methods = PaymentMethod::whereNull('deleted_at')->get(['id', 'name']);
 
         // get warehouses assigned to user
@@ -237,6 +238,10 @@ class SalesController extends BaseController
             'credit_days' => 'nullable|integer|in:5,10,15,20,25,30',
             'GrandTotal' => 'required|numeric|min:0',
             'amount' => 'nullable|numeric|min:0',
+            'payment.status' => 'required|in:pending,paid,partial',
+            'payment.amount' => 'nullable|numeric|min:0',
+            'payment.payment_method_id' => 'nullable|integer|exists:payment_methods,id',
+            'payment.account_id' => 'nullable|integer|exists:accounts,id',
         ]);
 
         $this->assertProductsSelectable($request->user('api'), $request->input('details', []));
@@ -247,19 +252,57 @@ class SalesController extends BaseController
             $helpers = new helpers;
             $clientForCredit = Client::whereKey($request->client_id)->lockForUpdate()->firstOrFail();
             $grandTotal = round((float) $request->GrandTotal, 2);
-            $requestedPayment = round(max(0, (float) $request->amount), 2);
+            $requestedPayment = round(max(0, (float) $request->input('payment.amount', $request->amount)), 2);
+            $paymentStatus = $request->input('payment.status', 'pending');
 
-            if ($transactionType === 'sale'
-                && $request->input('payment.status') !== 'pending'
-                && $requestedPayment > $grandTotal) {
+            if ($paymentStatus !== 'pending' && $requestedPayment <= 0) {
+                throw ValidationException::withMessages([
+                    'amount' => ['Enter an amount greater than zero, or set the payment status to Pending.'],
+                ]);
+            }
+
+            if ($paymentStatus !== 'pending' && $requestedPayment > $grandTotal) {
                 throw ValidationException::withMessages([
                     'amount' => ['Payment cannot exceed the sale total of '.number_format($grandTotal, 2, '.', '').'.'],
                 ]);
             }
 
-            $initialPayment = ($request->input('payment.status') === 'pending')
+            $initialPayment = ($paymentStatus === 'pending')
                 ? 0.0
                 : $requestedPayment;
+            $paymentMethodId = null;
+            $paymentAccountId = null;
+
+            if ($initialPayment > 0) {
+                $paymentMethod = PaymentMethod::whereNull('deleted_at')
+                    ->find($request->input('payment.payment_method_id'));
+
+                if (! $paymentMethod) {
+                    throw ValidationException::withMessages([
+                        'payment.payment_method_id' => ['Select a valid payment method.'],
+                    ]);
+                }
+
+                $normalizedMethodName = Str::lower(trim((string) $paymentMethod->name));
+                $isCashPayment = (int) $paymentMethod->id === 2 || $normalizedMethodName === 'cash';
+                $paymentAccountService = app(PaymentAccountService::class);
+                $requiredAccountType = $paymentAccountService->accountTypeForMethod($paymentMethod);
+
+                if ($transactionType === 'order' && ! $isCashPayment && $requiredAccountType === null) {
+                    throw ValidationException::withMessages([
+                        'payment.payment_method_id' => ['Order advance payments must be received by cash, bank, or Easypaisa.'],
+                    ]);
+                }
+
+                $paymentMethodId = $paymentMethod->id;
+                $paymentAccount = $paymentAccountService->resolve(
+                    $paymentMethod,
+                    $request->input('payment.account_id'),
+                    'payment.account_id'
+                );
+                $paymentAccountId = $paymentAccount?->id;
+            }
+
             $requestedCredit = $transactionType === 'sale'
                 ? max(0, round((float) $request->GrandTotal - $initialPayment, 2))
                 : 0.0;
@@ -282,8 +325,8 @@ class SalesController extends BaseController
             // Ensure order-level discount method is saved: '1' for percentage, '2' for fixed
             $order->discount_Method = $request->has('discount_Method') ? (string) $request->discount_Method : '2';
             $order->shipping = $request->shipping;
-            // An order is intentionally non-final: it may contain unavailable
-            // products and must not consume stock or accept payment yet.
+            // An order is intentionally non-final and does not consume stock.
+            // It may still hold a customer advance payment.
             $order->statut = $transactionType === 'order' ? 'ordered' : $request->statut;
             $order->payment_statut = 'unpaid';
             $order->notes = $request->notes;
@@ -383,7 +426,7 @@ class SalesController extends BaseController
             // Backward compatibility: If record_view is null, fall back to role permission check
             $view_records = $user->hasRecordView();
 
-            if ($order->statut === 'completed' && $request->payment['status'] != 'pending') {
+            if ($initialPayment > 0 && ($order->statut === 'completed' || $transactionType === 'order')) {
                 $sale = Sale::findOrFail($order->id);
                 // Check If User Has Permission view All Records
                 if (! $view_records) {
@@ -391,52 +434,37 @@ class SalesController extends BaseController
                     $this->authorizeForUser($request->user('api'), 'check_record', $sale);
                 }
 
-                try {
+                $total_paid = round((float) $sale->paid_amount + $initialPayment, 2);
+                $due = round((float) $sale->GrandTotal - $total_paid, 2);
 
-                    $total_paid = round((float) $sale->paid_amount + $initialPayment, 2);
-                    $due = $sale->GrandTotal - $total_paid;
-
-                    if ($due === 0.0 || $due < 0.0) {
-                        $payment_statut = 'paid';
-                    } elseif ($due != $sale->GrandTotal) {
-                        $payment_statut = 'partial';
-                    } elseif ($due == $sale->GrandTotal) {
-                        $payment_statut = 'unpaid';
-                    }
-
-                    if ($initialPayment > 0 && $request->payment['status'] != 'pending') {
-                        // All payment methods (including card) are now handled uniformly; no Stripe charge is performed here.
-                        PaymentSale::create([
-                            'sale_id' => $order->id,
-                            'Ref' => app('App\Http\Controllers\PaymentSalesController')->getNumberOrder(),
-                            'date' => Carbon::now(),
-                            'account_id' => $request->payment['account_id'] ? $request->payment['account_id'] : null,
-                            'payment_method_id' => $request->payment['payment_method_id'],
-                            'montant' => $initialPayment,
-                            'change' => $request['change'],
-                            'notes' => null,
-                            'user_id' => Auth::user()->id,
-                        ]);
-
-                        $account = Account::where('id', $request->payment['account_id'])->exists();
-
-                        if ($account) {
-                            // Account exists, perform the update
-                            $account = Account::find($request->payment['account_id']);
-                            $account->update([
-                                'balance' => $account->balance + $initialPayment,
-                            ]);
-                        }
-
-                        $sale->update([
-                            'paid_amount' => $total_paid,
-                            'payment_statut' => $payment_statut,
-                        ]);
-                    }
-                } catch (Exception $e) {
-                    return response()->json(['message' => $e->getMessage()], 500);
+                if ($due <= 0) {
+                    $payment_statut = 'paid';
+                } elseif ($total_paid > 0) {
+                    $payment_statut = 'partial';
+                } else {
+                    $payment_statut = 'unpaid';
                 }
 
+                PaymentSale::create([
+                    'sale_id' => $order->id,
+                    'Ref' => app('App\Http\Controllers\PaymentSalesController')->getNumberOrder(),
+                    'date' => Carbon::now(),
+                    'account_id' => $paymentAccountId,
+                    'payment_method_id' => $paymentMethodId,
+                    'montant' => $initialPayment,
+                    'change' => $request['change'],
+                    'notes' => null,
+                    'user_id' => Auth::user()->id,
+                ]);
+
+                if ($paymentAccountId) {
+                    Account::whereKey($paymentAccountId)->increment('balance', $initialPayment);
+                }
+
+                $sale->update([
+                    'paid_amount' => $total_paid,
+                    'payment_statut' => $payment_statut,
+                ]);
             }
 
             // 🪙 Points logic
@@ -2678,7 +2706,7 @@ class SalesController extends BaseController
             })
             ->values()
             ->take(20);
-        $accounts = Account::where('deleted_at', '=', null)->get(['id', 'account_name']);
+        $accounts = Account::where('deleted_at', '=', null)->get(['id', 'account_name', 'account_num', 'account_type']);
         $payment_methods = PaymentMethod::whereNull('deleted_at')->get(['id', 'name']);
         $sales_agents = SalesAgent::where('deleted_at', '=', null)->get(['id', 'name']);
         $stripe_key = config('app.STRIPE_KEY');

@@ -11,6 +11,7 @@ use App\Models\Role;
 use App\Models\SaleReturn;
 use App\Models\Setting;
 use App\Models\sms_gateway;
+use App\Services\PaymentAccountService;
 use App\utils\helpers;
 use ArPHP\I18N\Arabic;
 use Carbon\Carbon;
@@ -147,6 +148,14 @@ class PaymentSaleReturnsController extends BaseController
     {
         $this->authorizeForUser($request->user('api'), 'create', PaymentSaleReturns::class);
 
+        $request->validate([
+            'sale_return_id' => 'required|integer|exists:sale_returns,id',
+            'date' => 'required|date',
+            'montant' => 'required|numeric|gt:0',
+            'payment_method_id' => 'required|integer|exists:payment_methods,id',
+            'account_id' => 'nullable|integer|exists:accounts,id',
+        ]);
+
         if ($request['montant'] > 0) {
             \DB::transaction(function () use ($request) {
                 $user = Auth::user();
@@ -172,9 +181,13 @@ class PaymentSaleReturnsController extends BaseController
                     $payment_statut = 'unpaid';
                 }
 
+                $paymentMethod = PaymentMethod::whereNull('deleted_at')->findOrFail($request['payment_method_id']);
+                $paymentAccount = app(PaymentAccountService::class)->resolve($paymentMethod, $request['account_id']);
+                $paymentAccountId = $paymentAccount?->id;
+
                 PaymentSaleReturns::create([
                     'sale_return_id' => $request['sale_return_id'],
-                    'account_id' => $request['account_id'] ? $request['account_id'] : null,
+                    'account_id' => $paymentAccountId,
                     'Ref' => $this->getNumberOrder(),
                     'date' => $request['date'],
                     'payment_method_id' => $request['payment_method_id'],
@@ -184,14 +197,8 @@ class PaymentSaleReturnsController extends BaseController
                     'user_id' => Auth::user()->id,
                 ]);
 
-                $account = Account::where('id', $request['account_id'])->exists();
-
-                if ($account) {
-                    // Account exists, perform the update
-                    $account = Account::find($request['account_id']);
-                    $account->update([
-                        'balance' => $account->balance - $request['montant'],
-                    ]);
+                if ($paymentAccountId) {
+                    Account::whereKey($paymentAccountId)->decrement('balance', $request['montant']);
                 }
 
                 $SaleReturn->update([
@@ -220,6 +227,13 @@ class PaymentSaleReturnsController extends BaseController
 
         $this->authorizeForUser($request->user('api'), 'update', PaymentSaleReturns::class);
 
+        $request->validate([
+            'date' => 'required|date',
+            'montant' => 'required|numeric|gt:0',
+            'payment_method_id' => 'required|integer|exists:payment_methods,id',
+            'account_id' => 'nullable|integer|exists:accounts,id',
+        ]);
+
         \DB::transaction(function () use ($id, $request) {
             $user = Auth::user();
             // New way: Check user's record_view field (user-level boolean)
@@ -246,6 +260,10 @@ class PaymentSaleReturnsController extends BaseController
                 $payment_statut = 'unpaid';
             }
 
+            $paymentMethod = PaymentMethod::whereNull('deleted_at')->findOrFail($request['payment_method_id']);
+            $paymentAccount = app(PaymentAccountService::class)->resolve($paymentMethod, $request['account_id']);
+            $newAccountId = $paymentAccount?->id;
+
             // delete old balance
             $account = Account::where('id', $payment->account_id)->exists();
 
@@ -259,7 +277,7 @@ class PaymentSaleReturnsController extends BaseController
 
             $payment->update([
                 'date' => $request['date'],
-                'account_id' => $request['account_id'] ? $request['account_id'] : null,
+                'account_id' => $newAccountId,
                 'payment_method_id' => $request['payment_method_id'],
                 'montant' => $request['montant'],
                 'change' => $request['change'],
@@ -267,11 +285,11 @@ class PaymentSaleReturnsController extends BaseController
             ]);
 
             // update new account
-            $new_account = Account::where('id', $request['account_id'])->exists();
+            $new_account = $newAccountId && Account::where('id', $newAccountId)->exists();
 
             if ($new_account) {
                 // Account exists, perform the update
-                $new_account = Account::find($request['account_id']);
+                $new_account = Account::find($newAccountId);
                 $new_account->update([
                     'balance' => $new_account->balance - $request['montant'],
                 ]);

@@ -659,22 +659,17 @@
                   </validation-provider>
                 </b-col>
 
-                <!-- PaymentStatus  -->
-                <b-col lg="3" md="6" sm="12" class="mb-3" v-if="sale.statut == 'completed'">
+                <!-- Payment status / optional order deposit -->
+                <b-col lg="3" md="6" sm="12" class="mb-3" v-if="canRecordInitialPayment">
                   <validation-provider name="PaymentStatus">
-                    <b-form-group :label="$t('PaymentStatus')">
+                    <b-form-group :label="sale.transaction_type === 'order' ? 'Advance Payment' : $t('PaymentStatus')">
                       <v-select
                         @input="Selected_PaymentStatus"
                         :disabled="Number(GrandTotal) < 0"
                         :reduce="label => label.value"
                         v-model="payment.status"
                         :placeholder="$t('Choose_Status')"
-                        :options="
-                                [
-                                  {label: 'Paid', value: 'paid'},
-                                  {label: 'partial', value: 'partial'},
-                                  {label: 'Pending', value: 'pending'},
-                                ]"
+                        :options="initialPaymentStatusOptions"
                       ></v-select>
                     </b-form-group>
                   </validation-provider>
@@ -707,7 +702,7 @@
                 <div class="w-100"></div>
 
                 <!-- Payment choice -->
-                <b-col lg="3" md="6" sm="12" class="mb-3" v-if="payment.status != 'pending' && sale.statut == 'completed'">
+                <b-col lg="3" md="6" sm="12" class="mb-3" v-if="showInitialPaymentFields">
                   <validation-provider name="Payment choice" :rules="{ required: true}">
                     <b-form-group slot-scope="{ valid, errors }" :label="$t('Paymentchoice') + ' ' + '*'">
                       <v-select
@@ -715,8 +710,9 @@
                         :state="errors[0] ? false : (valid ? true : null)"
                         :reduce="label => label.value"
                         v-model="payment.payment_method_id"
+                        @input="Selected_PaymentMethod"
                         :placeholder="$t('PleaseSelect')"
-                        :options="payment_methods.map(payment_methods => ({label: payment_methods.name, value: payment_methods.id}))"
+                        :options="availableInitialPaymentMethods.map(method => ({label: method.name, value: method.id}))"
 
                       ></v-select>
                       <b-form-invalid-feedback>{{ errors[0] }}</b-form-invalid-feedback>
@@ -726,7 +722,7 @@
 
 
                 <!-- Payable Amount -->
-                <b-col lg="3" md="6" sm="12" class="mb-3" v-if="payment.status != 'pending' && sale.statut == 'completed'">
+                <b-col lg="3" md="6" sm="12" class="mb-3" v-if="showInitialPaymentFields">
                   <b-form-group label="Payable Amount *">
                     <b-form-input
                       :value="GrandTotal.toFixed(2)"
@@ -739,16 +735,19 @@
 
 
                 <!-- Payment Amount -->
-                <b-col lg="3" md="6" sm="12" class="mb-3" v-if="payment.status != 'pending' && sale.statut == 'completed'">
+                <b-col lg="3" md="6" sm="12" class="mb-3" v-if="showInitialPaymentFields">
                   <validation-provider
                     name="Payment Amount"
-                    :rules="{ required: true , regex: /^\d*\.?\d*$/}"
+                    :rules="{ required: true, min_value: 0.01, regex: /^\d*\.?\d*$/ }"
                     v-slot="validationContext"
                   >
                     <b-form-group label="Payment Amount *">
                       <b-form-input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
                         label="Amount"
-                        placeholder="Payment Amount"
+                        :placeholder="sale.transaction_type === 'order' ? 'Advance Amount' : 'Payment Amount'"
                         v-model.number="payment.amount"
                         @keyup="Verified_paidAmount(payment.amount)"
                         :state="getValidationState(validationContext)"
@@ -762,7 +761,7 @@
                 </b-col>
 
                 <!-- Balance -->
-                <b-col lg="3" md="6" sm="12" class="mb-3" v-if="payment.status != 'pending' && sale.statut == 'completed'">
+                <b-col lg="3" md="6" sm="12" class="mb-3" v-if="showInitialPaymentFields">
                   <b-form-group :label="$t('Balance')">
                     <b-form-input
                       :value="getPaymentBalance().toFixed(2)"
@@ -775,17 +774,17 @@
                 <div class="w-100"></div>
 
                
-                   <!-- Account -->
-                  <b-col lg="3" md="6" sm="12" class="mb-3" v-if="payment.status != 'pending' && sale.statut == 'completed'">
-                    <validation-provider name="Account">
-                      <b-form-group slot-scope="{ valid, errors }" :label="$t('Account')">
+                   <!-- Bank and Easypaisa payments use accounts of the matching type. -->
+                  <b-col lg="3" md="6" sm="12" class="mb-3" v-if="showInitialPaymentFields && paymentAccountType">
+                    <validation-provider :name="paymentAccountLabel" :rules="{ required: true }">
+                      <b-form-group slot-scope="{ valid, errors }" :label="paymentAccountLabel + ' *'">
                         <v-select
                           :class="{'is-invalid': !!errors.length}"
                           :state="errors[0] ? false : (valid ? true : null)"
                           v-model="payment.account_id"
                           :reduce="label => label.value"
-                          :placeholder="$t('Choose_Account')"
-                          :options="accounts.map(accounts => ({label: accounts.account_name, value: accounts.id}))"
+                          :placeholder="'Choose ' + paymentAccountLabel"
+                          :options="paymentAccountOptions"
                         />
                         <b-form-invalid-feedback>{{ errors[0] }}</b-form-invalid-feedback>
                       </b-form-group>
@@ -1184,7 +1183,7 @@ export default {
       payment_methods:[],
       payment: {
         status: "pending",
-        payment_method_id: "2",
+        payment_method_id: 2,
         amount: "",
         received_amount: "",
         account_id: "",
@@ -1300,6 +1299,68 @@ export default {
       if (this.sale.transaction_type !== 'sale' || this.sale.statut !== 'completed') return 0;
       const paid = this.payment.status === 'pending' ? 0 : Number(this.payment.amount || 0);
       return Math.max(0, Number(this.GrandTotal || 0) - paid);
+    },
+
+    canRecordInitialPayment() {
+      return this.sale.statut === 'completed' || this.sale.transaction_type === 'order';
+    },
+
+    showInitialPaymentFields() {
+      return this.canRecordInitialPayment && this.payment.status !== 'pending';
+    },
+
+    initialPaymentStatusOptions() {
+      if (this.sale.transaction_type === 'order') {
+        return [
+          { label: 'No Advance', value: 'pending' },
+          { label: 'Partial Advance', value: 'partial' },
+          { label: 'Paid in Full', value: 'paid' },
+        ];
+      }
+
+      return [
+        { label: 'Paid', value: 'paid' },
+        { label: 'partial', value: 'partial' },
+        { label: 'Pending', value: 'pending' },
+      ];
+    },
+
+    availableInitialPaymentMethods() {
+      if (this.sale.transaction_type !== 'order') return this.payment_methods;
+
+      return this.payment_methods.filter(method => {
+        const name = String(method.name || '').trim().toLowerCase();
+        return Number(method.id) === 2
+          || Number(method.id) === 6
+          || name === 'cash'
+          || name.includes('bank')
+          || name.includes('easypaisa')
+          || name.includes('easy paisa');
+      });
+    },
+
+    selectedPaymentMethod() {
+      return this.payment_methods.find(method => String(method.id) === String(this.payment.payment_method_id)) || null;
+    },
+
+    paymentAccountType() {
+      const name = this.selectedPaymentMethod ? String(this.selectedPaymentMethod.name || '').toLowerCase() : '';
+      if (name.includes('easypaisa') || name.includes('easy paisa')) return 'easypaisa';
+      if (this.selectedPaymentMethod && (Number(this.selectedPaymentMethod.id) === 6 || name.includes('bank'))) return 'bank';
+      return null;
+    },
+
+    paymentAccountLabel() {
+      return this.paymentAccountType === 'easypaisa' ? 'Easypaisa Account / Number' : 'Bank Account';
+    },
+
+    paymentAccountOptions() {
+      return this.accounts
+        .filter(account => (account.account_type || 'bank') === this.paymentAccountType)
+        .map(account => ({
+          label: `${account.account_name}${account.account_num ? ` (${account.account_num})` : ''}`,
+          value: account.id,
+        }));
     },
 
     creditDueDatePreview() {
@@ -1827,8 +1888,6 @@ export default {
      Selected_Status(value){
       if (this.sale.transaction_type === 'order') {
         this.sale.statut = 'ordered';
-        this.payment.status = 'pending';
-        this.payment.amount = 0;
         return;
       }
       if (value != "completed") {
@@ -1848,6 +1907,10 @@ export default {
       }else{
         this.payment.amount = 0;
       }
+    },
+
+    Selected_PaymentMethod() {
+      this.payment.account_id = '';
     },
 
     //---------- keyup paid Amount
@@ -2372,6 +2435,8 @@ export default {
       if (transactionType === 'order') {
         this.sale.statut = 'ordered';
         this.payment.status = 'pending';
+        this.payment.payment_method_id = 2;
+        this.payment.account_id = '';
         this.payment.amount = 0;
         this.payment.received_amount = 0;
         this.selectedClientPoints = Number(this.initialClientPoints) || Number(this.selectedClientPoints) || 0;

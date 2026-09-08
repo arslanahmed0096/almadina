@@ -18,6 +18,7 @@ class SaleReturnRefundServiceTest extends TestCase
         Schema::create('accounts', function (Blueprint $table) {
             $table->increments('id');
             $table->string('account_name');
+            $table->string('account_type');
             $table->decimal('balance', 15, 2)->default(0);
             $table->timestamps();
             $table->softDeletes();
@@ -72,9 +73,9 @@ class SaleReturnRefundServiceTest extends TestCase
             ['id' => 3, 'name' => 'EasyPaisa', 'created_at' => $now, 'updated_at' => $now],
         ]);
         DB::table('accounts')->insert([
-            ['id' => 1, 'account_name' => 'Cash Counter', 'balance' => 1000, 'created_at' => $now, 'updated_at' => $now],
-            ['id' => 2, 'account_name' => 'Bank', 'balance' => 2000, 'created_at' => $now, 'updated_at' => $now],
-            ['id' => 3, 'account_name' => 'EasyPaisa Wallet', 'balance' => 500, 'created_at' => $now, 'updated_at' => $now],
+            ['id' => 1, 'account_name' => 'Cash Counter', 'account_type' => 'cash', 'balance' => 1000, 'created_at' => $now, 'updated_at' => $now],
+            ['id' => 2, 'account_name' => 'Bank', 'account_type' => 'bank', 'balance' => 2000, 'created_at' => $now, 'updated_at' => $now],
+            ['id' => 3, 'account_name' => 'EasyPaisa Wallet', 'account_type' => 'easypaisa', 'balance' => 500, 'created_at' => $now, 'updated_at' => $now],
         ]);
         DB::table('sale_returns')->insert([
             'id' => 1,
@@ -101,10 +102,10 @@ class SaleReturnRefundServiceTest extends TestCase
         $service->record(SaleReturn::findOrFail(1), $refunds, 9);
 
         $this->assertSame(3, DB::table('payment_sale_returns')->count());
-        $this->assertDatabaseHas('payment_sale_returns', ['payment_method_id' => 1, 'montant' => 100]);
+        $this->assertDatabaseHas('payment_sale_returns', ['payment_method_id' => 1, 'account_id' => null, 'montant' => 100]);
         $this->assertDatabaseHas('payment_sale_returns', ['payment_method_id' => 2, 'montant' => 50]);
         $this->assertDatabaseHas('payment_sale_returns', ['payment_method_id' => 3, 'montant' => 25]);
-        $this->assertSame(900.0, (float) DB::table('accounts')->where('id', 1)->value('balance'));
+        $this->assertSame(1000.0, (float) DB::table('accounts')->where('id', 1)->value('balance'));
         $this->assertSame(1950.0, (float) DB::table('accounts')->where('id', 2)->value('balance'));
         $this->assertSame(475.0, (float) DB::table('accounts')->where('id', 3)->value('balance'));
     }

@@ -12,6 +12,7 @@ use App\Models\Role;
 use App\Models\Sale;
 use App\Models\Setting;
 use App\Models\sms_gateway;
+use App\Services\PaymentAccountService;
 use App\Models\SMSMessage;
 use App\utils\helpers;
 use ArPHP\I18N\Arabic;
@@ -205,12 +206,18 @@ class PaymentSalesController extends BaseController
             $totalPaid = round($alreadyPaid + $amount, 2);
             $remainingDue = round($grandTotal - $totalPaid, 2);
             $paymentStatus = $remainingDue <= 0 ? 'paid' : 'partial';
+            $paymentMethod = PaymentMethod::whereNull('deleted_at')->findOrFail($validated['payment_method_id']);
+            $paymentAccount = app(PaymentAccountService::class)->resolve(
+                $paymentMethod,
+                $validated['account_id'] ?? null
+            );
+            $paymentAccountId = $paymentAccount?->id;
 
             PaymentSale::create([
                 'sale_id' => $sale->id,
                 'Ref' => app('App\Http\Controllers\PaymentSalesController')->getNumberOrder(),
                 'date' => $validated['date'],
-                'account_id' => $validated['account_id'] ?? null,
+                'account_id' => $paymentAccountId,
                 'payment_method_id' => $validated['payment_method_id'],
                 'montant' => $amount,
                 'change' => $validated['change'] ?? 0,
@@ -218,13 +225,8 @@ class PaymentSalesController extends BaseController
                 'user_id' => Auth::user()->id,
             ]);
 
-            if (! empty($validated['account_id'])) {
-                $account = Account::whereKey($validated['account_id'])->lockForUpdate()->first();
-                if ($account) {
-                    $account->update([
-                        'balance' => $account->balance + $amount,
-                    ]);
-                }
+            if ($paymentAccountId) {
+                Account::whereKey($paymentAccountId)->increment('balance', $amount);
             }
 
             $sale->update([
@@ -295,8 +297,14 @@ class PaymentSalesController extends BaseController
             $paymentStatus = $remainingDue <= 0
                 ? 'paid'
                 : ($newTotalPaid > 0 ? 'partial' : 'unpaid');
+            $paymentMethod = PaymentMethod::whereNull('deleted_at')->findOrFail($validated['payment_method_id']);
+            $paymentAccount = app(PaymentAccountService::class)->resolve(
+                $paymentMethod,
+                $validated['account_id'] ?? null
+            );
+            $newAccountId = $paymentAccount?->id;
 
-            $accountIds = collect([$payment->account_id, $validated['account_id'] ?? null])
+            $accountIds = collect([$payment->account_id, $newAccountId])
                 ->filter()
                 ->unique()
                 ->sort()
@@ -316,14 +324,14 @@ class PaymentSalesController extends BaseController
             $payment->update([
                 'date' => $validated['date'],
                 'payment_method_id' => $validated['payment_method_id'],
-                'account_id' => $validated['account_id'] ?? null,
+                'account_id' => $newAccountId,
                 'montant' => $amount,
                 'change' => $validated['change'] ?? 0,
                 'notes' => $validated['notes'] ?? null,
             ]);
 
-            if (! empty($validated['account_id']) && $accounts->has($validated['account_id'])) {
-                $newAccount = $accounts->get($validated['account_id']);
+            if ($newAccountId && $accounts->has($newAccountId)) {
+                $newAccount = $accounts->get($newAccountId);
                 $newAccount->refresh();
                 $newAccount->update([
                     'balance' => $newAccount->balance + $amount,

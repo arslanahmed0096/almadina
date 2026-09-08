@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Exports\BranchYearComparisonExport;
 use App\Exports\SupplierStatementExport;
 use App\Exports\SupplierYearComparisonExport;
+use App\Services\Reports\BranchYearComparisonService;
 use App\Services\Reports\SupplierYearComparisonService;
 use Illuminate\Support\Facades\Schema;
 use App\Models\Account;
@@ -1472,6 +1474,49 @@ class ReportController extends BaseController
             'comparison_year' => ['required', 'integer', 'between:2000,2100', 'different:baseline_year'],
             'supplier_id' => ['nullable', 'integer', 'exists:providers,id'],
             'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
+        ]);
+    }
+
+    public function branchYearComparison(Request $request, BranchYearComparisonService $service)
+    {
+        $this->authorizeForUser($request->user('api'), 'Reports_sales', Sale::class);
+        $filters = $this->validateBranchYearComparison($request);
+
+        return response()->json($service->generate(
+            $request->user('api'),
+            (int) $filters['baseline_year'],
+            (int) $filters['comparison_year']
+        ));
+    }
+
+    public function exportBranchYearComparison(Request $request, BranchYearComparisonService $service)
+    {
+        $this->authorizeForUser($request->user('api'), 'Reports_sales', Sale::class);
+        $filters = $this->validateBranchYearComparison($request);
+        $report = $service->generate(
+            $request->user('api'),
+            (int) $filters['baseline_year'],
+            (int) $filters['comparison_year']
+        );
+
+        return Excel::download(
+            new BranchYearComparisonExport($report, $filters['view']),
+            "branch-performance-{$filters['view']}-{$filters['baseline_year']}-vs-{$filters['comparison_year']}.xlsx"
+        );
+    }
+
+    private function validateBranchYearComparison(Request $request): array
+    {
+        $request->merge([
+            'baseline_year' => $request->input('baseline_year', now()->year - 1),
+            'comparison_year' => $request->input('comparison_year', now()->year),
+            'view' => $request->input('view', 'both'),
+        ]);
+
+        return $request->validate([
+            'baseline_year' => ['required', 'integer', 'between:2000,2100'],
+            'comparison_year' => ['required', 'integer', 'between:2000,2100', 'different:baseline_year'],
+            'view' => ['required', 'string', 'in:annual,monthly,both'],
         ]);
     }
 

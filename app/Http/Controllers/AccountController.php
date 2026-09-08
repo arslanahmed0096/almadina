@@ -27,7 +27,8 @@ class AccountController extends BaseController
             ->where(function ($query) use ($request) {
                 return $query->when($request->filled('search'), function ($query) use ($request) {
                     return $query->where('account_num', 'LIKE', "%{$request->search}%")
-                        ->orWhere('account_name', 'LIKE', "%{$request->search}%");
+                        ->orWhere('account_name', 'LIKE', "%{$request->search}%")
+                        ->orWhere('account_type', 'LIKE', "%{$request->search}%");
                 });
             });
 
@@ -46,6 +47,7 @@ class AccountController extends BaseController
             $item['id'] = $account->id;
             $item['account_num'] = $account->account_num;
             $item['account_name'] = $account->account_name;
+            $item['account_type'] = $account->account_type;
             $item['balance'] = $account->balance;
             $item['note'] = $account->note;
 
@@ -68,12 +70,14 @@ class AccountController extends BaseController
         request()->validate([
             'account_num' => 'required',
             'account_name' => 'required',
+            'account_type' => 'required|in:bank,easypaisa,cash,other',
             'initial_balance' => 'required',
         ]);
 
         Account::create([
             'account_num' => $request['account_num'],
             'account_name' => $request['account_name'],
+            'account_type' => $request['account_type'],
             'initial_balance' => $request['initial_balance'],
             'balance' => $request['initial_balance'],
             'note' => $request['note'],
@@ -100,11 +104,13 @@ class AccountController extends BaseController
         request()->validate([
             'account_num' => 'required',
             'account_name' => 'required',
+            'account_type' => 'required|in:bank,easypaisa,cash,other',
         ]);
 
         $Account->update([
             'account_num' => $request['account_num'],
             'account_name' => $request['account_name'],
+            'account_type' => $request['account_type'],
             'note' => $request['note'],
         ]);
 

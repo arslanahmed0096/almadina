@@ -192,9 +192,6 @@
                             <b-form-input type="number" min="0" step="0.01" v-model.number="sale_return.refund_cash_amount"></b-form-input>
                           </b-input-group>
                         </b-form-group>
-                        <b-form-group label="Cash Account (optional)">
-                          <v-select v-model="sale_return.refund_cash_account_id" :reduce="item => item.value" :options="accountOptions" placeholder="Choose account"></v-select>
-                        </b-form-group>
                       </b-col>
                       <b-col lg="4" md="6" sm="12">
                         <b-form-group label="Bank Refund">
@@ -202,9 +199,18 @@
                             <b-form-input type="number" min="0" step="0.01" v-model.number="sale_return.refund_bank_amount"></b-form-input>
                           </b-input-group>
                         </b-form-group>
-                        <b-form-group label="Bank Account (optional)">
-                          <v-select v-model="sale_return.refund_bank_account_id" :reduce="item => item.value" :options="accountOptions" placeholder="Choose account"></v-select>
-                        </b-form-group>
+                        <validation-provider v-if="Number(sale_return.refund_bank_amount) > 0" name="Bank Account" :rules="{ required: true }" v-slot="validationContext">
+                          <b-form-group label="Bank Account *">
+                            <v-select
+                              v-model="sale_return.refund_bank_account_id"
+                              :reduce="item => item.value"
+                              :options="bankAccountOptions"
+                              :class="{'is-invalid': !!validationContext.errors.length}"
+                              placeholder="Choose bank account / number"
+                            />
+                            <b-form-invalid-feedback>{{ validationContext.errors[0] }}</b-form-invalid-feedback>
+                          </b-form-group>
+                        </validation-provider>
                       </b-col>
                       <b-col lg="4" md="6" sm="12">
                         <b-form-group label="EasyPaisa Refund">
@@ -212,9 +218,18 @@
                             <b-form-input type="number" min="0" step="0.01" v-model.number="sale_return.refund_easypaisa_amount"></b-form-input>
                           </b-input-group>
                         </b-form-group>
-                        <b-form-group label="EasyPaisa Account (optional)">
-                          <v-select v-model="sale_return.refund_easypaisa_account_id" :reduce="item => item.value" :options="accountOptions" placeholder="Choose account"></v-select>
-                        </b-form-group>
+                        <validation-provider v-if="Number(sale_return.refund_easypaisa_amount) > 0" name="Easypaisa Account" :rules="{ required: true }" v-slot="validationContext">
+                          <b-form-group label="Easypaisa Account / Number *">
+                            <v-select
+                              v-model="sale_return.refund_easypaisa_account_id"
+                              :reduce="item => item.value"
+                              :options="easypaisaAccountOptions"
+                              :class="{'is-invalid': !!validationContext.errors.length}"
+                              placeholder="Choose Easypaisa number"
+                            />
+                            <b-form-invalid-feedback>{{ validationContext.errors[0] }}</b-form-invalid-feedback>
+                          </b-form-group>
+                        </validation-provider>
                       </b-col>
                     </b-row>
                     <div class="text-right">
@@ -368,8 +383,11 @@ export default {
 
   computed: {
     ...mapGetters(["currentUser"]),
-    accountOptions() {
-      return this.accounts.map(account => ({ label: account.account_name, value: account.id }));
+    bankAccountOptions() {
+      return this.accountOptionsForType('bank');
+    },
+    easypaisaAccountOptions() {
+      return this.accountOptionsForType('easypaisa');
     },
     refundTotal() {
       return Number(this.sale_return.refund_cash_amount || 0)
@@ -382,6 +400,15 @@ export default {
   },
 
   methods: {
+
+    accountOptionsForType(type) {
+      return this.accounts
+        .filter(account => (account.account_type || 'bank') === type)
+        .map(account => ({
+          label: `${account.account_name}${account.account_num ? ` (${account.account_num})` : ''}`,
+          value: account.id,
+        }));
+    },
 
 
     //--- Submit Validate Create Sale Return

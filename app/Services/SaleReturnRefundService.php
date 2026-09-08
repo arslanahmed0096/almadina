@@ -35,7 +35,7 @@ class SaleReturnRefundService
         $channels = [
             'cash' => [
                 'amount' => (float) ($refunds['refund_cash_amount'] ?? 0),
-                'account_id' => $refunds['refund_cash_account_id'] ?? null,
+                'account_id' => null,
                 'method_names' => ['cash'],
                 'label' => 'Cash',
             ],
@@ -67,10 +67,14 @@ class SaleReturnRefundService
                 ]);
             }
 
-            $accountId = $attributes['account_id'] ? (int) $attributes['account_id'] : null;
+            $account = app(PaymentAccountService::class)->resolve(
+                $method,
+                $attributes['account_id'],
+                "refund_{$channel}_account_id"
+            );
+            $accountId = $account?->id;
             if ($accountId) {
-                $account = Account::whereNull('deleted_at')->lockForUpdate()->findOrFail($accountId);
-                $account->update(['balance' => (float) $account->balance - $attributes['amount']]);
+                Account::whereKey($accountId)->decrement('balance', $attributes['amount']);
             }
 
             PaymentSaleReturns::create([

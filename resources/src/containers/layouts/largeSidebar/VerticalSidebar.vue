@@ -1429,6 +1429,12 @@
                   <span>{{ $t('SalesReport') }}</span>
                 </router-link>
               </li>
+              <li class="submenu-item" v-if="currentUserPermissions && currentUserPermissions.includes('Reports_sales')">
+                <router-link :to="{ name: 'branch_year_comparison_report' }" class="submenu-link">
+                  <lucide-icon class="submenu-icon" name="bar-chart-3" />
+                  <span>Branch Performance Comparison</span>
+                </router-link>
+              </li>
               <li class="submenu-item" v-if="currentUserPermissions && currentUserPermissions.includes('product_sales_report')">
                 <router-link to="/app/reports/product_sales_report" class="submenu-link">
                   <lucide-icon class="submenu-icon" name="shopping-cart" />

@@ -155,7 +155,7 @@ class SalesReturnController extends BaseController
 
         $customers = client::where('deleted_at', '=', null)->get(['id', 'name']);
         $sales = Sale::where('deleted_at', '=', null)->get(['id', 'Ref']);
-        $accounts = Account::where('deleted_at', '=', null)->orderBy('id', 'desc')->get(['id', 'account_name']);
+        $accounts = Account::where('deleted_at', '=', null)->orderBy('id', 'desc')->get(['id', 'account_name', 'account_num', 'account_type']);
         $payment_methods = PaymentMethod::whereNull('deleted_at')->get(['id', 'name']);
 
         // get warehouses assigned to user
@@ -1168,7 +1168,7 @@ class SalesReturnController extends BaseController
         return response()->json([
             'details' => $details,
             'sale_return' => $Return_detail,
-            'accounts' => Account::whereNull('deleted_at')->orderBy('account_name')->get(['id', 'account_name']),
+            'accounts' => Account::whereNull('deleted_at')->orderBy('account_name')->get(['id', 'account_name', 'account_num', 'account_type']),
         ]);
 
     }
