@@ -32,7 +32,7 @@ class PurchaseOrderInvoiceAdjustmentService
 
         $changes = [];
         foreach ($mappings as $index => $mapping) {
-            $excess = (float) ($mapping['invoice_excess_quantity'] ?? 0);
+            $excess = (float) ($mapping['purchase_order_revision_quantity'] ?? $mapping['invoice_excess_quantity'] ?? 0);
             if ($excess <= 0) {
                 continue;
             }
@@ -67,9 +67,9 @@ class PurchaseOrderInvoiceAdjustmentService
         }
 
         $this->recalculateOrder($order);
-        $notes = 'Purchase '.$purchase->Ref.' added invoice-only excess: '.collect($changes)
+        $notes = 'Purchase '.$purchase->Ref.' revised the Purchase Order for invoice quantity above the ordered quantity: '.collect($changes)
             ->map(fn ($change) => "{$change['product']} +{$change['invoice_excess_quantity']} ({$change['previous_ordered_quantity']} to {$change['revised_ordered_quantity']})")
-            ->implode('; ').'. The excess quantity was added to stock by this Purchase invoice; the original Gate Pass quantity was not posted twice.';
+            ->implode('; ').'. Stock remains controlled by accepted Gate Pass quantities.';
         $this->audit->record(
             $order,
             'invoice_excess_revised',

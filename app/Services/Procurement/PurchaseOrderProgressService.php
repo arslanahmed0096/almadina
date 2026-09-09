@@ -26,8 +26,7 @@ class PurchaseOrderProgressService
             $purchaseLines = $item->purchaseDetails->filter(fn ($line) => $line->purchase
                 && $line->purchase->deleted_at === null
                 && $line->purchase->posting_status !== 'cancelled');
-            $received = $validReceipts->sum(fn ($line) => (float) $line->accepted_quantity)
-                + $purchaseLines->sum(fn ($line) => (float) $line->invoice_excess_quantity);
+            $received = $validReceipts->sum(fn ($line) => (float) $line->accepted_quantity);
             $invoiced = $invoiceLines->sum(fn ($line) => (float) $line->quantity)
                 + $purchaseLines->sum(fn ($line) => (float) $line->quantity);
             $posted = $invoiceLines->filter(fn ($line) => $line->supplierInvoice?->purchase?->posting_status === 'posted')

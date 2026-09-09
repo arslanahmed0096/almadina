@@ -6,7 +6,7 @@
       <div class="d-flex mb-3">
         <b-button v-if="['draft', 'pending_verification'].includes(gate.status) && can('gate_passes_confirm')" variant="success" class="mr-2" @click="confirm">Confirm receipt</b-button>
         <router-link
-          v-if="['accepted', 'partially_accepted'].includes(gate.status) && can('Purchases_add')"
+          v-if="gate.can_invoice && ['accepted', 'partially_accepted'].includes(gate.status) && can('Purchases_add')"
           class="btn btn-primary"
           :to="{ path: '/app/purchases/store', query: { gate_pass: gate.number } }"
         >Invoice</router-link>
@@ -90,13 +90,15 @@
         </template>
 
         <div class="table-responsive"><table class="table table-hover">
-          <thead><tr><th>Product</th><th>Code</th><th v-if="!direct">Ordered Quantity</th><th>Receiving Quantity</th><th v-if="direct"></th></tr></thead>
+          <thead><tr><th>Product</th><th>Code</th><th v-if="!direct">Ordered Quantity</th><th v-if="!direct">Already Received</th><th v-if="!direct">Remaining</th><th>Receiving Quantity</th><th v-if="direct"></th></tr></thead>
           <tbody>
-            <tr v-if="!lines.length"><td colspan="4">{{ direct ? 'No products added. Search or scan a product above.' : (order ? 'No receivable products remain.' : 'Select a Purchase Order to load products.') }}</td></tr>
+            <tr v-if="!lines.length"><td :colspan="direct ? 4 : 6">{{ direct ? 'No products added. Search or scan a product above.' : (order ? 'No receivable products remain.' : 'Select a Purchase Order to load products.') }}</td></tr>
             <tr v-for="(line, index) in lines" :key="line.line_key || line.purchase_order_item_id">
               <td>{{ line.product }} {{ line.model || '' }}</td><td>{{ line.sku || '-' }}</td>
               <td v-if="!direct">{{ formatQty(line.ordered) }}</td>
-              <td><b-form-input type="number" step="1" min="0" v-model.number="line.delivered_quantity" /></td>
+              <td v-if="!direct">{{ formatQty(line.received) }}</td>
+              <td v-if="!direct"><span class="font-weight-bold text-primary">{{ formatQty(line.remaining) }}</span></td>
+              <td><b-form-input type="number" step="1" min="0" :max="direct ? null : line.remaining" v-model.number="line.delivered_quantity" /></td>
               <td v-if="direct"><b-button size="sm" variant="outline-danger" @click="lines.splice(index, 1)"><lucide-icon name="x" /></b-button></td>
             </tr>
           </tbody>
@@ -187,7 +189,7 @@ export default {
         this.order = data.purchase_order;
         this.form.provider_id = this.order.provider_id;
         this.form.warehouse_id = this.order.warehouse_id;
-        this.lines = data.progress.lines.map(line => ({ ...line, delivered_quantity: 0 }));
+        this.lines = data.progress.lines.map(line => ({ ...line, delivered_quantity: Number(line.remaining || 0) }));
       }
     },
     loadMetadata(purchaseOrderId = null) {
@@ -284,6 +286,7 @@ export default {
       const items = this.lines.filter(line => Number(line.delivered_quantity) > 0);
       if (!items.length) return 'Add at least one product with a quantity greater than zero.';
       if (items.some(line => !Number.isInteger(Number(line.delivered_quantity)))) return 'Quantity must be a whole number.';
+      if (!this.direct && items.some(line => Number(line.delivered_quantity) > Number(line.remaining || 0))) return 'Receiving quantity cannot exceed remaining Purchase Order quantity.';
       if (this.direct && items.some(line => !line.unit_id)) return 'A purchase unit is missing for one of the selected products.';
       return null;
     },

@@ -34,7 +34,9 @@ class GatePassController extends Controller
 
         $page = $q->latest('id')->paginate(min(100, max(1, (int) $request->get('limit', 20))));
         $purchaseOrderIds = $page->getCollection()->pluck('purchase_order_id')->filter()->unique()->values();
+        $gatePassIds = $page->getCollection()->pluck('id')->filter()->unique()->values();
         $remainingByOrder = collect();
+        $invoiceableByGatePass = $gatePassIds->mapWithKeys(fn ($id) => [$id => false]);
         if ($purchaseOrderIds->isNotEmpty()) {
             $orderItems = DB::table('purchase_order_items')
                 ->whereIn('purchase_order_id', $purchaseOrderIds)
@@ -46,28 +48,67 @@ class GatePassController extends Controller
                 ->selectRaw('items.purchase_order_item_id, SUM(items.accepted_quantity) AS quantity')
                 ->groupBy('items.purchase_order_item_id')
                 ->pluck('quantity', 'items.purchase_order_item_id');
-            $invoiceReceived = DB::table('purchase_details as details')
-                ->join('purchases', 'purchases.id', '=', 'details.purchase_id')
-                ->whereIn('purchases.purchase_order_id', $purchaseOrderIds)
-                ->whereNull('purchases.deleted_at')
-                ->where('purchases.posting_status', '<>', 'cancelled')
-                ->selectRaw('details.purchase_order_item_id, SUM(details.invoice_excess_quantity) AS quantity')
-                ->groupBy('details.purchase_order_item_id')
-                ->pluck('quantity', 'details.purchase_order_item_id');
 
             $remainingByOrder = $orderItems->groupBy('purchase_order_id')->map(fn ($items) => (float) $items->sum(fn ($item) => max(
                 0,
                 (float) $item->ordered_quantity
                     - (float) ($gatePassReceived[$item->id] ?? 0)
-                    - (float) ($invoiceReceived[$item->id] ?? 0)
             )));
+
+            $purchaseInvoiced = DB::table('purchase_details as details')
+                ->join('purchases', 'purchases.id', '=', 'details.purchase_id')
+                ->whereIn('details.purchase_order_item_id', $orderItems->pluck('id'))
+                ->whereNull('purchases.deleted_at')
+                ->where('purchases.posting_status', '<>', 'cancelled')
+                ->selectRaw('details.purchase_order_item_id, SUM(details.quantity) AS quantity')
+                ->groupBy('details.purchase_order_item_id')
+                ->pluck('quantity', 'details.purchase_order_item_id');
+            $supplierInvoiceInvoiced = DB::table('supplier_invoice_items as invoice_items')
+                ->join('supplier_invoices as invoices', 'invoices.id', '=', 'invoice_items.supplier_invoice_id')
+                ->join('gate_pass_items as items', 'items.id', '=', 'invoice_items.gate_pass_item_id')
+                ->whereIn('items.purchase_order_item_id', $orderItems->pluck('id'))
+                ->where('invoices.status', '<>', 'cancelled')
+                ->selectRaw('items.purchase_order_item_id, SUM(invoice_items.quantity) AS quantity')
+                ->groupBy('items.purchase_order_item_id')
+                ->pluck('quantity', 'items.purchase_order_item_id');
+            $invoicedByItem = $orderItems->mapWithKeys(fn ($item) => [
+                $item->id => (float) ($purchaseInvoiced[$item->id] ?? 0) + (float) ($supplierInvoiceInvoiced[$item->id] ?? 0),
+            ]);
+            $usedByGateItem = DB::table('purchase_gate_pass_items as used_items')
+                ->join('purchases', 'purchases.id', '=', 'used_items.purchase_id')
+                ->whereIn('used_items.gate_pass_item_id', DB::table('gate_pass_items')->whereIn('gate_pass_id', $gatePassIds)->pluck('id'))
+                ->whereNull('purchases.deleted_at')
+                ->where('purchases.posting_status', '<>', 'cancelled')
+                ->selectRaw('used_items.gate_pass_item_id, SUM(used_items.quantity) AS quantity')
+                ->groupBy('used_items.gate_pass_item_id')
+                ->pluck('quantity', 'used_items.gate_pass_item_id');
+            $gateItems = DB::table('gate_pass_items')
+                ->whereIn('gate_pass_id', $gatePassIds)
+                ->where('accepted_quantity', '>', 0)
+                ->get(['id', 'gate_pass_id', 'purchase_order_item_id', 'accepted_quantity']);
+            $allocatedByPoItem = [];
+            foreach ($gateItems as $item) {
+                $gateItemRemaining = max(0, (float) $item->accepted_quantity - (float) ($usedByGateItem[$item->id] ?? 0));
+                $poInvoiceRemaining = max(
+                    0,
+                    (float) ($orderItems->firstWhere('id', $item->purchase_order_item_id)?->ordered_quantity ?? 0)
+                        - (float) ($invoicedByItem[$item->purchase_order_item_id] ?? 0)
+                        - (float) ($allocatedByPoItem[$item->purchase_order_item_id] ?? 0)
+                );
+                $invoiceable = min($gateItemRemaining, $poInvoiceRemaining);
+                if ($invoiceable > 0) {
+                    $invoiceableByGatePass[$item->gate_pass_id] = true;
+                    $allocatedByPoItem[$item->purchase_order_item_id] = (float) ($allocatedByPoItem[$item->purchase_order_item_id] ?? 0) + $invoiceable;
+                }
+            }
         }
         $canDelete = $request->user('api')->isSuperAdmin();
-        $page->getCollection()->transform(function ($gatePass) use ($remainingByOrder, $canDelete) {
+        $page->getCollection()->transform(function ($gatePass) use ($remainingByOrder, $invoiceableByGatePass, $canDelete) {
             $gatePass->setAttribute(
                 'po_remaining_quantity',
                 $gatePass->purchase_order_id ? (float) ($remainingByOrder[$gatePass->purchase_order_id] ?? 0) : null
             );
+            $gatePass->setAttribute('can_invoice', ! $gatePass->purchase_order_id || (bool) ($invoiceableByGatePass[$gatePass->id] ?? false));
             $gatePass->setAttribute('can_delete', $canDelete);
 
             return $gatePass;
@@ -145,9 +186,70 @@ class GatePassController extends Controller
         $this->permit($request, 'gate_passes_view');
         $this->assertWarehouse($request, $gatePass->warehouse_id);
 
-        return response()->json(['gate_pass' => $gatePass->load(['purchaseOrder', 'provider', 'warehouse', 'receiver', 'items.purchaseOrderItem', 'supplierInvoices.purchase'])]);
+        $gatePass->load(['purchaseOrder', 'provider', 'warehouse', 'receiver', 'items.purchaseOrderItem', 'supplierInvoices.purchase']);
+        $gatePass->setAttribute('can_invoice', $this->gatePassHasInvoiceableQuantity($gatePass));
+
+        return response()->json(['gate_pass' => $gatePass]);
     }
 
+    private function gatePassHasInvoiceableQuantity(GatePass $gatePass): bool
+    {
+        if (! $gatePass->purchase_order_id) {
+            return true;
+        }
+
+        $items = $gatePass->items->where('accepted_quantity', '>', 0);
+        if ($items->isEmpty()) {
+            return false;
+        }
+
+        $poItemIds = $items->pluck('purchase_order_item_id')->filter()->unique()->values();
+        if ($poItemIds->isEmpty()) {
+            return false;
+        }
+
+        $ordered = DB::table('purchase_order_items')->whereIn('id', $poItemIds)->pluck('ordered_quantity', 'id');
+        $purchaseInvoiced = DB::table('purchase_details as details')
+            ->join('purchases', 'purchases.id', '=', 'details.purchase_id')
+            ->whereIn('details.purchase_order_item_id', $poItemIds)
+            ->whereNull('purchases.deleted_at')
+            ->where('purchases.posting_status', '<>', 'cancelled')
+            ->selectRaw('details.purchase_order_item_id, SUM(details.quantity) AS quantity')
+            ->groupBy('details.purchase_order_item_id')
+            ->pluck('quantity', 'details.purchase_order_item_id');
+        $supplierInvoiceInvoiced = DB::table('supplier_invoice_items as invoice_items')
+            ->join('supplier_invoices as invoices', 'invoices.id', '=', 'invoice_items.supplier_invoice_id')
+            ->join('gate_pass_items as items', 'items.id', '=', 'invoice_items.gate_pass_item_id')
+            ->whereIn('items.purchase_order_item_id', $poItemIds)
+            ->where('invoices.status', '<>', 'cancelled')
+            ->selectRaw('items.purchase_order_item_id, SUM(invoice_items.quantity) AS quantity')
+            ->groupBy('items.purchase_order_item_id')
+            ->pluck('quantity', 'items.purchase_order_item_id');
+        $purchaseGateUsed = DB::table('purchase_gate_pass_items as used_items')
+            ->join('purchases', 'purchases.id', '=', 'used_items.purchase_id')
+            ->whereIn('used_items.gate_pass_item_id', $items->pluck('id'))
+            ->whereNull('purchases.deleted_at')
+            ->where('purchases.posting_status', '<>', 'cancelled')
+            ->selectRaw('used_items.gate_pass_item_id, SUM(used_items.quantity) AS quantity')
+            ->groupBy('used_items.gate_pass_item_id')
+            ->pluck('quantity', 'used_items.gate_pass_item_id');
+
+        foreach ($items as $item) {
+            $gateRemaining = max(0, (float) $item->accepted_quantity - (float) ($purchaseGateUsed[$item->id] ?? 0));
+            $poItemId = $item->purchase_order_item_id;
+            $poInvoiceRemaining = max(
+                0,
+                (float) ($ordered[$poItemId] ?? 0)
+                    - (float) ($purchaseInvoiced[$poItemId] ?? 0)
+                    - (float) ($supplierInvoiceInvoiced[$poItemId] ?? 0)
+            );
+            if (min($gateRemaining, $poInvoiceRemaining) > 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
     public function confirm(Request $request, GatePass $gatePass)
     {
         $this->permit($request, 'gate_passes_confirm');

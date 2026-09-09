@@ -13,23 +13,27 @@
           <tbody>
             <tr v-for="row in rows" :key="row.id">
               <td v-for="column in columns" :key="column.key"><span v-if="column.key === 'status'" class="badge badge-light-primary">{{ label(value(row, column.key)) }}</span><span v-else>{{ value(row, column.key) }}</span></td>
-              <td>
-                <router-link class="btn btn-sm btn-outline-primary" :to="detailUrl(row)"><lucide-icon name="eye" /> View</router-link>
+              <td class="action-icons">
+                <router-link class="btn btn-sm btn-outline-primary action-icon" :to="detailUrl(row)" title="View" aria-label="View"><lucide-icon name="eye" /></router-link>
                 <router-link
-                  v-if="kind === 'gates' && can('Purchases_add') && ['accepted', 'partially_accepted'].includes(row.status)"
-                  class="btn btn-sm btn-outline-success ml-1"
+                  v-if="kind === 'gates' && can('Purchases_add') && row.can_invoice && ['accepted', 'partially_accepted'].includes(row.status)"
+                  class="btn btn-sm btn-outline-success action-icon ml-1"
                   :to="{ path: '/app/purchases/store', query: { gate_pass: row.number } }"
-                ><lucide-icon name="file-plus" /> Invoice</router-link>
+                  title="Invoice"
+                  aria-label="Invoice"
+                ><lucide-icon name="file-plus" /></router-link>
                 <b-button
                   v-if="kind === 'gates' && row.can_delete"
                   size="sm"
                   variant="outline-danger"
-                  class="ml-1"
+                  class="action-icon ml-1"
                   :disabled="deletingGatePassId === row.id"
+                  title="Delete"
+                  aria-label="Delete"
                   @click="deleteGatePass(row)"
                 >
-                  <span v-if="deletingGatePassId === row.id" class="spinner-border spinner-border-sm mr-1" aria-hidden="true"></span>
-                  <lucide-icon v-else name="trash-2" /> Delete
+                  <span v-if="deletingGatePassId === row.id" class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                  <lucide-icon v-else name="trash-2" />
                 </b-button>
               </td>
             </tr>
@@ -136,3 +140,7 @@ export default {
   }
 };
 </script>
+<style scoped>
+.action-icons { white-space: nowrap; }
+.action-icon { width: 36px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+</style>

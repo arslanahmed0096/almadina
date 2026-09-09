@@ -253,10 +253,28 @@ class PurchasesController extends BaseController
                 ->where('warehouse_id', $gatePass->warehouse_id)->whereIn('product_id', $productIds)
                 ->get()->keyBy('product_id');
         }
+        $purchaseOrderItemIds = $gatePass->items->pluck('purchase_order_item_id')->filter()->unique()->values();
+        $orderedByPurchaseOrderItem = $purchaseOrderItemIds->isEmpty()
+            ? collect()
+            : DB::table('purchase_order_items')->whereIn('id', $purchaseOrderItemIds)->pluck('ordered_quantity', 'id');
+        $invoicedByPurchaseOrderItem = $this->purchaseOrderItemInvoicedQuantities($purchaseOrderItemIds);
+        $lookupAllocatedByPurchaseOrderItem = [];
 
-        $items = $gatePass->items->map(function ($item) use ($used, $stocks, $locations) {
+        $items = $gatePass->items->map(function ($item) use ($used, $stocks, $locations, $orderedByPurchaseOrderItem, $invoicedByPurchaseOrderItem, &$lookupAllocatedByPurchaseOrderItem) {
             $previouslyUsed = (float) ($used[$item->id] ?? 0);
-            $remaining = max(0, (float) $item->accepted_quantity - $previouslyUsed);
+            $gatePassRemaining = max(0, (float) $item->accepted_quantity - $previouslyUsed);
+            $remaining = $gatePassRemaining;
+            if ($item->purchase_order_item_id) {
+                $poItemId = (int) $item->purchase_order_item_id;
+                $invoiceRemaining = max(
+                    0,
+                    (float) ($orderedByPurchaseOrderItem[$poItemId] ?? 0)
+                        - (float) ($invoicedByPurchaseOrderItem[$poItemId] ?? 0)
+                        - (float) ($lookupAllocatedByPurchaseOrderItem[$poItemId] ?? 0)
+                );
+                $remaining = min($gatePassRemaining, $invoiceRemaining);
+                $lookupAllocatedByPurchaseOrderItem[$poItemId] = (float) ($lookupAllocatedByPurchaseOrderItem[$poItemId] ?? 0) + $remaining;
+            }
             $product = $item->product;
             $variant = $item->variant;
             $unit = $item->unit ?: $product?->unitPurchase;
@@ -309,7 +327,7 @@ class PurchasesController extends BaseController
             ];
         })->filter(fn ($item) => $item['quantity'] > 0)->values();
         if ($items->isEmpty()) {
-            throw ValidationException::withMessages(['number' => ['This Gate Pass has already been fully used on Purchases or Supplier Invoices.']]);
+            throw ValidationException::withMessages(['number' => ['This Gate Pass has no remaining quantity to invoice for its Purchase Order.']]);
         }
 
         return response()->json(['gate_pass' => [
@@ -398,9 +416,8 @@ class PurchasesController extends BaseController
                 ])->values()->all());
             }
 
-            if ($purchaseOrder && collect($lineMappings)->sum('invoice_excess_quantity') > 0) {
-                $lineMappings = app(\App\Services\Procurement\PurchaseOrderInvoiceAdjustmentService::class)
-                    ->apply($purchaseOrder, $order, $request->input('details', []), $lineMappings);
+            if ($purchaseOrder) {
+                $lineMappings = $this->applyInvoiceExcessPurchaseOrderRevision($purchaseOrder, $order, $request->input('details', []), $lineMappings);
             }
 
             $data = $request['details'];
@@ -429,9 +446,8 @@ class PurchasesController extends BaseController
                     'imei_number' => $value['imei_number'],
                 ];
 
-                $stockQuantity = $order->inventory_already_received
-                    ? (float) ($lineMapping['invoice_excess_quantity'] ?? 0)
-                    : (float) $value['quantity'];
+                // Gate Pass-linked invoices are ledger entries; physical stock is posted from accepted Gate Passes only.
+                $stockQuantity = $order->inventory_already_received ? 0 : (float) $value['quantity'];
                 if ($order->statut == 'received' && $stockQuantity > 0) {
                     $this->increasePurchaseStock($order, $value, $unit, $stockQuantity);
                 }
@@ -512,6 +528,12 @@ class PurchasesController extends BaseController
         $remaining = $acceptedItems->mapWithKeys(fn ($item) => [
             $item->id => max(0, (float) $item->accepted_quantity - (float) ($used[$item->id] ?? 0)),
         ]);
+        $purchaseOrderItemIds = $acceptedItems->pluck('purchase_order_item_id')->filter()->unique()->values();
+        $orderedByPurchaseOrderItem = $purchaseOrderItemIds->isEmpty()
+            ? collect()
+            : DB::table('purchase_order_items')->whereIn('id', $purchaseOrderItemIds)->pluck('ordered_quantity', 'id');
+        $invoicedByPurchaseOrderItem = $this->purchaseOrderItemInvoicedQuantities($purchaseOrderItemIds);
+        $invoiceAllocatedByPurchaseOrderItem = [];
         $allocations = collect();
         $lineMappings = [];
         $representedGatePassIds = collect();
@@ -535,16 +557,29 @@ class PurchasesController extends BaseController
                     throw ValidationException::withMessages(['details' => ['A Gate Pass product or unit was changed. Reload the Gate Pass and try again.']]);
                 }
 
-                $available = (float) ($remaining[$gatePassItemId] ?? 0);
+                $gatePassAvailable = (float) ($remaining[$gatePassItemId] ?? 0);
+                $purchaseOrderItemId = $item->purchase_order_item_id;
+                $available = $gatePassAvailable;
+                if ($purchaseOrderItemId) {
+                    $invoiceAvailable = max(
+                        0,
+                        (float) ($orderedByPurchaseOrderItem[$purchaseOrderItemId] ?? 0)
+                            - (float) ($invoicedByPurchaseOrderItem[$purchaseOrderItemId] ?? 0)
+                            - (float) ($invoiceAllocatedByPurchaseOrderItem[$purchaseOrderItemId] ?? 0)
+                    );
+                    $available = min($gatePassAvailable, $invoiceAvailable);
+                }
                 $gatePassQuantity = min($quantity, $available);
                 if ($gatePassQuantity <= 0) {
-                    throw ValidationException::withMessages(["details.$index.quantity" => ["The accepted Gate Pass quantity for {$item->sku} has already been fully invoiced."]]);
+                    throw ValidationException::withMessages(["details.$index.quantity" => ["The accepted Gate Pass quantity for {$item->sku} has already been fully invoiced for this Purchase Order."]]);
                 }
                 $invoiceExcess = max(0, $quantity - $gatePassQuantity);
-                $remaining[$gatePassItemId] = max(0, $available - $gatePassQuantity);
+                $remaining[$gatePassItemId] = max(0, $gatePassAvailable - $gatePassQuantity);
+                if ($purchaseOrderItemId) {
+                    $invoiceAllocatedByPurchaseOrderItem[$purchaseOrderItemId] = (float) ($invoiceAllocatedByPurchaseOrderItem[$purchaseOrderItemId] ?? 0) + $gatePassQuantity;
+                }
                 $allocations[$gatePassItemId] = (float) ($allocations[$gatePassItemId] ?? 0) + $gatePassQuantity;
                 $representedGatePassIds->push((int) $item->gate_pass_id);
-                $purchaseOrderItemId = $item->purchase_order_item_id;
             } else {
                 $gatePassQuantity = 0.0;
                 $invoiceExcess = $quantity;
@@ -576,6 +611,35 @@ class PurchasesController extends BaseController
         ];
     }
 
+    private function purchaseOrderItemInvoicedQuantities($purchaseOrderItemIds)
+    {
+        $ids = collect($purchaseOrderItemIds)->map(fn ($id) => (int) $id)->filter()->unique()->values();
+        if ($ids->isEmpty()) {
+            return collect();
+        }
+
+        $purchaseQuantities = DB::table('purchase_details as d')
+            ->join('purchases as p', 'p.id', '=', 'd.purchase_id')
+            ->whereIn('d.purchase_order_item_id', $ids)
+            ->whereNull('p.deleted_at')
+            ->where('p.posting_status', '<>', 'cancelled')
+            ->selectRaw('d.purchase_order_item_id, SUM(d.quantity) as quantity')
+            ->groupBy('d.purchase_order_item_id')
+            ->pluck('quantity', 'purchase_order_item_id');
+
+        $supplierInvoiceQuantities = DB::table('supplier_invoice_items as i')
+            ->join('supplier_invoices as s', 's.id', '=', 'i.supplier_invoice_id')
+            ->join('gate_pass_items as g', 'g.id', '=', 'i.gate_pass_item_id')
+            ->whereIn('g.purchase_order_item_id', $ids)
+            ->where('s.status', '<>', 'cancelled')
+            ->selectRaw('g.purchase_order_item_id, SUM(i.quantity) as quantity')
+            ->groupBy('g.purchase_order_item_id')
+            ->pluck('quantity', 'purchase_order_item_id');
+
+        return $ids->mapWithKeys(fn ($id) => [
+            $id => (float) ($purchaseQuantities[$id] ?? 0) + (float) ($supplierInvoiceQuantities[$id] ?? 0),
+        ]);
+    }
     private function gatePassItemUsedQuantities($gatePassItemIds)
     {
         $ids = collect($gatePassItemIds)->map(fn ($id) => (int) $id)->filter()->unique()->values();
@@ -2808,6 +2872,81 @@ class PurchasesController extends BaseController
             'documents' => $documents,
             'status' => true
         ]);
+    }
+
+    private function applyInvoiceExcessPurchaseOrderRevision($purchaseOrder, Purchase $purchase, array $details, array $lineMappings): array
+    {
+        if (collect($lineMappings)->sum('invoice_excess_quantity') <= 0) {
+            return $lineMappings;
+        }
+
+        $order = $purchaseOrder->fresh('items');
+        $items = $order->items;
+
+        foreach ($lineMappings as $index => $mapping) {
+            if (! empty($mapping['purchase_order_item_id']) || (float) ($mapping['invoice_excess_quantity'] ?? 0) <= 0) {
+                continue;
+            }
+
+            $row = $details[$index] ?? [];
+            $matchedItem = $items->first(function ($item) use ($row) {
+                return (int) $item->product_id === (int) ($row['product_id'] ?? 0)
+                    && (int) ($item->product_variant_id ?: 0) === (int) (($row['product_variant_id'] ?? null) ?: 0)
+                    && (int) ($item->unit_id ?: 0) === (int) (($row['purchase_unit_id'] ?? null) ?: 0);
+            });
+
+            if ($matchedItem) {
+                $lineMappings[$index]['purchase_order_item_id'] = $matchedItem->id;
+            }
+        }
+
+        $itemIds = collect($lineMappings)->pluck('purchase_order_item_id')->filter()->unique()->values();
+        $invoicedByItem = $this->purchaseOrderItemInvoicedQuantities($itemIds);
+        $orderedByItem = $items->keyBy('id')->map(fn ($item) => (float) $item->ordered_quantity);
+        $coveredByCurrentInvoice = [];
+        foreach ($lineMappings as $mapping) {
+            $poItemId = $mapping['purchase_order_item_id'] ?? null;
+            if ($poItemId) {
+                $coveredByCurrentInvoice[$poItemId] = (float) ($coveredByCurrentInvoice[$poItemId] ?? 0)
+                    + (float) ($mapping['gate_pass_quantity'] ?? 0);
+            }
+        }
+        $revisionMappings = $lineMappings;
+
+        foreach ($revisionMappings as $index => $mapping) {
+            $invoiceExcess = (float) ($mapping['invoice_excess_quantity'] ?? 0);
+            $poItemId = $mapping['purchase_order_item_id'] ?? null;
+            $revisionQuantity = $invoiceExcess;
+
+            if ($invoiceExcess > 0 && $poItemId) {
+                $remainingWithinOrder = max(
+                    0,
+                    (float) ($orderedByItem[$poItemId] ?? 0)
+                        - (float) ($invoicedByItem[$poItemId] ?? 0)
+                        - (float) ($coveredByCurrentInvoice[$poItemId] ?? 0)
+                );
+                $coveredQuantity = min($invoiceExcess, $remainingWithinOrder);
+                $coveredByCurrentInvoice[$poItemId] = (float) ($coveredByCurrentInvoice[$poItemId] ?? 0) + $coveredQuantity;
+                $revisionQuantity = max(0, $invoiceExcess - $coveredQuantity);
+            }
+
+            $revisionMappings[$index]['purchase_order_revision_quantity'] = $revisionQuantity;
+        }
+
+        if (collect($revisionMappings)->sum('purchase_order_revision_quantity') <= 0) {
+            return $lineMappings;
+        }
+
+        $adjustedMappings = app(\App\Services\Procurement\PurchaseOrderInvoiceAdjustmentService::class)
+            ->apply($purchaseOrder, $purchase, $details, $revisionMappings);
+
+        foreach ($adjustedMappings as $index => $mapping) {
+            if (! empty($mapping['purchase_order_item_id'])) {
+                $lineMappings[$index]['purchase_order_item_id'] = $mapping['purchase_order_item_id'];
+            }
+        }
+
+        return $lineMappings;
     }
 
     // ------------- Upload Purchase Documents ----------\\

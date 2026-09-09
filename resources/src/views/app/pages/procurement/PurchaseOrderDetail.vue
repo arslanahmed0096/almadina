@@ -6,7 +6,7 @@
         <b-button v-if="order.status === 'draft' && can('purchase_orders_issue')" variant="success" class="mr-2" @click="issue">Issue PO</b-button>
         <router-link v-if="order.status === 'draft' && can('purchase_orders_edit_draft')" class="btn btn-outline-primary mr-2" :to="'/app/procurement/purchase-orders/' + order.id + '/edit'">Edit</router-link>
         <b-button class="mr-2" variant="outline-secondary" @click="downloadPdf">Download PDF</b-button>
-        <router-link v-if="order.status !== 'draft' && order.status !== 'cancelled' && can('gate_passes_create')" class="btn btn-primary" :to="'/app/procurement/purchase-orders/' + order.id + '/gate-pass'">Record Gate Pass</router-link>
+        <router-link v-if="canRecordGatePass" class="btn btn-primary" :to="'/app/procurement/purchase-orders/' + order.id + '/gate-pass'">Record Gate Pass</router-link>
       </div>
 
       <b-row>
@@ -38,6 +38,12 @@ export default {
   data: () => ({ order: null, progress: { totals: {}, lines: [] }, api: '/api/' }),
   computed: {
     ...mapGetters(['currentUserPermissions']),
+    canRecordGatePass() {
+      return this.order
+        && !['draft', 'cancelled', 'completed'].includes(this.order.status)
+        && Number(this.progress.totals.remaining || 0) > 0
+        && this.can('gate_passes_create');
+    },
     cards() {
       return [
         { key: 'ordered', label: 'Ordered' }, { key: 'received', label: 'Received' },

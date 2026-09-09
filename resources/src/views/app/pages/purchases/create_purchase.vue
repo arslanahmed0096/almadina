@@ -13,7 +13,7 @@
                 <b-col cols="12">
                   <b-alert :variant="selectedGatePasses.length ? 'success' : 'info'" show>
                     <strong>{{ selectedGatePasses.length ? 'Gate Pass Purchase' : 'Direct Purchase' }}</strong>
-                    <span v-if="selectedGatePasses.length && canAddInvoiceExcess"> — Gate Pass quantities are already in stock. Invoice-only excess will revise the same Purchase Order and add only the excess quantity to stock.</span>
+                    <span v-if="selectedGatePasses.length && canAddInvoiceExcess"> — Gate Pass quantities are already in stock. Invoice-only excess can revise the same Purchase Order but will not add stock.</span>
                     <span v-else-if="selectedGatePasses.length"> — Stock was already received at Gate Pass confirmation. Extra invoice quantities require all selected Gate Passes to belong to one Purchase Order.</span>
                     <span v-else> — Saving this Purchase as received will add its product quantities to stock.</span>
                   </b-alert>
@@ -322,7 +322,7 @@
                               Gate Pass: <strong>{{ gatePassLabels(detail) }}</strong>
                             </div>
                             <div v-if="canAddInvoiceExcess && invoiceExcessQuantity(detail) > 0" class="text-warning mt-1" style="font-size: 12px;">
-                              <strong>Invoice-only excess: {{ invoiceExcessQuantity(detail) }}</strong> — added to the same Purchase Order and stock.
+                              <strong>Invoice-only excess: {{ invoiceExcessQuantity(detail) }}</strong> — added to the same Purchase Order only; stock remains controlled by Gate Pass receipts.
                             </div>
                             <div v-if="canAddInvoiceExcess && !isGatePassDetail(detail)" class="text-warning mt-1" style="font-size: 12px;">
                               Manual invoice line — the full quantity will be added to the same Purchase Order and stock.
