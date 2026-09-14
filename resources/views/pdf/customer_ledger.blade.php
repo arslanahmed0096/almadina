@@ -312,12 +312,12 @@
   <table class="avoid-break">
     <thead>
       <tr>
-        <th style="width:14%;">{{ __('pdf.date') }}</th>
-        <th style="width:16%;">{{ __('pdf.payment_ref') }}</th>
-        <th style="width:12%;">{{ __('pdf.type') }}</th>
-        <th style="width:16%;">{{ __('pdf.sale_ref') }}</th>
-        <th style="width:18%;">{{ __('pdf.method') }}</th>
-        <th class="right" style="width:18%;">{{ __('pdf.amount') }}</th>
+        <th style="width:13%;">{{ __('pdf.date') }}</th>
+        <th style="width:15%;">{{ __('pdf.payment_ref') }}</th>
+        <th style="width:10%;">{{ __('pdf.type') }}</th>
+        <th style="width:34%;">Allocation Details</th>
+        <th style="width:13%;">{{ __('pdf.method') }}</th>
+        <th class="right" style="width:15%;">{{ __('pdf.amount') }}</th>
       </tr>
     </thead>
     <tbody>
@@ -350,7 +350,19 @@
             <span class="pill success">{{ __('pdf.sale') }}</span>
           @endif
         </td>
-        <td>{{ $p->Sale_Ref ?? '-' }}</td>
+        <td>
+          @if(! empty($p->allocation_reference))
+            <strong>{{ $p->allocation_reference }}</strong><br>
+            Received with: {{ $p->source_sale_ref ?? '-' }}<br>
+            Applied to: {{ $p->Sale_Ref ?? '-' }}
+            ({{ ($p->allocation_type ?? null) === 'previous' ? 'Previous invoice' : 'Current invoice' }})
+            @if(! empty($p->allocation_sequence))
+              <br>Allocation order: {{ $p->allocation_sequence }}
+            @endif
+          @else
+            Applied to: {{ $p->Sale_Ref ?? '-' }}
+          @endif
+        </td>
         <td>{{ $p->payment_method }}</td>
         <td class="right">{{ formatPrice($p->montant, 2, $priceFormat) }}</td>
       </tr>

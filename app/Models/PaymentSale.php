@@ -13,6 +13,7 @@ class PaymentSale extends Model
 
     protected $fillable = [
         'sale_id', 'date', 'montant', 'Ref', 'change', 'payment_method_id', 'user_id', 'notes', 'account_id',
+        'allocation_reference', 'source_sale_id', 'source_sale_ref', 'allocation_type', 'allocation_sequence',
     ];
 
     protected $casts = [
@@ -22,6 +23,8 @@ class PaymentSale extends Model
         'user_id' => 'integer',
         'account_id' => 'integer',
         'payment_method_id' => 'integer',
+        'source_sale_id' => 'integer',
+        'allocation_sequence' => 'integer',
     ];
 
     public function payment_method()

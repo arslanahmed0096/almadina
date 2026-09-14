@@ -12,7 +12,7 @@ import {
   // tools / settings
   Settings, Wrench, Key, Lock, Shield, Bug,
   // analytics / charts
-  BarChart3, PieChart, TrendingUp, TrendingDown, Activity, MonitorUp, Minus,
+  BarChart3, ChartNoAxesColumnIncreasing, PieChart, TrendingUp, TrendingDown, Activity, MonitorUp, Minus,
   // data / cloud
   Database, DatabaseBackup, DatabaseZap, Cloud, Archive, Download,
   // time
@@ -39,8 +39,37 @@ import {
   Coins, CornerUpLeft, CornerUpRight, Undo,
   Send, Puzzle, Server, FileArchive,
   ArrowUp, Scale, Landmark, Music, Phone,
-  Volume2, VolumeX
+  Volume2, VolumeX, Target
 } from 'lucide-vue';
+
+const TargetArrow = {
+  functional: true,
+  props: {
+    size: { type: [Number, String], default: 18 },
+    strokeWidth: { type: [Number, String], default: 2 },
+  },
+  render(h, ctx) {
+    const attrs = Object.assign({
+      xmlns: 'http://www.w3.org/2000/svg',
+      width: ctx.props.size,
+      height: ctx.props.size,
+      viewBox: '0 0 24 24',
+      fill: 'none',
+      stroke: 'currentColor',
+      'stroke-width': ctx.props.strokeWidth,
+      'stroke-linecap': 'round',
+      'stroke-linejoin': 'round',
+    }, ctx.data.attrs || {});
+
+    return h('svg', { class: ctx.data.class, style: ctx.data.style, attrs }, [
+      h('circle', { attrs: { cx: 10.5, cy: 13.5, r: 8 } }),
+      h('circle', { attrs: { cx: 10.5, cy: 13.5, r: 4 } }),
+      h('circle', { attrs: { cx: 10.5, cy: 13.5, r: 1 } }),
+      h('path', { attrs: { d: 'M12.5 11.5 20 4' } }),
+      h('path', { attrs: { d: 'M15.5 4H20v4.5' } }),
+    ]);
+  },
+};
 
 const REGISTRY = {
   // navigation
@@ -90,6 +119,7 @@ const REGISTRY = {
   // analytics
   'bar-chart': BarChart3,
   'bar-chart-3': BarChart3,
+  'chart-no-axes-column': ChartNoAxesColumnIncreasing,
   'pie-chart': PieChart,
   'trending-up': TrendingUp,
   'trending-down': TrendingDown,
@@ -219,6 +249,8 @@ const REGISTRY = {
   'phone': Phone,
   'volume-2': Volume2,
   'volume-x': VolumeX,
+  'target': Target,
+  'target-arrow': TargetArrow,
 };
 
 export default {

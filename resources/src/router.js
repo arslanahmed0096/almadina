@@ -44,6 +44,38 @@ const baseRoutes = [
                     )
             },
 
+            // Supplier Target Management
+            {
+                path: '/app/targets/dashboard',
+                name: 'target_dashboard',
+                component: () => import(/* webpackChunkName: 'targets' */ './views/app/pages/targets/Dashboard')
+            },
+            {
+                path: '/app/targets/list',
+                name: 'target_list',
+                component: () => import(/* webpackChunkName: 'targets' */ './views/app/pages/targets/Index')
+            },
+            {
+                path: '/app/targets/create',
+                name: 'target_create',
+                component: () => import(/* webpackChunkName: 'targets' */ './views/app/pages/targets/Wizard')
+            },
+            {
+                path: '/app/targets/edit/:id',
+                name: 'target_edit',
+                component: () => import(/* webpackChunkName: 'targets' */ './views/app/pages/targets/Wizard')
+            },
+            {
+                path: '/app/targets/reports',
+                name: 'target_reports',
+                component: () => import(/* webpackChunkName: 'targets' */ './views/app/pages/targets/Reports')
+            },
+            {
+                path: '/app/targets/:id',
+                name: 'target_show',
+                component: () => import(/* webpackChunkName: 'targets' */ './views/app/pages/targets/Show')
+            },
+
             //Products
             {
                 path: "/app/products",

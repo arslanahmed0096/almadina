@@ -255,15 +255,29 @@ class SalesController extends BaseController
             $requestedPayment = round(max(0, (float) $request->input('payment.amount', $request->amount)), 2);
             $paymentStatus = $request->input('payment.status', 'pending');
 
+            $previousSales = Sale::query()
+                ->whereNull('deleted_at')
+                ->where('client_id', $clientForCredit->id)
+                ->where('statut', 'completed')
+                ->whereRaw('(GrandTotal - paid_amount) > 0.009')
+                ->orderBy('date')
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+            $previousBalance = round((float) $previousSales->sum(function (Sale $sale) {
+                return max(0, (float) $sale->GrandTotal - (float) $sale->paid_amount);
+            }), 2);
+            $maximumPayment = round($previousBalance + $grandTotal, 2);
+
             if ($paymentStatus !== 'pending' && $requestedPayment <= 0) {
                 throw ValidationException::withMessages([
                     'amount' => ['Enter an amount greater than zero, or set the payment status to Pending.'],
                 ]);
             }
 
-            if ($paymentStatus !== 'pending' && $requestedPayment > $grandTotal) {
+            if ($paymentStatus !== 'pending' && $requestedPayment > $maximumPayment + 0.001) {
                 throw ValidationException::withMessages([
-                    'amount' => ['Payment cannot exceed the sale total of '.number_format($grandTotal, 2, '.', '').'.'],
+                    'amount' => ['Payment cannot exceed the combined customer balance of '.number_format($maximumPayment, 2, '.', '').'.'],
                 ]);
             }
 
@@ -303,8 +317,58 @@ class SalesController extends BaseController
                 $paymentAccountId = $paymentAccount?->id;
             }
 
+            $sourceSaleReference = $this->getNumberOrder();
+            $allocationReference = $initialPayment > 0 ? 'ALC-'.Str::upper(Str::random(16)) : null;
+            $allocationSequence = 0;
+            $previousAllocationPaymentIds = [];
+            // Allocate the received amount to older completed invoices first.
+            $paymentRemaining = $initialPayment;
+            foreach ($previousSales as $previousSale) {
+                if ($paymentRemaining <= 0.009) {
+                    break;
+                }
+
+                $previousDue = round(max(0, (float) $previousSale->GrandTotal - (float) $previousSale->paid_amount), 2);
+                $allocatedAmount = round(min($paymentRemaining, $previousDue), 2);
+                if ($allocatedAmount <= 0) {
+                    continue;
+                }
+
+                $allocationSequence++;
+                $previousPayment = PaymentSale::create([
+                    'sale_id' => $previousSale->id,
+                    'Ref' => app('App\\Http\\Controllers\\PaymentSalesController')->getNumberOrder(),
+                    'date' => Carbon::now(),
+                    'account_id' => $paymentAccountId,
+                    'payment_method_id' => $paymentMethodId,
+                    'montant' => $allocatedAmount,
+                    'change' => 0,
+                    'notes' => "Allocation {$allocationReference}: received with {$sourceSaleReference}; applied to previous invoice {$previousSale->Ref}.",
+                    'user_id' => Auth::user()->id,
+                    'allocation_reference' => $allocationReference,
+                    'source_sale_ref' => $sourceSaleReference,
+                    'allocation_type' => 'previous',
+                    'allocation_sequence' => $allocationSequence,
+                ]);
+                $previousAllocationPaymentIds[] = $previousPayment->id;
+
+                $newPreviousPaid = round((float) $previousSale->paid_amount + $allocatedAmount, 2);
+                $previousSale->update([
+                    'paid_amount' => $newPreviousPaid,
+                    'payment_statut' => $newPreviousPaid + 0.009 >= (float) $previousSale->GrandTotal ? 'paid' : 'partial',
+                ]);
+                $paymentRemaining = round($paymentRemaining - $allocatedAmount, 2);
+            }
+
+            $currentSalePayment = round(min($grandTotal, max(0, $paymentRemaining)), 2);
+
+            if ($paymentAccountId && $initialPayment > 0) {
+                Account::whereKey($paymentAccountId)->increment('balance', $initialPayment);
+            }
+
+            // Credit eligibility is evaluated after previous invoices are settled.
             $requestedCredit = $transactionType === 'sale'
-                ? max(0, round((float) $request->GrandTotal - $initialPayment, 2))
+                ? max(0, round($grandTotal - $currentSalePayment, 2))
                 : 0.0;
             $creditResult = $creditService->assertEligible($clientForCredit, $requestedCredit);
             $appliedCreditDays = $request->filled('credit_days')
@@ -315,7 +379,7 @@ class SalesController extends BaseController
             $order->is_pos = 0;
             $order->date = $request->date;
             $order->time = now()->toTimeString();
-            $order->Ref = $this->getNumberOrder();
+            $order->Ref = $sourceSaleReference;
             $order->client_id = $request->client_id;
             $order->GrandTotal = $request->GrandTotal;
             $order->warehouse_id = $request->warehouse_id;
@@ -338,6 +402,12 @@ class SalesController extends BaseController
                     ->addDays($appliedCreditDays)->toDateString();
             }
             $order->save();
+
+            if ($previousAllocationPaymentIds) {
+                PaymentSale::whereIn('id', $previousAllocationPaymentIds)->update([
+                    'source_sale_id' => $order->id,
+                ]);
+            }
 
             $data = $request['details'];
             $total_points_earned = 0;
@@ -426,7 +496,7 @@ class SalesController extends BaseController
             // Backward compatibility: If record_view is null, fall back to role permission check
             $view_records = $user->hasRecordView();
 
-            if ($initialPayment > 0 && ($order->statut === 'completed' || $transactionType === 'order')) {
+            if ($currentSalePayment > 0 && ($order->statut === 'completed' || $transactionType === 'order')) {
                 $sale = Sale::findOrFail($order->id);
                 // Check If User Has Permission view All Records
                 if (! $view_records) {
@@ -434,7 +504,7 @@ class SalesController extends BaseController
                     $this->authorizeForUser($request->user('api'), 'check_record', $sale);
                 }
 
-                $total_paid = round((float) $sale->paid_amount + $initialPayment, 2);
+                $total_paid = round((float) $sale->paid_amount + $currentSalePayment, 2);
                 $due = round((float) $sale->GrandTotal - $total_paid, 2);
 
                 if ($due <= 0) {
@@ -445,21 +515,23 @@ class SalesController extends BaseController
                     $payment_statut = 'unpaid';
                 }
 
+                $allocationSequence++;
                 PaymentSale::create([
                     'sale_id' => $order->id,
                     'Ref' => app('App\Http\Controllers\PaymentSalesController')->getNumberOrder(),
                     'date' => Carbon::now(),
                     'account_id' => $paymentAccountId,
                     'payment_method_id' => $paymentMethodId,
-                    'montant' => $initialPayment,
+                    'montant' => $currentSalePayment,
                     'change' => $request['change'],
-                    'notes' => null,
+                    'notes' => "Allocation {$allocationReference}: received with {$sourceSaleReference}; applied to current invoice {$order->Ref}.",
                     'user_id' => Auth::user()->id,
+                    'allocation_reference' => $allocationReference,
+                    'source_sale_id' => $order->id,
+                    'source_sale_ref' => $sourceSaleReference,
+                    'allocation_type' => 'current',
+                    'allocation_sequence' => $allocationSequence,
                 ]);
-
-                if ($paymentAccountId) {
-                    Account::whereKey($paymentAccountId)->increment('balance', $initialPayment);
-                }
 
                 $sale->update([
                     'paid_amount' => $total_paid,

@@ -153,6 +153,22 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
     Route::post('/knowledge-base/articles/{knowledge_base_article}/feedback', [KnowledgeBaseArticleController::class, 'submitFeedback']);
 
     Route::get('dashboard_data', 'DashboardController@dashboard_data');
+    Route::get('targets/options', 'SupplierTargetController@options');
+    Route::get('targets/dashboard', 'SupplierTargetController@dashboard');
+    Route::get('targets/report', 'SupplierTargetController@report');
+    Route::get('targets/report/print', 'SupplierTargetController@reportPrint');
+    Route::get('targets/report/pdf', 'SupplierTargetController@reportPdf');
+    Route::get('targets/report/excel', 'SupplierTargetController@reportExcel');
+    Route::get('targets', 'SupplierTargetController@index');
+    Route::post('targets', 'SupplierTargetController@store');
+    Route::get('targets/{target}', 'SupplierTargetController@show');
+    Route::put('targets/{target}', 'SupplierTargetController@update');
+    Route::put('targets/{target}/lines', 'SupplierTargetController@saveLines');
+    Route::put('targets/{target}/allocations', 'SupplierTargetController@saveAllocations');
+    Route::post('targets/{target}/activate', 'SupplierTargetController@activate');
+    Route::post('targets/{target}/cancel', 'SupplierTargetController@cancel');
+    Route::post('targets/{target}/complete', 'SupplierTargetController@complete');
+    Route::delete('targets/{target}', 'SupplierTargetController@destroy');
     Route::get('real_time_sales_counter_data', 'DashboardController@real_time_sales_counter_data');
     Route::get('sales_3d_dashboard_data', 'Sales3DDashboardController@data');
 
@@ -443,6 +459,7 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
 
     // Basic client info for header (optional but recommended)
     Route::get('clients/{id}/brief', 'ClientController@clientBrief');
+    Route::get('clients/{id}/sale-balance', 'ClientController@saleBalance');
 
     // Client Portal admin controls (enable/disable)
     Route::get('clients/{id}/portal-status', [\App\Http\Controllers\Api\Portal\PortalAdminController::class, 'getStatus']);

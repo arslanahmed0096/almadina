@@ -174,8 +174,25 @@
                 <b-badge v-if="item.payment_type === 'opening_balance'" variant="info">{{ $t('Opening_Balance') }}</b-badge>
                 <b-badge v-else variant="success">{{ $t('Sale') }}</b-badge>
               </template>
+              <template #cell(allocation_reference)="{ item }">
+                <code v-if="item.allocation_reference">{{ item.allocation_reference }}</code>
+                <span v-else class="text-muted">Direct payment</span>
+              </template>
+              <template #cell(source_sale_ref)="{ item }">
+                <router-link v-if="item.source_sale_id && item.source_sale_ref" :to="{ name: 'detail_sale', params: { id: item.source_sale_id } }">
+                  {{ item.source_sale_ref }}
+                </router-link>
+                <span v-else class="text-muted">-</span>
+              </template>
               <template #cell(Sale_Ref)="{ item }">
-                <span v-if="item.Sale_Ref">{{ item.Sale_Ref }}</span>
+                <router-link v-if="item.sale_id && item.Sale_Ref" :to="{ name: 'detail_sale', params: { id: item.sale_id } }">
+                  {{ item.Sale_Ref }}
+                </router-link>
+                <span v-else class="text-muted">-</span>
+              </template>
+              <template #cell(allocation_type)="{ item }">
+                <b-badge v-if="item.allocation_type === 'previous'" variant="warning">Previous invoice</b-badge>
+                <b-badge v-else-if="item.allocation_type === 'current'" variant="primary">Current invoice</b-badge>
                 <span v-else class="text-muted">-</span>
               </template>
               <template #cell(montant)="{ item }">{{ money(item.montant) }}</template>
@@ -354,7 +371,10 @@ export default {
         { key:'date', label: this.$t('Date') },
         { key:'Ref', label: this.$t('Payment_Ref') },
         { key:'payment_type', label: this.$t('Type') },
-        { key:'Sale_Ref', label: this.$t('Sale_Ref') },
+        { key:'allocation_reference', label: 'Allocation Ref' },
+        { key:'source_sale_ref', label: 'Received With Sale' },
+        { key:'Sale_Ref', label: 'Applied To Invoice' },
+        { key:'allocation_type', label: 'Allocation' },
         { key:'payment_method', label: this.$t('Method') },
         { key:'montant', label: this.$t('Amount'), class:'text-right' },
       ],

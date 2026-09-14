@@ -1397,6 +1397,9 @@ class ClientController extends BaseController
                 $query->where(function ($qr) use ($s) {
                     $qr->where('payment_sales.Ref', 'LIKE', "%{$s}%")
                         ->orWhere('payment_sales.date', 'LIKE', "%{$s}%")
+                        ->orWhere('payment_sales.allocation_reference', 'LIKE', "%{$s}%")
+                        ->orWhere('payment_sales.source_sale_ref', 'LIKE', "%{$s}%")
+                        ->orWhere('sales.Ref', 'LIKE', "%{$s}%")
                         ->orWhere('payment_methods.name', 'LIKE', "%{$s}%");
                 });
             })
@@ -1404,9 +1407,15 @@ class ClientController extends BaseController
                 'payment_sales.id',
                 'payment_sales.date',
                 'payment_sales.Ref as Ref',
+                'sales.id as sale_id',
                 'sales.Ref as Sale_Ref',
                 'payment_methods.name as payment_method',
                 'payment_sales.montant',
+                'payment_sales.allocation_reference',
+                'payment_sales.source_sale_id',
+                'payment_sales.source_sale_ref',
+                'payment_sales.allocation_type',
+                'payment_sales.allocation_sequence',
                 DB::raw("'sale' as payment_type")
             );
 
@@ -1431,9 +1440,15 @@ class ClientController extends BaseController
                 'client_opening_balance_payments.id',
                 'client_opening_balance_payments.date',
                 'client_opening_balance_payments.Ref as Ref',
+                DB::raw("NULL as sale_id"),
                 DB::raw("NULL as Sale_Ref"),
                 'payment_methods.name as payment_method',
                 'client_opening_balance_payments.montant',
+                DB::raw("NULL as allocation_reference"),
+                DB::raw("NULL as source_sale_id"),
+                DB::raw("NULL as source_sale_ref"),
+                DB::raw("NULL as allocation_type"),
+                DB::raw("NULL as allocation_sequence"),
                 DB::raw("'opening_balance' as payment_type")
             );
 
@@ -1463,6 +1478,48 @@ class ClientController extends BaseController
         return response()->json([
             'payments' => $rows,
             'totalRows' => $totalRows,
+        ]);
+    }
+
+    /**
+     * Minimal previous-balance data for the Create Sale customer selector.
+     */
+    public function saleBalance(Request $request, $id, CustomerCreditService $creditService)
+    {
+        $this->authorizeForUser($request->user('api'), 'create', Sale::class);
+
+        $client = Client::query()
+            ->select('id', 'opening_balance', 'credit_limit')
+            ->whereNull('deleted_at')
+            ->findOrFail($id);
+
+        $sales = Sale::query()
+            ->whereNull('deleted_at')
+            ->where('client_id', $client->id)
+            ->where('statut', 'completed')
+            ->whereRaw('(GrandTotal - paid_amount) > 0.009')
+            ->orderBy('date')
+            ->orderBy('id')
+            ->get(['id', 'Ref', 'date', 'GrandTotal', 'paid_amount', 'statut']);
+
+        $invoices = $sales->map(function (Sale $sale) {
+            return [
+                'id' => (int) $sale->id,
+                'reference' => (string) $sale->Ref,
+                'outstanding_amount' => round(max(0, (float) $sale->GrandTotal - (float) $sale->paid_amount), 2),
+            ];
+        })->filter(function (array $invoice) {
+            return $invoice['outstanding_amount'] > 0.009;
+        })->values();
+
+        $openingBalance = round((float) ($client->opening_balance ?? 0), 2);
+
+        return response()->json([
+            'credit_limit' => round((float) ($client->credit_limit ?? 0), 2),
+            'opening_balance' => $openingBalance,
+            'previous_balance' => round($invoices->sum('outstanding_amount'), 2),
+            'credit_balance' => $creditService->creditUsage($client),
+            'invoices' => $invoices,
         ]);
     }
 
@@ -1603,9 +1660,15 @@ class ClientController extends BaseController
             ->select(
                 'payment_sales.date',
                 'payment_sales.Ref',
+                'sales.id as sale_id',
                 'sales.Ref as Sale_Ref',
                 'payment_methods.name as payment_method',
                 'payment_sales.montant',
+                'payment_sales.allocation_reference',
+                'payment_sales.source_sale_id',
+                'payment_sales.source_sale_ref',
+                'payment_sales.allocation_type',
+                'payment_sales.allocation_sequence',
                 DB::raw("'sale' as payment_type")
             )
             ->orderByDesc('payment_sales.id')->get();
@@ -1618,9 +1681,15 @@ class ClientController extends BaseController
             ->select(
                 'client_opening_balance_payments.date',
                 'client_opening_balance_payments.Ref',
+                DB::raw("NULL as sale_id"),
                 DB::raw("NULL as Sale_Ref"),
                 'payment_methods.name as payment_method',
                 'client_opening_balance_payments.montant',
+                DB::raw("NULL as allocation_reference"),
+                DB::raw("NULL as source_sale_id"),
+                DB::raw("NULL as source_sale_ref"),
+                DB::raw("NULL as allocation_type"),
+                DB::raw("NULL as allocation_sequence"),
                 DB::raw("'opening_balance' as payment_type")
             )
             ->orderByDesc('client_opening_balance_payments.id')->get();

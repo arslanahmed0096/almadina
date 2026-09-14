@@ -181,6 +181,21 @@
             <div class="triangle"></div>
           </li>
 
+          <li
+            v-show="currentUserPermissions && currentUserPermissions.includes('targets.view')"
+            @mouseenter="toggleSubMenu"
+            :class="{ active: selectedParentMenu == 'targets' }"
+            class="nav-item"
+            data-item="targets"
+            :data-submenu="true"
+          >
+            <a class="nav-item-hold" href="#">
+              <lucide-icon class="nav-icon" name="target-arrow" />
+              <span class="nav-text">Targets</span>
+            </a>
+            <div class="triangle"></div>
+          </li>
+
             <li
             v-if="currentUserPermissions && currentUserPermissions.includes('Sale_Returns_view')"
             @mouseenter="toggleSubMenu"
@@ -556,7 +571,8 @@
                      || currentUserPermissions.includes('service_jobs_report')
                      || currentUserPermissions.includes('checklist_completion_report')
                      || currentUserPermissions.includes('customer_maintenance_history_report')
-                     || currentUserPermissions.includes('sales_3d_dashboard'))"
+                     || currentUserPermissions.includes('sales_3d_dashboard')
+                     || currentUserPermissions.includes('targets.reports'))"
             @mouseenter="toggleSubMenu"
             :class="{ active: selectedParentMenu == 'reports' }"
             class="nav-item"
@@ -967,12 +983,16 @@
           </li>
         </ul>
 
+        <ul class="childNav d-none" data-parent="targets" :class="{ 'd-block': selectedParentMenu == 'targets' }">
+          <li class="nav-item"><router-link tag="a" to="/app/targets/dashboard"><lucide-icon class="nav-icon" name="layout-dashboard" /><span class="item-name">Target Dashboard</span></router-link></li>
+          <li class="nav-item"><router-link tag="a" to="/app/targets/list"><lucide-icon class="nav-icon" name="list" /><span class="item-name">Manage Targets</span></router-link></li>
+        </ul>
+
         <ul
           class="childNav d-none"
           data-parent="accounting"
           :class="{ 'd-block': selectedParentMenu == 'accounting' }"
         >
-          
 
         <li
             class="nav-item"
@@ -1813,6 +1833,16 @@
           :class="{ 'd-block': selectedParentMenu == 'reports' }"
         >
           <li
+            v-if="currentUserPermissions && currentUserPermissions.includes('targets.reports')"
+            class="nav-item"
+          >
+            <router-link tag="a" class to="/app/targets/reports">
+              <lucide-icon class="nav-icon" name="bar-chart-3" />
+              <span class="item-name">Target Reports</span>
+            </router-link>
+          </li>
+
+          <li
             v-if="currentUserPermissions && currentUserPermissions.includes('sales_3d_dashboard')"
             class="nav-item"
           >
@@ -2437,7 +2467,9 @@ export default {
         .split("/")
         .filter(x => x !== "")[1];
       if (currentParentUrl !== undefined || currentParentUrl !== null) {
-        this.selectedParentMenu = currentParentUrl.toLowerCase();
+        this.selectedParentMenu = this.$route.name === 'target_reports'
+          ? 'reports'
+          : currentParentUrl.toLowerCase();
       } else {
         this.selectedParentMenu = "dashboard";
       }

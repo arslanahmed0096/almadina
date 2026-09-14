@@ -21,4 +21,9 @@ class Warehouse extends Model
     {
         return $this->hasMany(WarehouseLocation::class);
     }
+
+    public function targetAllocations()
+    {
+        return $this->hasMany(SupplierTargetAllocation::class);
+    }
 }

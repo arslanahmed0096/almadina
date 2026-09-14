@@ -497,6 +497,23 @@
             </ul>
           </li>
 
+          <!-- Supplier Targets -->
+          <li
+            v-show='currentUserPermissions && currentUserPermissions.includes(&quot;targets.view&quot;)'
+            :class='{ active: isActiveRoute(&quot;targets&quot;), &quot;has-submenu&quot;: true, open: openMenus.includes(&quot;targets&quot;) }'
+            class='nav-item'
+          >
+            <a href='#' @click.prevent='toggleSubmenu(&quot;targets&quot;)' class='nav-link'>
+              <lucide-icon class='nav-icon' name='target-arrow' />
+              <span class='nav-text' v-if='!isCollapsed'>Targets</span>
+              <lucide-icon class='submenu-arrow' name='chevron-down' v-if='!isCollapsed' />
+            </a>
+            <ul class='submenu' v-if='openMenus.includes(&quot;targets&quot;) && !isCollapsed'>
+              <li class='submenu-item'><router-link to='/app/targets/dashboard' class='submenu-link'><lucide-icon class='submenu-icon' name='layout-dashboard' /><span>Target Dashboard</span></router-link></li>
+              <li class='submenu-item'><router-link to='/app/targets/list' class='submenu-link'><lucide-icon class='submenu-icon' name='list' /><span>Manage Targets</span></router-link></li>
+            </ul>
+          </li>
+
           <!-- Sales Return -->
           <li
             v-if="currentUserPermissions && currentUserPermissions.includes('Sale_Returns_view')"
@@ -1270,6 +1287,13 @@
               <lucide-icon class="submenu-arrow" name="chevron-down" v-if="!isCollapsed" />
             </a>
             <ul class="submenu" v-if="openMenus.includes('reports') && !isCollapsed">
+              <li class="submenu-item" v-if="currentUserPermissions && currentUserPermissions.includes('targets.reports')">
+                <router-link to="/app/targets/reports" class="submenu-link">
+                  <lucide-icon class="submenu-icon" name="bar-chart-3" />
+                  <span>Target Reports</span>
+                </router-link>
+              </li>
+
               <!-- 3D Sales Dashboard -->
               <li class="submenu-item" v-if="currentUserPermissions && currentUserPermissions.includes('sales_3d_dashboard')">
                 <router-link to="/app/reports/sales-3d-dashboard" class="submenu-link">
@@ -1717,7 +1741,7 @@ export default {
         'report_attendance_summary','return_ratio_report','service_jobs',
         'service_jobs_report','checklist_completion_report','customer_maintenance_history_report','report_device_management',
         'analytics_report', 'Stock_Inventory_Valuation', 'internal_location_report',
-        'sales_3d_dashboard', 'expiry_report', 'daily_reports_view'
+        'sales_3d_dashboard', 'expiry_report', 'daily_reports_view', 'targets.reports'
       ];
       return reportPermissions.some(perm => this.currentUserPermissions.includes(perm));
     },
@@ -1789,7 +1813,9 @@ export default {
       
       if (segments.length >= 2) {
         const routeSection = segments[1].toLowerCase();
-        const parentMenu = routeSection === 'procurement' ? 'purchases' : routeSection;
+        const parentMenu = this.$route.name === 'target_reports'
+          ? 'reports'
+          : (routeSection === 'procurement' ? 'purchases' : routeSection);
         if (!this.openMenus.includes(parentMenu)) {
           this.openMenus.push(parentMenu);
         }
@@ -1798,6 +1824,7 @@ export default {
 
     isActiveRoute(menu) {
       if (this.$route.name === menu) return true;
+      if (this.$route.name === 'target_reports') return menu === 'reports';
       const path = this.$route.path.toLowerCase();
       if (menu === 'User_Management') {
         return path.includes('/app/user_management/users') || path.includes('/app/user_management/permissions');

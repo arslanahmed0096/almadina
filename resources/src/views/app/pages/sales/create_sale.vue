@@ -58,16 +58,14 @@
                           :placeholder="$t('Choose_Customer')"
                           :options="customerOptions"
                         />
-                        <b-input-group-append
-                          v-if="currentUserPermissions && currentUserPermissions.includes('Customers_add')"
-                        >
+                        <b-input-group-append v-if="canOpenCustomerModal">
                           <b-button
                             variant="primary"
-                            @click="Quick_Add_Client"
-                            :title="$t('Quick_Add_Customer')"
+                            @click="Open_Customer_Modal"
+                            :title="customerModalTitle"
                             class="category-add-btn"
                           >
-                            <lucide-icon name="plus" />
+                            <lucide-icon :name="selectedClientId ? 'pencil' : 'plus'" />
                           </b-button>
                         </b-input-group-append>
                       </b-input-group>
@@ -132,6 +130,35 @@
                       <b-form-invalid-feedback>{{ errors[0] }}</b-form-invalid-feedback>
                     </b-form-group>
                   </validation-provider>
+                </b-col>
+
+                <b-col v-if="selectedClientId" cols="12" class="mb-3">
+                  <div class="customer-previous-balance">
+                    <span class="customer-previous-balance-label">Previous Balance</span>
+                    <strong v-if="selectedClientCreditLoading">
+                      <span class="spinner sm spinner-primary mr-1"></span>
+                      Loading...
+                    </strong>
+                    <strong v-else class="customer-previous-balance-amount">
+                      {{ currentUser.currency }} {{ formatNumber(selectedClientPreviousBalance, 2) }}
+                    </strong>
+                    <div
+                      v-if="!selectedClientCreditLoading && selectedClientOutstandingSales.length"
+                      class="customer-balance-references"
+                    >
+                      <span>Sale reference:</span>
+                      <router-link
+                        v-for="invoice in selectedClientOutstandingSales"
+                        :key="invoice.id"
+                        :to="{ name: 'detail_sale', params: { id: invoice.id } }"
+                        target="_blank"
+                        class="customer-balance-reference"
+                        :title="'Open ' + invoice.reference"
+                      >
+                        {{ invoice.reference }} ({{ currentUser.currency }} {{ formatNumber(invoice.outstanding_amount, 2) }})
+                      </router-link>
+                    </div>
+                  </div>
                 </b-col>
 
                 <b-col v-if="selectedClientHasZeroCreditLimit" cols="12" class="mb-3">
@@ -496,6 +523,20 @@
                           >{{currentUser.currency}} {{GrandTotal.toFixed(2)}}</span>
                         </td>
                       </tr>
+                      <tr v-if="selectedClientId" class="customer-grand-total-row">
+                        <td>
+                          <span class="font-weight-bold">Grand Total</span>
+                        </td>
+                        <td>
+                          <span v-if="selectedClientCreditLoading">
+                            <span class="spinner sm spinner-primary mr-1"></span>
+                            Loading...
+                          </span>
+                          <span v-else class="font-weight-bold">
+                            {{ currentUser.currency }} {{ formatNumber(customerGrandTotal, 2) }}
+                          </span>
+                        </td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
@@ -721,13 +762,13 @@
                 </b-col>
 
 
-                <!-- Payable Amount -->
+                <!-- Combined customer balance payable -->
                 <b-col lg="3" md="6" sm="12" class="mb-3" v-if="showInitialPaymentFields">
-                  <b-form-group label="Payable Amount *">
+                  <b-form-group label="Grand Total Payable *">
                     <b-form-input
-                      :value="GrandTotal.toFixed(2)"
-                      label="Payable Amount"
-                      aria-label="Payable Amount"
+                      :value="customerGrandTotal.toFixed(2)"
+                      label="Grand Total Payable"
+                      aria-label="Grand Total Payable"
                       readonly
                     ></b-form-input>
                   </b-form-group>
@@ -753,6 +794,9 @@
                         :state="getValidationState(validationContext)"
                         aria-describedby="Amount-feedback"
                       ></b-form-input>
+                      <small v-if="selectedClientPreviousBalance > 0" class="text-muted d-block mt-1">
+                        Payment is allocated to previous invoices first, then to this sale.
+                      </small>
                       <b-form-invalid-feedback
                         id="Amount-feedback"
                       >{{ validationContext.errors[0] }}</b-form-invalid-feedback>
@@ -760,12 +804,12 @@
                   </validation-provider>
                 </b-col>
 
-                <!-- Balance -->
+                <!-- Remaining combined customer balance -->
                 <b-col lg="3" md="6" sm="12" class="mb-3" v-if="showInitialPaymentFields">
-                  <b-form-group :label="$t('Balance')">
+                  <b-form-group label="Remaining Balance">
                     <b-form-input
                       :value="getPaymentBalance().toFixed(2)"
-                      aria-label="Balance"
+                      aria-label="Remaining Balance"
                       readonly
                     ></b-form-input>
                   </b-form-group>
@@ -828,10 +872,10 @@
       </b-form>
     </validation-observer>
 
-    <!-- Quick Add Customer Modal -->
+    <!-- Quick Add/Edit Customer Modal -->
     <validation-observer ref="Quick_Add_Customer_Form">
-      <b-modal hide-footer size="lg" id="Quick_Add_Customer" :title="$t('Quick_Add_Customer')">
-        <b-form @submit.prevent="Submit_Quick_Add_Customer" class="quick-add-customer-form">
+      <b-modal hide-footer size="lg" id="Quick_Add_Customer" :title="customerModalTitle">
+        <b-form @submit.prevent="Submit_Quick_Customer" class="quick-add-customer-form">
           <b-row>
             <!-- Customer Name -->
             <b-col md="6" sm="12">
@@ -1138,6 +1182,7 @@ export default {
       selectedClientId: "",
       customersLoading: false,
       customersSearchTimer: null,
+      customerModalMode: "create",
       accounts: [],
       client: {},
       products: [],
@@ -1217,6 +1262,8 @@ export default {
       // Credit control
       selectedClientCreditLimit: 0,
       selectedClientNetBalance: 0,
+      selectedClientPreviousBalance: 0,
+      selectedClientOutstandingSales: [],
       selectedClientCreditLoading: false,
       creditLimitEditorOpen: false,
       creditLimitAmount: "",
@@ -1295,10 +1342,29 @@ export default {
       return options;
     },
 
+    customerGrandTotal() {
+      return Number(this.GrandTotal || 0) + Number(this.selectedClientPreviousBalance || 0);
+    },
+
+    paymentAppliedToPreviousSales() {
+      if (this.payment.status === 'pending') return 0;
+      return Math.min(
+        Number(this.payment.amount || 0),
+        Number(this.selectedClientPreviousBalance || 0)
+      );
+    },
+
+    paymentAppliedToCurrentSale() {
+      if (this.payment.status === 'pending') return 0;
+      return Math.min(
+        Number(this.GrandTotal || 0),
+        Math.max(0, Number(this.payment.amount || 0) - this.paymentAppliedToPreviousSales)
+      );
+    },
+
     requestedCreditAmount() {
       if (this.sale.transaction_type !== 'sale' || this.sale.statut !== 'completed') return 0;
-      const paid = this.payment.status === 'pending' ? 0 : Number(this.payment.amount || 0);
-      return Math.max(0, Number(this.GrandTotal || 0) - paid);
+      return Math.max(0, Number(this.GrandTotal || 0) - this.paymentAppliedToCurrentSale);
     },
 
     canRecordInitialPayment() {
@@ -1385,6 +1451,20 @@ export default {
     canUpdateCustomerCreditLimit() {
       return Array.isArray(this.currentUserPermissions)
         && this.currentUserPermissions.includes("customer_credit_limit_update");
+    },
+
+    canOpenCustomerModal() {
+      if (!Array.isArray(this.currentUserPermissions)) return false;
+
+      return this.selectedClientId
+        ? this.currentUserPermissions.includes("Customers_edit")
+        : this.currentUserPermissions.includes("Customers_add");
+    },
+
+    customerModalTitle() {
+      return (this.customerModalMode === "edit" || this.selectedClientId)
+        ? this.$t("Edit_Customer")
+        : this.$t("Quick_Add_Customer");
     },
 
     customerOptions() {
@@ -1602,7 +1682,10 @@ export default {
           this.sale.tax_rate = 0;
           this.sale.TaxNet = Number(data.totals.additive) || 0;
           this.GrandTotal = Number(data.totals.grand_total) || 0;
-          this.payment.received_amount = this.formatNumber(this.GrandTotal, 2);
+          this.payment.received_amount = this.formatNumber(this.customerGrandTotal, 2);
+          if (this.payment.status === 'paid') {
+            this.payment.amount = this.formatNumber(this.customerGrandTotal, 2);
+          }
         }
       }).catch(() => {
         if (requestSequence !== this.managedTaxRequestSequence) return;
@@ -1644,7 +1727,10 @@ export default {
 
     upsertClient(client) {
       if (!client || !client.id) return;
-      this.setClients([client].concat(this.clients || []));
+      const otherClients = (this.clients || []).filter(
+        existingClient => String(existingClient.id) !== String(client.id)
+      );
+      this.clients = this.uniqueClients([client].concat(otherClients));
     },
 
     SearchCustomers(search, loading) {
@@ -1699,6 +1785,8 @@ export default {
       this.closeCreditLimitEditor();
       this.selectedClientCreditLimit = 0;
       this.selectedClientNetBalance = 0;
+      this.selectedClientPreviousBalance = 0;
+      this.selectedClientOutstandingSales = [];
       this.selectedClientCreditLoading = !!selectedClientId;
       this.payment.payment_method_id = 2;
       this.savedPaymentMethods= [];
@@ -1739,19 +1827,27 @@ export default {
 
         if (String(this.selectedClientId) !== String(selectedClientId)) return;
 
-        // Fetch client credit limit and current balance
+        // Fetch the credit limit, previous balance, and outstanding sale references.
         try {
-          const briefResponse = await axios.get(`/clients/${selectedClientId}/brief`);
-          const briefData = briefResponse.data;
+          const balanceResponse = await axios.get(`/clients/${selectedClientId}/sale-balance`);
+          const balanceData = balanceResponse.data;
           if (String(this.selectedClientId) === String(selectedClientId)) {
-            this.selectedClientCreditLimit = parseFloat(briefData.credit_limit || 0);
-            this.selectedClientNetBalance = parseFloat(briefData.netBalance || 0);
+            this.selectedClientCreditLimit = parseFloat(balanceData.credit_limit || 0);
+            this.selectedClientNetBalance = parseFloat(balanceData.credit_balance || 0);
+            this.selectedClientPreviousBalance = parseFloat(balanceData.previous_balance || 0);
+            this.selectedClientOutstandingSales = Array.isArray(balanceData.invoices) ? balanceData.invoices : [];
+            this.payment.received_amount = this.formatNumber(this.customerGrandTotal, 2);
+            if (this.payment.status === 'paid') {
+              this.payment.amount = this.formatNumber(this.customerGrandTotal, 2);
+            }
           }
         } catch (error) {
-          console.error('Error fetching client credit limit:', error);
+          console.error('Error fetching client sale balance:', error);
           if (String(this.selectedClientId) === String(selectedClientId)) {
             this.selectedClientCreditLimit = 0;
             this.selectedClientNetBalance = 0;
+            this.selectedClientPreviousBalance = 0;
+            this.selectedClientOutstandingSales = [];
           }
         } finally {
           if (String(this.selectedClientId) === String(selectedClientId)) {
@@ -1763,6 +1859,8 @@ export default {
         this.selectedClientId = "";
         this.selectedClientCreditLimit = 0;
         this.selectedClientNetBalance = 0;
+        this.selectedClientPreviousBalance = 0;
+        this.selectedClientOutstandingSales = [];
         this.selectedClientCreditLoading = false;
       }
 
@@ -1899,10 +1997,10 @@ export default {
     //---------------------- Event Select Payment Status ------------------------------\\
 
     Selected_PaymentStatus(value){
-      this.payment.received_amount = this.formatNumber(this.GrandTotal, 2);
+      this.payment.received_amount = this.formatNumber(this.customerGrandTotal, 2);
 
       if (value == "paid") {
-        var payment_amount = this.GrandTotal.toFixed(2);
+        var payment_amount = this.customerGrandTotal.toFixed(2);
         this.payment.amount = this.formatNumber(payment_amount, 2);
       }else{
         this.payment.amount = 0;
@@ -1918,7 +2016,7 @@ export default {
     Verified_paidAmount() {
       if (isNaN(this.payment.amount)) {
         this.payment.amount = 0;
-      } else if (this.payment.amount > this.GrandTotal) {
+      } else if (this.payment.amount > this.customerGrandTotal) {
         this.makeToast(
           "warning",
           this.$t("Paying_amount_is_greater_than_Grand_Total"),
@@ -1928,9 +2026,9 @@ export default {
       }
     },
 
-    // The payable amount is the sale total; balance is the unpaid portion.
+    // Remaining balance across previous invoices and the new sale.
     getPaymentBalance() {
-      const payable = Number(this.GrandTotal) || 0;
+      const payable = Number(this.customerGrandTotal) || 0;
       const paid = Number(this.payment.amount) || 0;
       return parseFloat(Math.max(payable - paid, 0).toFixed(2));
     },
@@ -1963,7 +2061,7 @@ export default {
           const msg = this.$t ? `${this.$t('pos.Total_Payable')} ${this.$t('cannot_be_negative') || 'cannot be negative'}` : 'Total Payable cannot be negative';
           this.makeToast('warning', msg, this.$t ? this.$t('Warning') : 'Warning');
           return;
-        } else if (this.payment.amount > this.GrandTotal) {
+        } else if (this.payment.amount > this.customerGrandTotal) {
             this.paymentProcessing = false;
             this.makeToast(
               "warning",
@@ -1975,12 +2073,12 @@ export default {
             // Credit Limit Validation (0 means no limit)
             // Only applies when this sale is adding new credit (paid amount < sale total)
             if (this.sale.transaction_type === 'sale' && this.selectedClientId && this.selectedClientCreditLimit > 0) {
-              const totalPaid = parseFloat(this.payment.amount || 0);
-              const saleTotal = parseFloat(this.GrandTotal || 0);
+              const newSaleDue = Number(this.requestedCreditAmount || 0);
 
-              if (totalPaid < saleTotal) {
-                const currentDue = parseFloat(this.selectedClientNetBalance || 0);
-                const newSaleDue = saleTotal - totalPaid; // Remaining due from this sale
+              if (newSaleDue > 0) {
+                const currentDue = Math.max(0,
+                  parseFloat(this.selectedClientNetBalance || 0) - this.paymentAppliedToPreviousSales
+                );
                 const newTotalDue = currentDue + newSaleDue;
 
                 if (newTotalDue > this.selectedClientCreditLimit) {
@@ -2455,9 +2553,70 @@ export default {
       this.CalculTotal();
     },
 
-    // ---------------- Quick Add Customer (like POS) ---------------- \\
+    // ---------------- Quick Add/Edit Customer (like POS) ---------------- \\
+    Open_Customer_Modal() {
+      if (this.selectedClientId) {
+        this.Quick_Edit_Client();
+      } else {
+        this.Quick_Add_Client();
+      }
+    },
+
+    async Quick_Edit_Client() {
+      const customerId = this.selectedClientId;
+      if (!customerId) {
+        this.Quick_Add_Client();
+        return;
+      }
+
+      NProgress.start();
+      NProgress.set(0.1);
+
+      try {
+        const response = await axios.get("clients/" + customerId);
+        if (String(this.selectedClientId) !== String(customerId)) return;
+
+        const selectedClient = response.data && response.data.client;
+        if (!selectedClient) throw new Error("Customer details were not returned");
+
+        this.customerModalMode = "edit";
+        this.client = {
+          ...selectedClient,
+          id: selectedClient.id,
+          name: selectedClient.name || "",
+          email: selectedClient.email || "",
+          phone: selectedClient.phone || "",
+          tax_number: selectedClient.tax_number || "",
+          country: selectedClient.country || "",
+          city: selectedClient.city || "",
+          adresse: selectedClient.adresse || "",
+          is_royalty_eligible: Number(selectedClient.is_royalty_eligible) === 1
+        };
+        this.resetCustomerModalValidation();
+        this.$bvModal.show("Quick_Add_Customer");
+      } catch (error) {
+        this.makeToast(
+          "danger",
+          this.$t("InvalidData"),
+          this.$t("Failed")
+        );
+      } finally {
+        NProgress.done();
+      }
+    },
+
+    resetCustomerModalValidation() {
+      this.$nextTick(() => {
+        if (this.$refs.Quick_Add_Customer_Form) {
+          this.$refs.Quick_Add_Customer_Form.reset();
+        }
+      });
+    },
+
     Quick_Add_Client() {
+      this.customerModalMode = "create";
       this.reset_Form_client();
+      this.resetCustomerModalValidation();
       this.$bvModal.show("Quick_Add_Customer");
     },
 
@@ -2473,6 +2632,109 @@ export default {
         adresse: "",
         is_royalty_eligible: false
       };
+    },
+
+    Submit_Quick_Customer() {
+      if (this.customerModalMode === "edit") {
+        this.Submit_Quick_Edit_Customer();
+        return;
+      }
+
+      this.Submit_Quick_Add_Customer();
+    },
+
+    Submit_Quick_Edit_Customer() {
+      NProgress.start();
+      NProgress.set(0.1);
+      this.SubmitProcessing = true;
+      this.$refs.Quick_Add_Customer_Form &&
+        this.$refs.Quick_Add_Customer_Form.validate().then(success => {
+          if (!success) {
+            NProgress.done();
+            this.SubmitProcessing = false;
+            this.makeToast(
+              "danger",
+              this.$t("Please_fill_the_form_correctly"),
+              this.$t("Failed")
+            );
+            return;
+          }
+
+          const customerId = this.client.id;
+          const payload = {
+            firstname: this.client.firstname || "",
+            lastname: this.client.lastname || "",
+            name: this.client.name,
+            username: this.client.username || "",
+            company_name: this.client.company_name || "",
+            email: this.client.email || "",
+            phone: this.client.phone || "",
+            tax_number: this.client.tax_number || "",
+            country: this.client.country || "",
+            city: this.client.city || "",
+            state: this.client.state || "",
+            zip: this.client.zip || "",
+            adresse: this.client.adresse || "",
+            is_royalty_eligible: this.client.is_royalty_eligible || false
+          };
+
+          axios
+            .put("clients/" + customerId, payload)
+            .then(() => {
+              NProgress.done();
+              this.SubmitProcessing = false;
+              this.upsertClient({
+                id: customerId,
+                name: payload.name,
+                phone: payload.phone
+              });
+              this.client_name = payload.name;
+              this.clientIsEligible = !!payload.is_royalty_eligible;
+
+              if (!this.clientIsEligible) {
+                this.selectedClientPoints = 0;
+                this.initialClientPoints = 0;
+                if (this.pointsConverted) {
+                  this.discount_from_points = 0;
+                  this.used_points = 0;
+                  this.points_to_convert = 0;
+                  this.pointsConverted = false;
+                  this.CalculTotal();
+                }
+              } else {
+                axios.get(`/get_points_client/${customerId}`).then(response => {
+                  if (String(this.selectedClientId) !== String(customerId)) return;
+                  const points = Number(response.data.points) || 0;
+                  this.initialClientPoints = points;
+                  this.selectedClientPoints = this.pointsConverted
+                    ? Math.max(0, points - (Number(this.used_points) || 0))
+                    : points;
+                }).catch(() => {});
+              }
+
+              this.makeToast(
+                "success",
+                this.$t("Successfully_Updated"),
+                this.$t("Success")
+              );
+              this.$bvModal.hide("Quick_Add_Customer");
+              this.reset_Form_client();
+              this.customerModalMode = "create";
+            })
+            .catch(error => {
+              NProgress.done();
+              this.SubmitProcessing = false;
+              const validationError = error.response && error.response.data && error.response.data.errors
+                ? Object.values(error.response.data.errors)[0]
+                : null;
+              const message = Array.isArray(validationError) ? validationError[0] : validationError;
+              this.makeToast(
+                "danger",
+                message || this.$t("InvalidData"),
+                this.$t("Failed")
+              );
+            });
+        });
     },
 
     Submit_Quick_Add_Customer() {
@@ -2841,7 +3103,10 @@ export default {
 
       var grand_total =  this.GrandTotal.toFixed(2);
       this.GrandTotal = parseFloat(grand_total);
-      this.payment.received_amount = this.formatNumber(this.GrandTotal, 2);
+      this.payment.received_amount = this.formatNumber(this.customerGrandTotal, 2);
+      if (this.payment.status === 'paid') {
+        this.payment.amount = this.formatNumber(this.customerGrandTotal, 2);
+      }
       this.scheduleManagedTaxPreview();
 
     },
@@ -3305,6 +3570,56 @@ export default {
   .warn { color: #b45309; font-size: 12px; }
   .ok { color: #065f46; font-size: 12px; }
   .result { font-size: 13px; color: #1e3a8a; background: #eef2ff; border: 1px dashed #c7d2fe; border-radius: 10px; padding: 8px 10px; }
+
+  .customer-grand-total-row td {
+    border-top: 2px solid #663399 !important;
+    background: #f5f0f8;
+  }
+
+  .customer-grand-total-row .font-weight-bold {
+    color: #4b2473;
+    font-size: 15px;
+  }
+
+  .customer-previous-balance {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    padding: 10px 12px;
+    border: 1px solid #d8dce6;
+    border-radius: 8px;
+    background: #f8f9fc;
+  }
+
+  .customer-previous-balance-label {
+    color: #374151;
+    font-weight: 600;
+  }
+
+  .customer-previous-balance-amount {
+    color: #111827;
+    font-size: 16px;
+  }
+
+  .customer-balance-references {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding-left: 12px;
+    border-left: 1px solid #d8dce6;
+  }
+
+  .customer-balance-reference {
+    color: #663399;
+    font-weight: 600;
+    text-decoration: underline;
+  }
+
+  .customer-balance-reference:hover {
+    color: #4b2473;
+  }
 
   .sale-credit-limit-action {
     display: flex;

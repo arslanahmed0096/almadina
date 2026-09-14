@@ -48,4 +48,9 @@ class Provider extends Model
         return $this->belongsToMany(Category::class, 'category_provider', 'provider_id', 'category_id')
             ->withTimestamps();
     }
+
+    public function supplierTargets()
+    {
+        return $this->hasMany(SupplierTarget::class, 'supplier_id');
+    }
 }

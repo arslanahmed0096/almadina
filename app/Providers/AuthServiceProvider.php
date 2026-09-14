@@ -74,6 +74,7 @@ class AuthServiceProvider extends ServiceProvider
         'App\Models\KnowledgeBaseArticleGroup' => 'App\Policies\KnowledgeBaseArticleGroupPolicy',
         'App\Models\KnowledgeBaseArticle' => 'App\Policies\KnowledgeBaseArticlePolicy',
         'App\Models\Task' => 'App\Policies\TaskPolicy',
+        'App\Models\SupplierTarget' => 'App\Policies\SupplierTargetPolicy',
         'App\Models\ServiceJob' => 'App\Policies\ServiceJobPolicy',
         'App\Models\Booking' => 'App\Policies\BookingPolicy',
 
