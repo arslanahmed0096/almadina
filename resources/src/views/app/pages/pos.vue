@@ -387,7 +387,7 @@
                   <span style="font-size: 12px; color: #54546a; font-weight: 500; font-family: 'JetBrains Mono', monospace; white-space: nowrap;">× {{ formatPriceWithCurrentCurrency(item.Total_price, 2) }}</span>
                   <!-- Price type (sized to match qty stepper, dark text instead of muted) -->
                   <select v-model="item.price_type" @change="onChangePriceType(item)" style="height: 24px; padding: 0 6px; font-size: 11px; font-weight: 500; border: 1px solid #d8d8e0; border-radius: 5px; background: #ffffff; color: #1f1f2c; outline: none; cursor: pointer; flex-shrink: 0;">
-                    <option value="retail">{{ $t('Retail Price') }}</option>
+                    <option value="retail">{{ $t('Al-Madina Price') }}</option>
                     <option value="wholesale">{{ $t('Wholesale Price') }}</option>
                   </select>
                 </div>
@@ -1712,7 +1712,7 @@
                     v-model="detail.price_type"
                     @change="onChangePriceType(detail)"
                   >
-                    <option :value="'retail'">{{$t('Retail Price')}}</option>
+                    <option :value="'retail'">{{$t('Al-Madina Price')}}</option>
                     <option :value="'wholesale'">{{$t('Wholesale Price')}}</option>
                   </select>
                 </div>
@@ -3219,11 +3219,10 @@ export default {
       return POS_SHORTCUTS;
     },
 
-    // Overselling Control: when ON, all POS stock checks are bypassed and
-    // sales are allowed even with zero/negative stock. Default OFF preserves
-    // the historical strict stock-check behavior for existing installs.
+    // Completed sales always require enough stock in the selected warehouse.
+    // Historical overselling settings cannot bypass the backend stock guard.
     isOversellingAllowed() {
-      return !!(this.pos_settings && this.pos_settings.allow_overselling);
+      return false;
     },
 
     // Batch validation: when any cart line has a batch problem, Pay Now is blocked.

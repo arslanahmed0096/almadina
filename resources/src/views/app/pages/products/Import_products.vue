@@ -128,7 +128,7 @@
               <ul class="mini-notes mt-2">
                 <li><strong>code</strong> will be generated automatically using your product prefix and category rule.</li>
                 <li><strong>category</strong> will be created automatically if missing.</li>
-                <li><strong>cost</strong> and <strong>retail price</strong> are optional. Blank values default to 0.</li>
+                <li><strong>cost</strong> and <strong>Al-Madina price</strong> are optional. Blank values default to 0.</li>
               </ul>
             </div>
 
@@ -254,7 +254,7 @@
               <ul class="mini-notes mt-2">
                 <li><strong>code</strong> will be generated automatically using your product prefix and category rule.</li>
                 <li><strong>category</strong> will be created automatically if missing.</li>
-                <li><strong>retail price</strong> is optional. Blank values default to 0.</li>
+                <li><strong>Al-Madina price</strong> is optional. Blank values default to 0.</li>
               </ul>
             </div>
           </b-card>
@@ -341,7 +341,7 @@
               <ul class="mini-notes mt-3">
                 <li><strong>code</strong> will be generated automatically using your product prefix and selected category.</li>
                 <li><strong>category</strong> will be created if missing.</li>
-                <li><strong>cost</strong>, <strong>retail price</strong>, <strong>wholesale price</strong> and <strong>min price</strong> are optional.</li>
+                <li><strong>cost</strong>, <strong>Al-Madina price</strong>, <strong>wholesale price</strong> and <strong>min price</strong> are optional.</li>
               </ul>
             </div>
 
@@ -356,7 +356,7 @@
               <ul class="mini-notes mt-3">
                 <li><strong>code</strong> will be generated automatically using your product prefix and selected category.</li>
                 <li><strong>category</strong> will be created if missing.</li>
-                <li><strong>retail price</strong>, <strong>wholesale price</strong> and <strong>min price</strong> are optional. Cost is always 0 for services.</li>
+                <li><strong>Al-Madina price</strong>, <strong>wholesale price</strong> and <strong>min price</strong> are optional. Cost is always 0 for services.</li>
               </ul>
             </div>
 

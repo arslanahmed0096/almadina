@@ -474,7 +474,7 @@
                       v-model="item.price_type"
                       @change="onChangePriceType(item)"
                     >
-                      <option value="retail">{{$t('Retail Price')}}</option>
+                      <option value="retail">{{$t('Al-Madina Price')}}</option>
                       <option value="wholesale">{{$t('Wholesale Price')}}</option>
                     </select>
                   </div>
@@ -1498,7 +1498,7 @@
                     v-model="detail.price_type"
                     @change="onChangePriceType(detail)"
                   >
-                    <option :value="'retail'">{{$t('Retail Price')}}</option>
+                    <option :value="'retail'">{{$t('Al-Madina Price')}}</option>
                     <option :value="'wholesale'">{{$t('Wholesale Price')}}</option>
                   </select>
                 </div>
@@ -2414,11 +2414,10 @@ export default {
       return POS_SHORTCUTS;
     },
 
-    // Overselling Control: when ON, all POS stock checks are bypassed and
-    // sales are allowed even with zero/negative stock. Default OFF preserves
-    // the historical strict stock-check behavior for existing installs.
+    // Completed sales always require enough stock in the selected warehouse.
+    // Historical overselling settings cannot bypass the backend stock guard.
     isOversellingAllowed() {
-      return !!(this.pos_settings && this.pos_settings.allow_overselling);
+      return false;
     },
 
     // Batch validation: when any cart line has a batch problem, Pay Now is blocked.

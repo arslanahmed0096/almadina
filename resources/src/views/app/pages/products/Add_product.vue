@@ -942,8 +942,8 @@
                         <th>Company RB Price</th>
                         <th>MRP Price</th>
                         <th>Product Cost</th>
-                        <th>Fix Price</th>
-                        <th>Retail Price (Almadina Price)</th>
+                        <th>Regular Price</th>
+                        <th>Al-Madina Price</th>
                         <th>Whole Sale Price</th>
                         <th>Minimum Price</th>
                         <th class="text-center" style="width: 50px;"></th>
@@ -1054,8 +1054,8 @@
                   </b-col>
 
                   <b-col md="6" class="mb-2" v-if="product.type != 'is_variant'">
-                    <validation-provider name="Fix Price" :rules="{ regex: /^\d*\.?\d*$/ }" v-slot="validationContext">
-                      <b-form-group label="Fix Price">
+                    <validation-provider name="Regular Price" :rules="{ regex: /^\d*\.?\d*$/ }" v-slot="validationContext">
+                      <b-form-group label="Regular Price">
                         <b-form-input
                           v-model="product.fix_price"
                           :state="getValidationState(validationContext)"
@@ -1079,7 +1079,7 @@
                     :rules="{ required: true , regex: /^\d*\.?\d*$/}"
                     v-slot="validationContext"
                   >
-                    <b-form-group label="Retail Price (Almadina Price) *">
+                    <b-form-group label="Al-Madina Price *">
                       <b-form-input
                         :state="getValidationState(validationContext)"
                         aria-describedby="ProductPrice-feedback"
@@ -1755,7 +1755,7 @@
                   <span class="summary-row__value">{{ currentUser.currency }} {{ product.cost || '0.00' }}</span>
                 </div>
                 <div class="summary-row" v-if="product.type != 'is_variant'">
-                  <span class="summary-row__label">{{ $t('Retail Price') }}</span>
+                  <span class="summary-row__label">{{ $t('Al-Madina Price') }}</span>
                   <span class="summary-row__value summary-row__value--strong">{{ currentUser.currency }} {{ product.price || '0.00' }}</span>
                 </div>
                 <div class="summary-row">

@@ -92,24 +92,22 @@
               <th rowspan="2">Code</th>
               <th rowspan="2">Brand</th>
               <th rowspan="2">Category</th>
+              <th rowspan="2">Purchase Price</th>
               <th colspan="7" class="pricing-group-heading">Pricing Level</th>
+              <th rowspan="2" class="margin-icon-heading"><lucide-icon name="percent" /></th>
             </tr>
             <tr>
               <th>Company RB</th>
               <th>MRP</th>
               <th>Product Cost</th>
-              <th>Fix Price</th>
-              <th>Retail Price</th>
+              <th>Regular Price</th>
+              <th>Al-Madina Price</th>
               <th>Whole Sale</th>
               <th>Minimum</th>
             </tr>
           </thead>
           <tbody>
-            <tr
-              v-for="row in pricingRows"
-              :key="row.row_key"
-              :class="{ 'pricing-row-dirty': isDirty(row.product_id) }"
-            >
+            <tr v-for="row in pricingRows" :key="row.row_key" :class="{ 'pricing-row-dirty': isDirty(row.product_id) }">
               <td class="product-name-cell">
                 <strong>{{ row.name }}</strong>
                 <small v-if="row.variant_name">
@@ -119,6 +117,7 @@
               <td>{{ row.code }}</td>
               <td>{{ row.brand || "N/D" }}</td>
               <td class="category-cell">{{ row.category || "N/D" }}</td>
+              <td class="purchase-price-cell">{{ wholeNumber(row.purchase_price) }}</td>
               <td v-for="field in priceFields" :key="`${row.row_key}-${field}`" class="price-input-cell">
                 <b-form-input
                   v-model.number="row[field]"
@@ -126,9 +125,23 @@
                   min="0"
                   step="0.01"
                   :disabled="submitting"
+                  :readonly="isMarginAppliedField(row, field)"
                   @input="markDirty(row.product_id)"
                   @blur="persistDraft"
                 />
+              </td>
+              <td class="margin-action-cell">
+                <b-button
+                  v-b-tooltip.hover
+                  :title="row.pricing_margins.length ? `Edit ${row.pricing_margins.length} margin${row.pricing_margins.length === 1 ? '' : 's'}` : 'Add margins'"
+                  class="margin-icon-button"
+                  size="sm"
+                  variant="outline-primary"
+                  @click="openMarginModal(row)"
+                >
+                  <lucide-icon name="percent" />
+                  <span v-if="row.pricing_margins.length" class="margin-count-badge">{{ row.pricing_margins.length }}</span>
+                </b-button>
               </td>
             </tr>
           </tbody>
@@ -152,6 +165,103 @@
       <h4>Choose a brand and category</h4>
       <p class="text-muted mb-0">Click Search to load all matching products and update their pricing levels.</p>
     </b-card>
+
+    <b-modal
+      id="pricing-margin-modal"
+      size="lg"
+      centered
+      hide-footer
+      title="Purchase Price Margins"
+      @hidden="closeMarginModal"
+    >
+      <template v-if="activeMarginRow">
+        <div class="margin-modal-product">
+          <div class="margin-modal-product__identity">
+            <span class="margin-modal-product__icon"><lucide-icon name="package" /></span>
+            <div>
+              <small>SELECTED PRODUCT</small>
+              <strong>{{ activeMarginRow.name }}</strong>
+              <span v-if="activeMarginRow.variant_name">{{ activeMarginRow.variant_name }}</span>
+              <span>{{ activeMarginRow.code }}</span>
+            </div>
+          </div>
+          <div class="margin-modal-product__price">
+            <small>PURCHASE PRICE</small>
+            <strong>{{ wholeNumber(activeMarginRow.purchase_price) }}</strong>
+          </div>
+        </div>
+
+        <div class="margin-modal-heading">
+          <div>
+            <h5>Margins</h5>
+            <p>The first three rows update Minimum, Wholesale, and Al-Madina prices.</p>
+          </div>
+          <b-button
+            size="sm"
+            variant="outline-primary"
+            :disabled="!Number(activeMarginRow.purchase_price)"
+            @click="addMargin"
+          >
+            <lucide-icon name="plus" /> Add margin
+          </b-button>
+        </div>
+
+        <div v-if="!Number(activeMarginRow.purchase_price)" class="alert alert-warning">
+          A Purchase Price is required before margins can be added.
+        </div>
+        <div v-else-if="!marginDraft.length" class="margin-modal-empty">
+          No margins added. Click Add margin to begin.
+        </div>
+
+        <b-row
+          v-for="(margin, index) in marginDraft"
+          :key="`modal-margin-${index}`"
+          class="align-items-end margin-modal-line"
+        >
+          <b-col lg="2" md="6">
+            <b-form-group label="Price Label">
+              <b-form-input
+                v-model="margin.label"
+                type="text"
+                maxlength="100"
+                :readonly="index < 3"
+                :placeholder="marginTierName(index, margin)"
+              />
+            </b-form-group>
+          </b-col>
+          <b-col lg="2" md="6">
+            <b-form-group label="Margin Type">
+              <b-form-select v-model="margin.type" :options="marginTypeOptions" />
+            </b-form-group>
+          </b-col>
+          <b-col lg="2" md="4">
+            <b-form-group label="Margin">
+              <b-form-input v-model="margin.value" type="number" min="0" step="0.01" />
+            </b-form-group>
+          </b-col>
+          <b-col lg="2" md="4">
+            <b-form-group label="Profit">
+              <b-form-input :value="marginProfit(activeMarginRow, margin)" readonly />
+            </b-form-group>
+          </b-col>
+          <b-col lg="2" md="4">
+            <b-form-group label="Applied Price">
+              <b-form-input :value="marginPrice(activeMarginRow, margin)" readonly />
+            </b-form-group>
+          </b-col>
+          <b-col lg="2" md="4" class="mb-3 text-center">
+            <b-button v-if="index >= 3" block variant="outline-danger" @click="removeMargin(index)">Remove</b-button>
+          </b-col>
+        </b-row>
+
+        <div class="margin-modal-actions">
+          <b-button variant="outline-secondary" @click="$bvModal.hide('pricing-margin-modal')">Cancel</b-button>
+          <b-button variant="primary" @click="saveMarginModal">
+            <lucide-icon name="check" /> Apply to Price Row
+          </b-button>
+        </div>
+      </template>
+    </b-modal>
   </div>
 </template>
 
@@ -176,6 +286,12 @@ export default {
       submitting: false,
       hasSearched: false,
       dirtyProducts: {},
+      activeMarginRow: null,
+      marginDraft: [],
+      marginTypeOptions: [
+        { text: "%", value: "percentage" },
+        { text: "Fixed amount", value: "fixed" }
+      ],
       priceFields: [
         "company_rb_price",
         "mrp_price",
@@ -229,6 +345,124 @@ export default {
       const number = Number(value);
       return Number.isFinite(number) ? number : 0;
     },
+    normalizeMargins(margins) {
+      return (Array.isArray(margins) ? margins : []).map((margin, index) => ({
+        type: margin && margin.type === "fixed" ? "fixed" : "percentage",
+        value: margin && margin.value !== undefined && margin.value !== null ? margin.value : "",
+        label: index < 3
+          ? ["Minimum Price", "Wholesale Price", "Al-Madina Price"][index]
+          : (margin && String(margin.label || "").trim()) || `Custom Price ${index + 1}`
+      }));
+    },
+    withStandardMargins(margins) {
+      const normalized = this.normalizeMargins(margins);
+      while (normalized.length < 3) {
+        const index = normalized.length;
+        normalized.push({
+          type: "percentage",
+          value: "",
+          label: ["Minimum Price", "Wholesale Price", "Al-Madina Price"][index]
+        });
+      }
+      return normalized;
+    },
+    wholeNumber(value) {
+      return Math.round(this.numericValue(value));
+    },
+    marginTierName(index, margin = null) {
+      return ["Minimum Price", "Wholesale Price", "Al-Madina Price"][index]
+        || (margin && margin.label)
+        || `Custom Price ${index + 1}`;
+    },
+    openMarginModal(row) {
+      this.activeMarginRow = row;
+      this.marginDraft = this.withStandardMargins(row.pricing_margins);
+      this.$bvModal.show("pricing-margin-modal");
+    },
+    closeMarginModal() {
+      this.activeMarginRow = null;
+      this.marginDraft = [];
+    },
+    addMargin() {
+      if (!this.activeMarginRow || !(Number(this.activeMarginRow.purchase_price) > 0)) return;
+      this.marginDraft.push({
+        type: "percentage",
+        value: "",
+        label: `Custom Price ${this.marginDraft.length + 1}`
+      });
+    },
+    removeMargin(index) {
+      this.marginDraft.splice(index, 1);
+    },
+    marginProfit(row, margin) {
+      const base = Number(row.purchase_price);
+      const amount = Number(margin.value);
+      if (!Number.isFinite(base) || !Number.isFinite(amount) || margin.value === "") return "";
+      return Math.round(margin.type === "percentage" ? base * amount / 100 : amount);
+    },
+    marginPrice(row, margin) {
+      const base = Number(row.purchase_price);
+      const profit = Number(this.marginProfit(row, margin));
+      if (!Number.isFinite(base) || !Number.isFinite(profit) || margin.value === "") return "";
+      return Math.round(base + profit);
+    },
+    isMarginAppliedField(row, field) {
+      const index = { min_price: 0, wholesale_price: 1, price: 2 }[field];
+      return index !== undefined && row.pricing_margins.length > index;
+    },
+    applyMarginPrices(row) {
+      const fields = ["min_price", "wholesale_price", "price"];
+      row.pricing_margins.slice(0, fields.length).forEach((margin, index) => {
+        const price = this.marginPrice(row, margin);
+        if (price !== "") this.$set(row, fields[index], price);
+      });
+    },
+    validateMarginList(row, margins) {
+      if (!margins.length) return true;
+      if (!(Number(row.purchase_price) > 0)) {
+        this.makeToast("danger", `Purchase Price is required for ${row.name}.`, this.$t("Failed"));
+        return false;
+      }
+
+      let previous = null;
+      for (let index = 0; index < margins.length; index++) {
+        const margin = margins[index];
+        const value = Number(margin.value);
+        const price = Number(this.marginPrice(row, margin));
+        if (!["percentage", "fixed"].includes(margin.type) || margin.value === "" || !Number.isFinite(value) || value < 0) {
+          this.makeToast("danger", `Enter a non-negative margin for ${row.name}.`, this.$t("Failed"));
+          return false;
+        }
+        if (index >= 3 && !String(margin.label || "").trim()) {
+          this.makeToast("danger", `Enter a custom price label for ${row.name}.`, this.$t("Failed"));
+          return false;
+        }
+        if (previous !== null && price <= previous) {
+          this.makeToast("danger", `Each next margin price for ${row.name} must be higher.`, this.$t("Failed"));
+          return false;
+        }
+        previous = price;
+      }
+      return true;
+    },
+    saveMarginModal() {
+      if (!this.activeMarginRow || !this.validateMarginList(this.activeMarginRow, this.marginDraft)) return;
+      this.$set(this.activeMarginRow, "pricing_margins", this.normalizeMargins(this.marginDraft));
+      this.applyMarginPrices(this.activeMarginRow);
+      this.markDirty(this.activeMarginRow.product_id);
+      this.persistDraft();
+      this.$bvModal.hide("pricing-margin-modal");
+    },
+    validatePricingMargins() {
+      for (const row of this.pricingRows) {
+        const margins = row.pricing_margins || [];
+        if (!this.validateMarginList(row, margins)) {
+          this.openMarginModal(row);
+          return false;
+        }
+      }
+      return true;
+    },
     loadOptions(brandId) {
       const initialLoad = !brandId;
       this.optionsLoading = initialLoad;
@@ -280,7 +514,9 @@ export default {
               row_key: `product-${product.id}-variant-${variant.id}`,
               variant_id: variant.id,
               variant_name: variant.name,
-              code: variant.code || product.code
+              code: variant.code || product.code,
+              purchase_price: this.numericValue(variant.purchase_price),
+              pricing_margins: this.normalizeMargins(variant.pricing_margins)
             });
             this.priceFields.forEach(field => { row[field] = this.numericValue(variant[field]); });
             rows.push(row);
@@ -292,7 +528,9 @@ export default {
           row_key: `product-${product.id}`,
           variant_id: null,
           variant_name: "",
-          code: product.code
+          code: product.code,
+          purchase_price: this.numericValue(product.purchase_price),
+          pricing_margins: this.normalizeMargins(product.pricing_margins)
         });
         this.priceFields.forEach(field => { row[field] = this.numericValue(product[field]); });
         rows.push(row);
@@ -394,7 +632,10 @@ export default {
 
       this.selectedBrandId = draft.brand_id || null;
       this.selectedCategoryId = draft.category_id || null;
-      this.pricingRows = draft.rows;
+      this.pricingRows = draft.rows.map(row => Object.assign({}, row, {
+        purchase_price: this.numericValue(row.purchase_price),
+        pricing_margins: this.normalizeMargins(row.pricing_margins)
+      }));
       this.dirtyProducts = draft.dirty_products || {};
       this.hasSearched = !!draft.has_searched || this.pricingRows.length > 0;
       return (this.selectedBrandId ? this.loadOptions(this.selectedBrandId) : Promise.resolve())
@@ -426,7 +667,12 @@ export default {
       return this.pricingRows.map(row => {
         const detail = {
           product_id: row.product_id,
-          product_variant_id: row.variant_id || null
+          product_variant_id: row.variant_id || null,
+          pricing_margins: (row.pricing_margins || []).map(margin => ({
+            type: margin.type,
+            value: this.numericValue(margin.value),
+            label: margin.label
+          }))
         };
         this.priceFields.forEach(field => { detail[field] = this.numericValue(row[field]); });
         return detail;
@@ -434,6 +680,7 @@ export default {
     },
     savePricingLevels() {
       if (!this.pricingRows.length || this.submitting) return;
+      if (!this.validatePricingMargins()) return;
       this.persistDraft();
       const payload = {
         brand_id: this.selectedBrandId,
@@ -470,10 +717,10 @@ export default {
         this.loadEntry().then(() => {
           if (draft) this.restoreDraft(draft);
         });
-      } else if (draft && Array.isArray(draft.rows) && draft.rows.length) {
-        this.restoreDraft(draft);
       } else if (directProductId > 0) {
         this.loadDirectProduct(directProductId);
+      } else if (draft && Array.isArray(draft.rows) && draft.rows.length) {
+        this.restoreDraft(draft);
       }
     });
   }
@@ -520,7 +767,7 @@ export default {
 }
 
 .pricing-table {
-  min-width: 1750px;
+  min-width: 2000px;
 }
 
 .pricing-table thead th {
@@ -578,6 +825,139 @@ export default {
   min-width: 105px;
 }
 
+.purchase-price-cell {
+  min-width: 130px;
+  font-weight: 700;
+  color: #5f2d86;
+  background: #f7f1fb;
+}
+
+.margin-icon-heading,
+.margin-action-cell {
+  width: 72px;
+  min-width: 72px;
+  text-align: center;
+}
+
+.margin-icon-button {
+  position: relative;
+  width: 42px;
+  height: 36px;
+  padding: 5px;
+}
+
+.margin-count-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 5px;
+  border-radius: 10px;
+  color: #fff;
+  background: #7b3fb1;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 19px;
+}
+
+.margin-modal-product {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  margin-bottom: 20px;
+  border: 1px solid #e8def0;
+  border-radius: 10px;
+  background: #faf7fd;
+}
+
+.margin-modal-product__identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.margin-modal-product__identity strong,
+.margin-modal-product__identity span,
+.margin-modal-product__identity small,
+.margin-modal-product__price small,
+.margin-modal-product__price strong {
+  display: block;
+}
+
+.margin-modal-product__identity small,
+.margin-modal-product__price small {
+  color: #72798a;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .5px;
+}
+
+.margin-modal-product__icon {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  color: #fff;
+  background: #7b3fb1;
+}
+
+.margin-modal-product__price {
+  min-width: 125px;
+  text-align: right;
+}
+
+.margin-modal-product__price strong {
+  color: #5f2d86;
+  font-size: 22px;
+}
+
+.margin-modal-heading,
+.margin-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.margin-modal-heading h5,
+.margin-modal-heading p {
+  margin: 0;
+}
+
+.margin-modal-heading p {
+  margin-top: 3px;
+  color: #72798a;
+  font-size: 12px;
+}
+
+.margin-modal-empty {
+  padding: 18px;
+  margin-top: 16px;
+  color: #72798a;
+  text-align: center;
+  border: 1px dashed #d9c8e8;
+  border-radius: 8px;
+  background: #faf7fd;
+}
+
+.margin-modal-line {
+  padding-top: 14px;
+  margin-top: 14px;
+  border-top: 1px solid #eadff2;
+}
+
+.margin-modal-actions {
+  justify-content: flex-end;
+  padding-top: 18px;
+  margin-top: 8px;
+  border-top: 1px solid #e6e9ef;
+}
+
 .pricing-row-dirty td {
   background: #fffaf0;
 }
@@ -598,6 +978,17 @@ export default {
   .results-footer {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .margin-modal-product,
+  .margin-modal-heading,
+  .margin-modal-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .margin-modal-product__price {
+    text-align: left;
   }
 }
 </style>

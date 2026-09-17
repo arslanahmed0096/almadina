@@ -29,6 +29,7 @@ use App\Models\UserWarehouse;
 use App\Models\Warehouse;
 use App\Services\BatchService;
 use App\Services\CustomerCreditService;
+use App\Services\WarehouseStockGuard;
 use App\utils\helpers;
 use Carbon\Carbon;
 use DB;
@@ -99,6 +100,10 @@ class PosController extends BaseController
             $sale = \DB::transaction(function () use ($request, $totalPaid, $saleUuid, $creditService) {
                 $helpers = new helpers;
                 $clientForCredit = Client::whereKey($request->client_id)->lockForUpdate()->firstOrFail();
+                app(WarehouseStockGuard::class)->assertSaleAvailable(
+                    (int) $request->warehouse_id,
+                    $request->input('details', [])
+                );
                 $requestedCredit = max(0, round((float) $request->GrandTotal - min((float) $request->GrandTotal, (float) $totalPaid), 2));
                 $creditResult = $creditService->assertEligible($clientForCredit, $requestedCredit);
                 $user = Auth::user();
@@ -432,6 +437,14 @@ class PosController extends BaseController
             }, 10);
 
         } catch (\Throwable $e) {
+            if ($e instanceof \Illuminate\Validation\ValidationException) {
+                return $e->response ?: response()->json([
+                    'success' => false,
+                    'message' => collect($e->errors())->flatten()->first() ?: $e->getMessage(),
+                    'errors' => $e->errors(),
+                ], 422);
+            }
+
             // If a concurrent request created the same sale with the same UUID, the unique
             // constraint on sale_uuid will trigger here. In that case, treat this as a
             // successful, idempotent result by returning the already‑created sale instead
@@ -998,6 +1011,10 @@ class PosController extends BaseController
             $sale = \DB::transaction(function () use ($request, $draft, $creditService) {
                 $helpers = new helpers;
                 $clientForCredit = Client::whereKey($request->client_id)->lockForUpdate()->firstOrFail();
+                app(WarehouseStockGuard::class)->assertSaleAvailable(
+                    (int) $request->warehouse_id,
+                    $request->input('details', [])
+                );
                 $initialPayment = max(0, (float) $request->input('payment.amount', 0));
                 $requestedCredit = max(0, round((float) $request->GrandTotal - min((float) $request->GrandTotal, $initialPayment), 2));
                 $creditResult = $creditService->assertEligible($clientForCredit, $requestedCredit);

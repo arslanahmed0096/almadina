@@ -14,7 +14,7 @@ class Product extends Model
         'stock_alert', 'weight', 'length', 'width', 'height', 'category_id', 'sub_category_id', 'is_variant', 'is_imei',
         'tax_method', 'image', 'brand_id', 'is_active', 'note', 'type',
         'warranty_period', 'warranty_unit', 'warranty_terms', 'company_rb_price', 'mrp_price',
-        'fix_price', 'wholesale_price', 'min_price',
+        'fix_price', 'wholesale_price', 'min_price', 'purchase_price', 'pricing_margins',
         'has_guarantee', 'guarantee_period', 'guarantee_unit', 'points', 'discount', 'discount_method',
         'is_featured', 'hide_from_online_store',
         'is_preorder', 'preorder_available_date', 'preorder_limit', 'preorder_note',
@@ -24,6 +24,8 @@ class Product extends Model
 
     protected $casts = [
         'company_rb_price' => 'double',
+        'purchase_price' => 'double',
+        'pricing_margins' => 'array',
         'mrp_price' => 'double',
         'fix_price' => 'double',
         'wholesale_price' => 'double',

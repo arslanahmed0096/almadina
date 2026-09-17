@@ -60,20 +60,30 @@ class ProductHistoryController extends BaseController
             : UserWarehouse::where('user_id', $user->id)->pluck('warehouse_id')->map(fn ($value) => (int) $value)->all();
         $recordUserId = $user->hasRecordView() ? null : (int) $user->id;
 
+        $currentStock = (float) DB::table('product_warehouse')
+            ->whereNull('deleted_at')
+            ->where('product_id', $product->id)
+            ->when(is_array($warehouseIds), fn ($query) => $query->whereIn('warehouse_id', $warehouseIds))
+            ->sum('qte');
+
         $queries = array_intersect_key(
             $this->historyQueries($product, $warehouseIds, $recordUserId),
             array_flip($allowedTypes)
         );
-        if (! empty($validated['type'])) {
-            $queries = array_filter(
-                $queries,
-                fn ($key) => $key === $validated['type'],
-                ARRAY_FILTER_USE_KEY
-            );
-        }
 
         $historyUnion = $this->unionQueries(array_values($queries));
-        $history = DB::query()->fromSub($historyUnion, 'product_history');
+        $historyWithBalance = DB::query()
+            ->fromSub($historyUnion, 'balance_source')
+            ->select('balance_source.*')
+            ->selectRaw(
+                '? - SUM(stock_effect) OVER () + SUM(stock_effect) OVER (ORDER BY occurred_at, source_id, event_type ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS balance_quantity',
+                [$currentStock]
+            );
+        $history = DB::query()->fromSub($historyWithBalance, 'product_history');
+
+        if (! empty($validated['type'])) {
+            $history->where('event_type', $validated['type']);
+        }
 
         if (! empty($validated['search'])) {
             $search = $validated['search'];
@@ -97,13 +107,20 @@ class ProductHistoryController extends BaseController
         $totalRows = (clone $history)->count();
         $limit = (int) ($validated['limit'] ?? 25);
         $page = (int) ($validated['page'] ?? 1);
-        $rows = $history
+        $rawRows = $history
             ->orderByDesc('occurred_at')
             ->orderByDesc('source_id')
+            ->orderByDesc('event_type')
             ->offset(($page - 1) * $limit)
             ->limit($limit)
-            ->get()
-            ->map(fn ($row) => $this->formatRow($row, $canViewCost))
+            ->get();
+        $customerPhones = $this->customerPhonesForRows($rawRows);
+        $rows = $rawRows
+            ->map(fn ($row) => $this->formatRow(
+                $row,
+                $canViewCost,
+                $customerPhones[$row->event_type.':'.$row->source_id] ?? ''
+            ))
             ->values();
 
         $allQueries = array_intersect_key(
@@ -387,7 +404,58 @@ class ProductHistoryController extends BaseController
             ]));
     }
 
-    private function formatRow(object $row, bool $canViewCost): array
+    private function customerPhonesForRows($rows): array
+    {
+        $phones = [];
+        $idsFor = fn (string $type) => $rows
+            ->where('event_type', $type)
+            ->pluck('source_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+        $store = function (string $type, $query) use (&$phones): void {
+            $query->get()->each(function ($row) use (&$phones, $type) {
+                $phones[$type.':'.$row->source_id] = (string) ($row->party_phone ?? '');
+            });
+        };
+
+        if ($ids = $idsFor('sale')) {
+            $store('sale', DB::table('sales as h')
+                ->leftJoin('clients as party', 'party.id', '=', 'h.client_id')
+                ->whereIn('h.id', $ids)
+                ->select('h.id as source_id', 'party.phone as party_phone'));
+        }
+        if ($ids = $idsFor('sale_return')) {
+            $store('sale_return', DB::table('sale_returns as h')
+                ->leftJoin('clients as party', 'party.id', '=', 'h.client_id')
+                ->whereIn('h.id', $ids)
+                ->select('h.id as source_id', 'party.phone as party_phone'));
+        }
+        if ($ids = $idsFor('shipment')) {
+            $store('shipment', DB::table('shipments as h')
+                ->leftJoin('sales as sale', 'sale.id', '=', 'h.sale_id')
+                ->leftJoin('clients as party', 'party.id', '=', 'sale.client_id')
+                ->whereIn('h.id', $ids)
+                ->select('h.id as source_id', 'party.phone as party_phone'));
+        }
+        if ($ids = $idsFor('quotation')) {
+            $store('quotation', DB::table('quotations as h')
+                ->leftJoin('clients as party', 'party.id', '=', 'h.client_id')
+                ->whereIn('h.id', $ids)
+                ->select('h.id as source_id', 'party.phone as party_phone'));
+        }
+        if ($ids = $idsFor('service_job')) {
+            $store('service_job', DB::table('service_jobs as h')
+                ->leftJoin('clients as party', 'party.id', '=', 'h.client_id')
+                ->whereIn('h.id', $ids)
+                ->select('h.id as source_id', 'party.phone as party_phone'));
+        }
+
+        return $phones;
+    }
+
+    private function formatRow(object $row, bool $canViewCost, string $partyPhone = ''): array
     {
         $costBasedEvent = in_array($row->event_type, ['purchase', 'purchase_return', 'transfer'], true);
 
@@ -399,6 +467,7 @@ class ProductHistoryController extends BaseController
             'reference' => (string) ($row->reference ?? ''),
             'quantity' => $row->quantity === null ? null : (float) $row->quantity,
             'stock_effect' => (float) ($row->stock_effect ?? 0),
+            'balance_quantity' => (float) ($row->balance_quantity ?? 0),
             'unit_cost' => ! $canViewCost || $row->unit_cost === null ? null : (float) $row->unit_cost,
             'unit_price' => $row->unit_price === null ? null : (float) $row->unit_price,
             'total' => (! $canViewCost && $costBasedEvent) || $row->total === null ? null : (float) $row->total,
@@ -406,6 +475,7 @@ class ProductHistoryController extends BaseController
             'destination_warehouse_name' => (string) ($row->destination_warehouse_name ?? ''),
             'party_name' => (string) ($row->party_name ?? ''),
             'party_type' => (string) ($row->party_type ?? ''),
+            'party_phone' => $partyPhone,
             'performed_by' => (string) ($row->performed_by ?? ''),
             'status' => (string) ($row->status ?? ''),
             'notes' => (string) ($row->notes ?? ''),

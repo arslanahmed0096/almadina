@@ -168,10 +168,18 @@
             </div>
           </div>
 
+          <div :style="statCardStyle('#0891b2', '#ecfeff')" v-if="product.type == 'is_single' || product.type == 'is_combo'">
+            <div :style="statIconStyle('#0891b2')"><lucide-icon name="shopping-cart" /></div>
+            <div>
+              <div :style="statLabelStyle">Purchase Price</div>
+              <div :style="statValueStyle">{{ formatPriceWithSymbol(currentUser && currentUser.currency, product.purchase_price || 0, 2) }}</div>
+            </div>
+          </div>
+
           <div :style="statCardStyle('#10b981', '#ecfdf5')">
             <div :style="statIconStyle('#10b981')"><lucide-icon name="tag" /></div>
             <div>
-              <div :style="statLabelStyle">{{ $t('Price') }}</div>
+              <div :style="statLabelStyle">Al-Madina Price</div>
               <div :style="statValueStyle">{{ formatPriceWithSymbol(currentUser && currentUser.currency, product.price, 2) }}</div>
             </div>
           </div>
@@ -265,8 +273,12 @@
                     <span :style="infoKey">{{ $t('Cost') }}</span>
                     <span :style="infoValAccent('#4f46e5')">{{ formatPriceWithSymbol(currentUser && currentUser.currency, product.cost, 2) }}</span>
                   </div>
+                  <div :style="infoRow" v-if="product.type == 'is_single' || product.type == 'is_combo'">
+                    <span :style="infoKey">Purchase Price</span>
+                    <span :style="infoVal">{{ formatPriceWithSymbol(currentUser && currentUser.currency, product.purchase_price || 0, 2) }}</span>
+                  </div>
                   <div :style="infoRow" v-if="product.type != 'is_variant'">
-                    <span :style="infoKey">{{ $t('Price') }}</span>
+                    <span :style="infoKey">Al-Madina Price</span>
                     <span :style="infoValAccent('#10b981')">{{ formatPriceWithSymbol(currentUser && currentUser.currency, product.price, 2) }}</span>
                   </div>
                   <div :style="infoRow" v-if="product.type != 'is_variant'">
@@ -497,7 +509,8 @@
                   <th :style="thStyle">{{ $t('Variant_code') }}</th>
                   <th :style="thStyle">{{ $t('Variant_Name') }}</th>
                   <th :style="{ ...thStyle, textAlign: 'right' }">{{ $t('Variant_cost') }}</th>
-                  <th :style="{ ...thStyle, textAlign: 'right' }">{{ $t('Variant_price') }}</th>
+                  <th :style="{ ...thStyle, textAlign: 'right' }">Purchase Price</th>
+                  <th :style="{ ...thStyle, textAlign: 'right' }">Al-Madina Price</th>
                   <th :style="{ ...thStyle, textAlign: 'right' }">{{ $t('FixPrice') }}</th>
                   <th :style="{ ...thStyle, textAlign: 'right' }">{{ $t('Wholesale_Price') }}</th>
                   <th :style="{ ...thStyle, textAlign: 'right' }">{{ $t('Min_Selling_Price') }}</th>
@@ -508,6 +521,7 @@
                   <td :style="tdStyle"><code :style="codeStyle">{{ v.code }}</code></td>
                   <td :style="tdStyle">{{ v.name }}</td>
                   <td :style="{ ...tdStyle, textAlign: 'right', color: '#4f46e5' }">{{ formatPriceWithSymbol(currentUser && currentUser.currency, v.cost, 2) }}</td>
+                  <td :style="{ ...tdStyle, textAlign: 'right' }">{{ formatPriceWithSymbol(currentUser && currentUser.currency, v.purchase_price || 0, 2) }}</td>
                   <td :style="{ ...tdStyle, textAlign: 'right', color: '#10b981', fontWeight: '600' }">{{ formatPriceWithSymbol(currentUser && currentUser.currency, v.price, 2) }}</td>
                   <td :style="{ ...tdStyle, textAlign: 'right', color: '#7c3aed' }">{{ formatPriceWithSymbol(currentUser && currentUser.currency, v.fix_price, 2) }}</td>
                   <td :style="{ ...tdStyle, textAlign: 'right', color: '#f59e0b' }">{{ formatPriceWithSymbol(currentUser && currentUser.currency, v.wholesale, 2) }}</td>

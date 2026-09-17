@@ -179,6 +179,10 @@ class ProductsController extends BaseController
                 $item['fix_price'] = (float) $product->fix_price;
                 $item['wholesale_price'] = (float) $product->wholesale_price;
                 $item['min_price'] = (float) $product->min_price;
+                $purchasePricing = app(\App\Services\ProductMarginPricingService::class)
+                    ->effectivePurchasePrice($product);
+                $item['purchase_price'] = $purchasePricing['price'];
+                $item['pricing_margins'] = $product->pricing_margins ?: [];
             } else {
                 $item['fix_price'] = number_format((float) $product->fix_price, 2, '.', '');
             }
@@ -251,6 +255,9 @@ class ProductsController extends BaseController
                     ->get();
                 if ($isPricingRequest && $canViewPricing) {
                     $item['pricing_variants'] = $variants->map(function ($variant) {
+                        $purchasePricing = app(\App\Services\ProductMarginPricingService::class)
+                            ->effectivePurchasePrice($variant);
+
                         return [
                             'id' => $variant->id,
                             'name' => $variant->name,
@@ -262,6 +269,8 @@ class ProductsController extends BaseController
                             'price' => (float) $variant->price,
                             'wholesale_price' => (float) $variant->wholesale,
                             'min_price' => (float) $variant->min_price,
+                            'purchase_price' => $purchasePricing['price'],
+                            'pricing_margins' => $variant->pricing_margins ?: [],
                         ];
                     })->values();
                 }
@@ -514,6 +523,9 @@ class ProductsController extends BaseController
             'price' => (float) $product->price,
             'wholesale_price' => (float) $product->wholesale_price,
             'min_price' => (float) $product->min_price,
+            'purchase_price' => app(\App\Services\ProductMarginPricingService::class)
+                ->effectivePurchasePrice($product)['price'],
+            'pricing_margins' => $product->pricing_margins ?: [],
             'variants' => [],
         ];
 
@@ -533,6 +545,9 @@ class ProductsController extends BaseController
                     'price' => (float) $variant->price,
                     'wholesale_price' => (float) $variant->wholesale,
                     'min_price' => (float) $variant->min_price,
+                    'purchase_price' => app(\App\Services\ProductMarginPricingService::class)
+                        ->effectivePurchasePrice($variant)['price'],
+                    'pricing_margins' => $variant->pricing_margins ?: [],
                 ])
                 ->values()
                 ->all();
@@ -1659,6 +1674,34 @@ class ProductsController extends BaseController
                 }
 
                 $Product->image = $filename;
+                $pricingService = app(\App\Services\ProductMarginPricingService::class);
+                if ($request->has('pricing_margins') && $Product->type !== 'is_variant') {
+                    $Product->purchase_price = $pricingService->effectivePurchasePrice($Product)['price'];
+                    $rows = json_decode($request->input('pricing_margins'), true);
+                    if (! is_array($rows)) {
+                        throw ValidationException::withMessages(['pricing_margins' => 'Invalid margin rows.']);
+                    }
+                    app(\App\Services\ProductMarginPricingService::class)->apply($Product, $rows);
+                }
+                if ($Product->type === 'is_variant') {
+                    foreach ($request->input('variants', []) as $variantData) {
+                        if (empty($variantData['id']) || ! array_key_exists('pricing_margins', $variantData)) {
+                            continue;
+                        }
+                        $storedVariant = ProductVariant::where('product_id', $Product->id)->find($variantData['id']);
+                        if ($storedVariant) {
+                            $storedVariant->purchase_price = $pricingService->effectivePurchasePrice($storedVariant)['price'];
+                        }
+                        $rows = json_decode($variantData['pricing_margins'], true);
+                        if (! is_array($rows)) {
+                            throw ValidationException::withMessages(['pricing_margins' => 'Invalid variant margin rows.']);
+                        }
+                        if ($storedVariant) {
+                            app(\App\Services\ProductMarginPricingService::class)->apply($storedVariant, $rows);
+                            $storedVariant->save();
+                        }
+                    }
+                }
                 $Product->save();
 
                 $this->syncProductMultiCategories($request, $Product);
@@ -1903,6 +1946,10 @@ class ProductsController extends BaseController
         $item['brand'] = $Product['brand'] ? $Product['brand']->name : 'N/D';
         $item['price'] = $Product->price;
         $item['company_rb_price'] = $Product->company_rb_price;
+        $purchasePricing = app(\App\Services\ProductMarginPricingService::class)->effectivePurchasePrice($Product);
+        $item['purchase_price'] = $purchasePricing['price'];
+        $item['purchase_price_source'] = $purchasePricing['source'];
+        $item['pricing_margins'] = $Product->pricing_margins ?: [];
         $item['mrp_price'] = $Product->mrp_price;
         $item['fix_price'] = $Product->fix_price;
         $item['wholesale_price'] = $Product->wholesale_price;
@@ -2800,6 +2847,10 @@ class ProductsController extends BaseController
         $item['discount'] = $Product->discount;
         $item['price'] = $Product->price;
         $item['wholesale_price'] = $Product->wholesale_price;
+        $purchasePricing = app(\App\Services\ProductMarginPricingService::class)->effectivePurchasePrice($Product);
+        $item['purchase_price'] = $purchasePricing['price'];
+        $item['purchase_price_source'] = $purchasePricing['source'];
+        $item['pricing_margins'] = $Product->pricing_margins ?: [];
         $item['min_price'] = $Product->min_price;
         $item['cost'] = $Product->cost;
         $item['stock_alert'] = $Product->stock_alert;
@@ -2827,6 +2878,11 @@ class ProductsController extends BaseController
                 $variant_item['code'] = $variant->code;
                 $variant_item['price'] = $variant->price;
                 $variant_item['cost'] = $variant->cost;
+                $variantPurchasePricing = app(\App\Services\ProductMarginPricingService::class)
+                    ->effectivePurchasePrice($variant);
+                $variant_item['purchase_price'] = $variantPurchasePricing['price'];
+                $variant_item['purchase_price_source'] = $variantPurchasePricing['source'];
+                $variant_item['pricing_margins'] = $variant->pricing_margins ?: [];
                 $variant_item['company_rb_price'] = $variant->company_rb_price ?? 0;
                 $variant_item['mrp_price'] = $variant->mrp_price ?? 0;
                 $variant_item['fix_price'] = $variant->fix_price ?? $variant->price;

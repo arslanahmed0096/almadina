@@ -7,6 +7,7 @@ use App\Services\BatchService;
 use App\Services\CustomerCreditService;
 use App\Services\PaymentAccountService;
 use App\Services\SaleReturnEligibilityService;
+use App\Services\WarehouseStockGuard;
 use App\Models\Account;
 use App\Models\Client;
 use App\Models\EmailMessage;
@@ -251,6 +252,12 @@ class SalesController extends BaseController
         $sale = \DB::transaction(function () use ($request, $transactionType, $creditService) {
             $helpers = new helpers;
             $clientForCredit = Client::whereKey($request->client_id)->lockForUpdate()->firstOrFail();
+            if ($transactionType === 'sale' && $request->input('statut') === 'completed') {
+                app(WarehouseStockGuard::class)->assertSaleAvailable(
+                    (int) $request->warehouse_id,
+                    $request->input('details', [])
+                );
+            }
             $grandTotal = round((float) $request->GrandTotal, 2);
             $requestedPayment = round(max(0, (float) $request->input('payment.amount', $request->amount)), 2);
             $paymentStatus = $request->input('payment.status', 'pending');
@@ -817,6 +824,15 @@ class SalesController extends BaseController
                         $SaleDetail = SaleDetail::findOrFail($value->id);
                         $SaleDetail->delete();
                     }
+                }
+
+                // Old completed quantities have now been restored. Validate and lock
+                // the new warehouse quantities before applying the edited sale.
+                if ($request['statut'] == 'completed') {
+                    app(WarehouseStockGuard::class)->assertSaleAvailable(
+                        (int) $request->warehouse_id,
+                        $new_sale_details
+                    );
                 }
 
                 // Update Data with New request
@@ -2013,6 +2029,13 @@ class SalesController extends BaseController
         }
 
         DB::transaction(function () use ($request, $data) {
+            if (($request->statut ?? 'completed') === 'completed') {
+                app(WarehouseStockGuard::class)->assertSaleAvailable(
+                    (int) $request->warehouse_id,
+                    $data
+                );
+            }
+
             $order = new Sale;
             $order->is_pos = 0;
             $order->date = $request->date;

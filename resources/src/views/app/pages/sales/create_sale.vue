@@ -278,7 +278,7 @@
                               <v-select
                                 class="ml-2"
                                 :options="[
-                                  {label: $t('Retail Price'), value: 'retail'},
+                                  {label: $t('Al-Madina Price'), value: 'retail'},
                                   {label: $t('Wholesale Price'), value: 'wholesale'}
                                 ]"
                                 :reduce="opt => opt.value"
@@ -1026,7 +1026,7 @@
                     v-model="detail.price_type"
                     @input="val => onChangeDetailPriceType(val)"
                     :options="[
-                      {label: $t('Retail Price'), value: 'retail'},
+                      {label: $t('Al-Madina Price'), value: 'retail'},
                       {label: $t('Wholesale Price'), value: 'wholesale'}
                     ]"
                   />
@@ -1535,10 +1535,10 @@ export default {
       return "";
     },
 
-    // Overselling Control: when ON, all stock checks on this page are bypassed
-    // (matches POS behavior). Default OFF preserves the strict check.
+    // Warehouse stock is mandatory for completed sales. Historical settings
+    // cannot bypass the server-side no-negative-stock policy.
     isOversellingAllowed() {
-      return !!(this.pos_settings && this.pos_settings.allow_overselling);
+      return false;
     },
 
     // Orders may contain unavailable products because inventory is only

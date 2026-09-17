@@ -8,7 +8,7 @@
           <div class="hero-icon mr-3"><lucide-icon name="pencil" /></div>
           <div>
             <h3 class="mb-1">Import Products (Update Only)</h3>
-            <div class="text-muted small">Update cost and retail price for existing products via CSV import.</div>
+            <div class="text-muted small">Update cost and Al-Madina price for existing products via CSV import.</div>
           </div>
         </div>
         <router-link :to="{ name: 'index_products' }" class="btn btn-outline-secondary btn-sm mt-3 mt-sm-0">

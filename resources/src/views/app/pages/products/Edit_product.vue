@@ -683,8 +683,9 @@
                         <th>Company RB Price</th>
                         <th>MRP Price</th>
                         <th>Product Cost</th>
-                        <th>Fix Price</th>
-                        <th>Retail Price (Almadina Price)</th>
+                        <th>Regular Price</th>
+                        <th>Purchase Price</th>
+                        <th>Al-Madina Price</th>
                         <th>Whole Sale Price</th>
                         <th>Minimum Price</th>
                         <th class="text-center" style="width: 50px;"></th>
@@ -698,6 +699,7 @@
                         <td><b-form-input v-model="variant.mrp_price" type="text" size="sm"></b-form-input></td>
                         <td><b-form-input v-model="variant.cost" type="text" size="sm"></b-form-input></td>
                         <td><b-form-input v-model="variant.fix_price" type="text" size="sm"></b-form-input></td>
+                        <td><b-form-input :value="variant.purchase_price || 0" size="sm" readonly></b-form-input></td>
                         <td><b-form-input v-model="variant.price" type="text" size="sm"></b-form-input></td>
                         <td><b-form-input v-model="variant.wholesale" type="text" size="sm"></b-form-input></td>
                         <td><b-form-input v-model="variant.min_price" type="text" size="sm"></b-form-input></td>
@@ -721,7 +723,6 @@
                 </div>
               </b-card>
             </div>
-
             <!-- ========== SECTION 4: PRICING & TAX ========== -->
             <div class="form-section" id="section-pricing">
               <div class="section-header">
@@ -787,6 +788,14 @@
                     </validation-provider>
                   </b-col>
 
+                  <b-col cols="12" v-if="product.type == 'is_single' || product.type == 'is_combo'">
+                    <b-form-group label="Purchase Price (product line Grand Total ÷ quantity)">
+                      <b-form-input :value="product.purchase_price || 0" readonly />
+                    </b-form-group>
+                    <p class="text-muted small" v-if="product.purchase_price_source === 'invoice'">From the latest received purchase invoice.</p>
+                    <p class="text-warning small" v-else-if="product.purchase_price_source === 'cost'">No received purchase invoice found; using Product Cost.</p>
+                  </b-col>
+
                   <b-col cols="12" v-if="product.type != 'is_variant'">
                     <div class="pricing-subsection-title pricing-subsection-title--sale">
                       <lucide-icon name="dollar-sign" />
@@ -795,8 +804,8 @@
                   </b-col>
 
                   <b-col md="6" class="mb-2" v-if="product.type != 'is_variant'">
-                    <validation-provider name="Fix Price" :rules="{ regex: /^\d*\.?\d*$/ }" v-slot="validationContext">
-                      <b-form-group label="Fix Price">
+                    <validation-provider name="Regular Price" :rules="{ regex: /^\d*\.?\d*$/ }" v-slot="validationContext">
+                      <b-form-group label="Regular Price">
                         <b-form-input
                           v-model="product.fix_price"
                           :state="getValidationState(validationContext)"
@@ -820,7 +829,7 @@
                       :rules="{ required: true , regex: /^\d*\.?\d*$/}"
                       v-slot="validationContext"
                     >
-                      <b-form-group label="Retail Price (Almadina Price) *">
+                      <b-form-group label="Al-Madina Price *">
                         <b-form-input
                           :state="getValidationState(validationContext)"
                           aria-describedby="ProductPrice-feedback"
@@ -1475,7 +1484,7 @@
                   <span class="summary-row__value">{{ currentUser.currency }} {{ product.cost || '0.00' }}</span>
                 </div>
                 <div class="summary-row" v-if="product.type != 'is_variant'">
-                  <span class="summary-row__label">{{ $t('Retail Price') }}</span>
+                  <span class="summary-row__label">{{ $t('Al-Madina Price') }}</span>
                   <span class="summary-row__value summary-row__value--strong">{{ currentUser.currency }} {{ product.price || '0.00' }}</span>
                 </div>
                 <div class="summary-row">
@@ -1576,6 +1585,8 @@ export default {
         company_rb_price: "",
         mrp_price: "",
         price: "",
+        purchase_price: null,
+        pricing_margins: [],
         fix_price: "",
         wholesale_price: "",
         min_price: "",
@@ -1674,10 +1685,95 @@ export default {
         this.syncLegacyCategoryFields();
       },
       deep: true
+    },
+    "product.pricing_margins": {
+      handler() {
+        this.refreshMarginPrices();
+      },
+      deep: true
     }
   },
 
   methods: {
+    marginTierName(index) {
+      return ['Minimum Price', 'Wholesale Price', 'Al-Madina Price'][index] || `Custom Price ${index + 1}`;
+    },
+    refreshMarginPrices() {
+      const fields = ['min_price', 'wholesale_price', 'price'];
+      (this.product.pricing_margins || []).forEach((row, index) => {
+        if (index >= fields.length || row.value === '') return;
+        const calculated = Number(this.marginPrice(row));
+        if (Number.isFinite(calculated)) {
+          const value = String(Math.round(calculated));
+          if (String(this.product[fields[index]]) !== value) this.$set(this.product, fields[index], value);
+        }
+      });
+    },
+    marginProfit(row, purchasePrice = this.product.purchase_price) {
+      const base = Number(purchasePrice);
+      const amount = Number(row.value);
+      if (!Number.isFinite(base) || !Number.isFinite(amount) || row.value === '') return '';
+      return Math.round(row.type === 'percentage' ? base * amount / 100 : amount);
+    },
+    marginPrice(row, purchasePrice = this.product.purchase_price) {
+      const base = Number(purchasePrice);
+      const profit = Number(this.marginProfit(row, purchasePrice));
+      if (!Number.isFinite(base) || !Number.isFinite(profit) || row.value === '') return '';
+      return Math.round(base + profit);
+    },
+    validateMarginRows() {
+      const rows = this.product.pricing_margins || [];
+      if (!rows.length) return true;
+      if (!(Number(this.product.purchase_price) > 0)) {
+        this.makeToast('danger', 'Purchase Price is required before applying margins.', this.$t('Failed'));
+        return false;
+      }
+      let lastPrice = null;
+      const fields = ['min_price', 'wholesale_price', 'price'];
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const value = Number(row.value);
+        const price = Number(this.marginPrice(row));
+        if (!['percentage', 'fixed'].includes(row.type) || row.value === '' || !Number.isFinite(value) || value < 0) {
+          this.makeToast('danger', 'Enter a non-negative margin in each row.', this.$t('Failed'));
+          return false;
+        }
+        if (lastPrice !== null && price <= lastPrice) {
+          this.makeToast('danger', 'Each next margin price must be higher than the preceding price.', this.$t('Failed'));
+          return false;
+        }
+        if (i < fields.length) this.product[fields[i]] = String(Math.round(price));
+        lastPrice = price;
+      }
+      return true;
+    },
+    validateVariantMarginRows() {
+      for (const variant of this.variants) {
+        let previous = null;
+        const rows = variant.pricing_margins || [];
+        if (rows.length && !(Number(variant.purchase_price) > 0)) {
+          this.makeToast('danger', 'Purchase Price is required before applying variant margins.', this.$t('Failed'));
+          return false;
+        }
+        for (let index = 0; index < rows.length; index++) {
+          const row = rows[index];
+          const value = Number(row.value);
+          const price = Number(this.marginPrice(row, variant.purchase_price));
+          if (!['percentage', 'fixed'].includes(row.type) || row.value === '' || !Number.isFinite(value) || value < 0) {
+            this.makeToast('danger', 'Enter a non-negative variant margin.', this.$t('Failed'));
+            return false;
+          }
+          if (previous !== null && price <= previous) {
+            this.makeToast('danger', 'Each next variant margin price must be higher.', this.$t('Failed'));
+            return false;
+          }
+          const field = ['min_price', 'wholesale', 'price'][index];
+          if (field) variant[field] = String(Math.round(price));
+          previous = price;
+        }
+      }
+      return true;
+    },
 
       //------------------------------Formetted Numbers -------------------------\\
       formatNumber(number, dec) {
@@ -2006,6 +2102,8 @@ export default {
               company_rb_price: "",
               mrp_price: "",
               cost: "",
+              purchase_price: null,
+              pricing_margins: [],
               fix_price: "",
               price: "",
               wholesale: "",
@@ -2042,7 +2140,11 @@ export default {
         .get(`products/${id}/edit`)
         .then(response => {
           this.product = response.data.product;
+          if (!Array.isArray(this.product.pricing_margins)) this.$set(this.product, 'pricing_margins', []);
           this.variants = response.data.product.ProductVariant;
+          (this.variants || []).forEach(variant => {
+            if (!Array.isArray(variant.pricing_margins)) this.$set(variant, 'pricing_margins', []);
+          });
           this.warehouses = response.data.warehouses || [];
           this.warehouse_locations = response.data.warehouse_locations || [];
 
@@ -2128,6 +2230,8 @@ export default {
 
     //------------------------------ Update Product ------------------------------\\
     Update_Product() {
+      if (!this.validateMarginRows()) return;
+      if (!this.validateVariantMarginRows()) return;
       
       NProgress.start();
       NProgress.set(0.1);
@@ -2146,11 +2250,14 @@ export default {
       const {
         assigned_category_ids,
         assigned_subcategory_ids,
+        pricing_margins,
+        purchase_price,
         ...prodRest
       } = self.product;
       Object.entries(prodRest).forEach(([key, value]) => {
         self.data.append(key, value);
       });
+      self.data.append("pricing_margins", JSON.stringify(pricing_margins || []));
       self.data.append("multi_category_ids", JSON.stringify(assigned_category_ids || []));
       self.data.append("multi_subcategory_ids", JSON.stringify(assigned_subcategory_ids || []));
 
@@ -2163,8 +2270,10 @@ export default {
       if (self.variants.length) {
           for (var i = 0; i < self.variants.length; i++) {
           Object.entries(self.variants[i]).forEach(([key, value]) => {
+              if (key === 'purchase_price' || key === 'pricing_margins') return;
               self.data.append("variants[" + i + "][" + key + "]", value);
           });
+          if (self.variants[i].id) self.data.append("variants[" + i + "][pricing_margins]", JSON.stringify(self.variants[i].pricing_margins || []));
           }
       }
 

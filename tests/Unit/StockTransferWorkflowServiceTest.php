@@ -81,6 +81,22 @@ class StockTransferWorkflowServiceTest extends TestCase
         ]], 'Review complete.');
     }
 
+    public function test_direct_transfer_cannot_dispatch_when_source_stock_is_zero(): void
+    {
+        [$transfer, , $sourceUser] = $this->seedRequest(1, 0);
+        DB::table('designations')->insert(['id' => 1, 'designation' => 'Driver']);
+        DB::table('employees')->insert(['id' => 1, 'firstname' => 'Ali', 'lastname' => 'Driver', 'designation_id' => 1]);
+        $transfer->update(['workflow_status' => Transfer::WORKFLOW_DRAFT, 'approval_status' => 'approved']);
+
+        try {
+            app(StockTransferWorkflowService::class)->dispatchOutbound($transfer->fresh(), $sourceUser, 1);
+            $this->fail('A transfer with zero source-warehouse stock should be rejected.');
+        } catch (ValidationException $exception) {
+            $this->assertStringContainsString('Insufficient transferable stock', collect($exception->errors())->flatten()->first());
+            $this->assertSame(0.0, (float) DB::table('product_warehouse')->where('warehouse_id', 1)->value('qte'));
+        }
+    }
+
     public function test_partial_or_declined_item_requires_a_reason(): void
     {
         [$transfer, $detail, $approver] = $this->seedRequest(6, 10);

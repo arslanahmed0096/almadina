@@ -386,12 +386,12 @@
               <h6><lucide-icon name="dollar-sign" /> Sale Pricing</h6>
               <b-row>
                 <b-col md="6" lg="3">
-                  <b-form-group label="Fix Price">
+                  <b-form-group label="Regular Price">
                     <b-form-input v-model.number="pricingForm.fix_price" type="number" min="0" step="0.01" required />
                   </b-form-group>
                 </b-col>
                 <b-col md="6" lg="3">
-                  <b-form-group label="Retail Price (Almadina Price)">
+                  <b-form-group label="Al-Madina Price">
                     <b-form-input v-model.number="pricingForm.price" type="number" min="0" step="0.01" required />
                   </b-form-group>
                 </b-col>
@@ -417,7 +417,7 @@
                   <th>Company RB</th>
                   <th>MRP</th>
                   <th>Product Cost</th>
-                  <th>Fix Price</th>
+                  <th>Regular Price</th>
                   <th>Retail (Almadina)</th>
                   <th>Whole Sale</th>
                   <th>Minimum</th>
@@ -664,7 +664,7 @@ export default {
         columns.push({ label: this.$t("Cost"), field: "cost", tdClass: "text-left pre", thClass: "text-left" });
       }
       columns.push(
-        { label: this.$t("Price"), field: "price", tdClass: "text-left pre", thClass: "text-left" },
+        { label: "Al-Madina Price", field: "price", tdClass: "text-left pre", thClass: "text-left" },
         { label: this.$t("FixPrice"), field: "fix_price", tdClass: "text-left pre", thClass: "text-left" },
         { label: this.$t("Unit"), field: "unit", tdClass: "text-left", thClass: "text-left" },
         { label: this.$t("Quantity"), field: "quantity", tdClass: "text-left", thClass: "text-left" },
@@ -684,7 +684,7 @@ export default {
         columns.push({ label: this.$t("Cost"), field: "cost" });
       }
       columns.push(
-        { label: this.$t("Price"), field: "price" },
+        { label: "Al-Madina Price", field: "price" },
         { label: this.$t("FixPrice"), field: "fix_price" },
         { label: this.$t("Unit"), field: "unit" },
         { label: this.$t("Quantity"), field: "quantity" },
@@ -747,29 +747,10 @@ export default {
     },
 
     openPricingLevel(row) {
-      this.pricingLoading = true;
-      this.pricingSubmitting = false;
-      this.pricingForm = this.normalizePricing({
-        id: row.id,
-        name: row.name,
-        code: row.code,
-        type: row.product_type,
-        variants: []
+      this.$router.push({
+        name: "pricing_levels_create",
+        query: { product: row.id }
       });
-      this.$bvModal.show("PricingLevelModal");
-
-      axios.get(`products/${row.id}/pricing-level`)
-        .then(response => {
-          this.pricingForm = this.normalizePricing(response.data.pricing);
-        })
-        .catch(error => {
-          this.$bvModal.hide("PricingLevelModal");
-          const message = error.response?.data?.message || "Unable to load product pricing.";
-          this.makeToast("danger", message, this.$t("Failed"));
-        })
-        .finally(() => {
-          this.pricingLoading = false;
-        });
     },
 
     submitPricingLevel() {

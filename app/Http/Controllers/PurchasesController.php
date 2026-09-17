@@ -453,6 +453,7 @@ class PurchasesController extends BaseController
                 }
             }
             PurchaseDetail::insert($orderDetails);
+            app(\App\Services\ProductMarginPricingService::class)->syncPurchase($order);
             if ($purchaseOrder) {
                 app(\App\Services\Procurement\PurchaseOrderProgressService::class)
                     ->refreshStatus($purchaseOrder->fresh());
@@ -930,6 +931,7 @@ class PurchasesController extends BaseController
                     'GrandTotal' => $request['GrandTotal'],
                     'payment_statut' => $payment_statut,
                 ]);
+                app(\App\Services\ProductMarginPricingService::class)->syncPurchase($current_Purchase);
 
                 // Pharmacy: re-apply batches to the now-persisted PurchaseDetail rows.
                 if ($batchService->isSupported() && $current_Purchase->statut == 'received') {
@@ -1035,6 +1037,7 @@ class PurchasesController extends BaseController
                 'GrandTotal' => $grandTotal,
                 'payment_statut' => $paymentStatus,
             ]);
+            app(\App\Services\ProductMarginPricingService::class)->syncPurchase($purchase);
 
             app(\App\Services\Tax\TransactionTaxService::class)
                 ->snapshotPurchase($purchase->fresh(), array_values($request->input('details', [])), $request->user('api'));

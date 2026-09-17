@@ -1713,9 +1713,8 @@ class ClientController extends BaseController
 
         // ---------------- PDF ----------------
         $settings = Setting::where('deleted_at', '=', null)->first();
-        $html = view('pdf.customer_ledger', compact(
-            'client', 'sales', 'payments', 'quotations', 'returns', 'settings'
-        ))->render();
+        $statement = app(\App\Services\CustomerLedgerPdfService::class)->build($client);
+        $html = view('pdf.customer_ledger_detail', compact('client', 'settings', 'statement'))->render();
 
         $arabic = new Arabic;
         $p = $arabic->arIdentify($html);
@@ -1724,7 +1723,7 @@ class ClientController extends BaseController
             $html = substr_replace($html, $utf8ar, $p[$i - 1], $p[$i] - $p[$i - 1]);
         }
 
-        $pdf = \PDF::loadHTML($html, 'UTF-8')->setPaper('a4', 'portrait');
+        $pdf = \PDF::loadHTML($html, 'UTF-8')->setPaper('a4', 'landscape');
 
         return $pdf->download("customer_ledger_{$client->id}.pdf");
     }

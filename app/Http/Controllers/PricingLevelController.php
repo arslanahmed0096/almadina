@@ -6,6 +6,7 @@ use App\Models\PricingLevel;
 use App\Models\PricingLevelDetail;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Services\ProductMarginPricingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -167,6 +168,11 @@ class PricingLevelController extends Controller
                     foreach (self::PRICE_FIELDS as $field) {
                         $row[$field] = (float) $detail->{$field};
                     }
+                    $row['purchase_price'] = $detail->purchase_price !== null
+                        ? (float) $detail->purchase_price
+                        : (float) ($variant?->purchase_price ?? 0);
+                    $row['pricing_margins'] = $detail->pricing_margins
+                        ?? ($variant?->pricing_margins ?: []);
 
                     return $row;
                 })->values()->all();
@@ -174,6 +180,11 @@ class PricingLevelController extends Controller
                 foreach (self::PRICE_FIELDS as $field) {
                     $payload[$field] = (float) $first->{$field};
                 }
+                $payload['purchase_price'] = $first->purchase_price !== null
+                    ? (float) $first->purchase_price
+                    : (float) ($product->purchase_price ?? 0);
+                $payload['pricing_margins'] = $first->pricing_margins
+                    ?? ($product->pricing_margins ?: []);
             }
 
             return $payload;
@@ -253,6 +264,10 @@ class PricingLevelController extends Controller
             'details' => ['required', 'array', 'min:1'],
             'details.*.product_id' => ['required', 'integer', 'exists:products,id'],
             'details.*.product_variant_id' => ['nullable', 'integer', 'exists:product_variants,id'],
+            'details.*.pricing_margins' => ['nullable', 'array'],
+            'details.*.pricing_margins.*.type' => ['required', 'in:percentage,fixed'],
+            'details.*.pricing_margins.*.value' => ['required', 'numeric', 'min:0'],
+            'details.*.pricing_margins.*.label' => ['nullable', 'string', 'max:100'],
         ];
         foreach (self::PRICE_FIELDS as $field) {
             $rules["details.*.{$field}"] = ['required', 'numeric', 'min:0'];
@@ -315,6 +330,13 @@ class PricingLevelController extends Controller
             foreach (self::PRICE_FIELDS as $field) {
                 $row[$field] = (float) $detail[$field];
             }
+            $row['pricing_margins'] = array_key_exists('pricing_margins', $detail)
+                ? collect($detail['pricing_margins'] ?? [])->map(fn ($margin) => [
+                    'type' => $margin['type'],
+                    'value' => (float) $margin['value'],
+                    'label' => trim((string) ($margin['label'] ?? '')),
+                ])->values()->all()
+                : null;
             $prepared[] = $row;
         }
 
@@ -323,10 +345,15 @@ class PricingLevelController extends Controller
 
     private function applyAndStoreDetails(PricingLevel $entry, array $details): void
     {
+        $pricingService = app(ProductMarginPricingService::class);
+
         foreach ($details as $detail) {
             $prices = collect($detail)->only(self::PRICE_FIELDS)->all();
             if ($detail['product_variant_id']) {
-                ProductVariant::where('id', $detail['product_variant_id'])->update([
+                $model = ProductVariant::where('product_id', $detail['product_id'])
+                    ->whereNull('deleted_at')
+                    ->findOrFail($detail['product_variant_id']);
+                $model->fill([
                     'company_rb_price' => $prices['company_rb_price'],
                     'mrp_price' => $prices['mrp_price'],
                     'cost' => $prices['cost'],
@@ -336,12 +363,31 @@ class PricingLevelController extends Controller
                     'min_price' => $prices['min_price'],
                 ]);
             } else {
-                Product::where('id', $detail['product_id'])->update($prices);
+                $model = Product::whereNull('deleted_at')->findOrFail($detail['product_id']);
+                $model->fill($prices);
             }
 
-            PricingLevelDetail::create(array_merge($detail, [
+            $model->purchase_price = $pricingService->effectivePurchasePrice($model)['price'];
+            $margins = $detail['pricing_margins'] ?? ($model->pricing_margins ?: []);
+            $pricingService->apply($model, $margins);
+            $model->save();
+
+            PricingLevelDetail::create([
                 'pricing_level_id' => $entry->id,
-            ]));
+                'product_id' => $detail['product_id'],
+                'product_variant_id' => $detail['product_variant_id'],
+                'company_rb_price' => $model->company_rb_price,
+                'mrp_price' => $model->mrp_price,
+                'cost' => $model->cost,
+                'purchase_price' => $model->purchase_price,
+                'pricing_margins' => $model->pricing_margins,
+                'fix_price' => $model->fix_price,
+                'price' => $model->price,
+                'wholesale_price' => $model instanceof ProductVariant
+                    ? $model->wholesale
+                    : $model->wholesale_price,
+                'min_price' => $model->min_price,
+            ]);
         }
     }
 

@@ -122,6 +122,12 @@
 
             <div v-if="sales.loading" class="text-center p-3"><b-spinner /></div>
             <b-table v-else :items="sales.items" :fields="salesFields" striped hover responsive small head-variant="light" class="table-modern">
+              <template #cell(Ref)="{ item }">
+                <router-link v-if="item.id && item.Ref" :to="{ name: 'detail_sale', params: { id: item.id } }">
+                  {{ item.Ref }}
+                </router-link>
+                <span v-else>{{ item.Ref || '-' }}</span>
+              </template>
               <template #cell(items)="{ item }">
                 <div v-if="item.items && item.items.length" class="sale-items">
                   <div v-for="line in item.items" :key="line.sale_detail_id" class="sale-item-line">

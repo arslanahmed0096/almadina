@@ -135,7 +135,11 @@
             </div>
           </template>
           <template #cell(party_name)="{ item }">
-            <div v-if="item.party_name"><strong>{{ item.party_name }}</strong><div class="small text-muted text-capitalize">{{ item.party_type }}</div></div>
+            <div v-if="item.party_name">
+              <strong>{{ item.party_name }}</strong>
+              <div class="small text-muted text-capitalize">{{ item.party_type }}</div>
+              <div v-if="item.party_phone" class="small customer-phone">{{ item.party_phone }}</div>
+            </div>
             <span v-else class="text-muted">-</span>
           </template>
           <template #cell(warehouse_name)="{ item }">
@@ -157,6 +161,9 @@
             <div v-if="item.unit_cost !== null && item.event_type !== 'pricing'" class="small text-muted">Cost: {{ money(item.unit_cost) }}</div>
             <div v-if="item.unit_price !== null && item.event_type !== 'pricing'" class="small text-muted">Price: {{ money(item.unit_price) }}</div>
             <span v-if="item.total === null && item.unit_cost === null && item.unit_price === null" class="text-muted">-</span>
+          </template>
+          <template #cell(balance_quantity)="{ item }">
+            <strong>{{ number(item.balance_quantity) }} {{ product.unit }}</strong>
           </template>
           <template #cell(status)="{ item }"><b-badge :variant="statusBadge(item.status)">{{ item.status || '-' }}</b-badge></template>
           <template #cell(performed_by)="{ item }">{{ item.performed_by || '-' }}</template>
@@ -213,6 +220,7 @@ export default {
         { key: 'quantity', label: 'Quantity', class: 'text-right' },
         { key: 'stock_effect', label: 'Stock Effect', class: 'text-right' },
         { key: 'value', label: 'Value', class: 'text-right' },
+        { key: 'balance_quantity', label: 'Balance Quantity', class: 'text-right' },
         { key: 'status', label: 'Status' },
         { key: 'performed_by', label: 'Recorded By' }
       ]
@@ -327,6 +335,7 @@ export default {
 .event-badge { white-space: normal; line-height: 1.35; }
 .pricing-detail { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 5px; max-width: 380px; }
 .pricing-detail span { background: #f1f3f7; border-radius: 4px; padding: 2px 5px; font-size: 11px; white-space: nowrap; }
+.customer-phone { color: #5f3dc4; white-space: nowrap; }
 ::v-deep .history-table th { white-space: nowrap; background: #f8f9fb; color: #444b58; }
 ::v-deep .history-table td { vertical-align: top; }
 ::v-deep .product-history-btn { gap: 3px; }
