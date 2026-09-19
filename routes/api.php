@@ -66,11 +66,29 @@ Route::get('/get-logo-setting', function () {
 });
 
 Route::get('/translations/{locale}', function ($locale) {
-    $translations = \DB::table('translations')
-        ->where('locale', $locale)
-        ->pluck('value', 'key');
+    abort_unless(preg_match('/\A[A-Za-z_]+\z/', $locale), 404);
 
-    return response()->json($translations);
+    try {
+        $translations = \DB::table('translations')
+            ->where('locale', $locale)
+            ->pluck('value', 'key');
+
+        if ($translations->isNotEmpty()) {
+            return response()->json($translations);
+        }
+    } catch (\Throwable $exception) {
+        \Log::warning('Database translations are unavailable; using bundled translations.', [
+            'locale' => $locale,
+            'exception' => $exception->getMessage(),
+        ]);
+    }
+
+    $translationFile = database_path("seeders/translations/{$locale}.php");
+    if (! is_file($translationFile)) {
+        $translationFile = database_path('seeders/translations/en.php');
+    }
+
+    return response()->json(require $translationFile);
 });
 
 Route::get('/languages', 'LanguageController@load_language');
@@ -421,6 +439,22 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
     // ----------------------------------------------------------------\\
 
     Route::resource('payroll', 'hrm\PayrollController');
+    Route::prefix('payroll-management')->group(function () {
+        Route::get('meta', 'hrm\PayrollManagementController@meta');
+        Route::get('salaries', 'hrm\PayrollManagementController@salaries');
+        Route::post('salaries', 'hrm\PayrollManagementController@storeSalary');
+        Route::get('commission-rules', 'hrm\PayrollManagementController@commissionRules');
+        Route::post('commission-rules/impact', 'hrm\PayrollManagementController@commissionImpact');
+        Route::post('commission-rules', 'hrm\PayrollManagementController@saveCommissionRules');
+        Route::get('commission-ledger', 'hrm\PayrollManagementController@ledger');
+        Route::get('periods', 'hrm\PayrollManagementController@periods');
+        Route::post('preview', 'hrm\PayrollManagementController@preview');
+        Route::post('periods', 'hrm\PayrollManagementController@generate');
+        Route::post('periods/{period}/approve', 'hrm\PayrollManagementController@approve');
+        Route::get('items/{item}', 'hrm\PayrollManagementController@detail');
+        Route::post('items/{item}/pay', 'hrm\PayrollManagementController@pay');
+        Route::get('items/{item}/payslip', 'hrm\PayrollManagementController@payslip');
+    });
 
     // ------------------------------- core --------------------------\\
     // --------------------------------------------------------------------\\
@@ -792,10 +826,10 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
     Route::post('payment_sale_send_sms', 'PaymentSalesController@Send_SMS');
 
     // ------------------------------- Commission Program --------------------------\\
-    Route::resource('commission_programs', 'Commission\CommissionProgramController');
+    // Legacy commission-group creation is disabled. Payroll uses one effective-dated role matrix.
     Route::resource('sales_agents', 'Commission\SalesAgentController');
     Route::get('sales_agents_list_for_select', 'Commission\SalesAgentController@listForSelect');
-    Route::resource('commission_rules', 'Commission\CommissionRuleController');
+    // Legacy commission-rule CRUD is intentionally disabled.
     Route::get('commission_receipts', 'Commission\CommissionReceiptController@index');
     Route::post('commission_receipts', 'Commission\CommissionReceiptController@store');
     Route::get('commission_receipts/new_ref', 'Commission\CommissionReceiptController@getNewRef');

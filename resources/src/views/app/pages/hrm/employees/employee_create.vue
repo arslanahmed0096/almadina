@@ -141,6 +141,25 @@
                   </validation-provider>
                 </b-col>
 
+                <!-- Warehouse -->
+                <b-col md="6" class="mb-2">
+                  <validation-provider name="Warehouse" :rules="{ required: true}">
+                    <b-form-group slot-scope="{ valid, errors }" :label="$t('Warehouse') + ' ' + '*'">
+                      <v-select
+                        :class="{'is-invalid': !!errors.length}"
+                        :state="errors[0] ? false : (valid ? true : null)"
+                        v-model="employee.warehouse_id"
+                        class="required"
+                        required
+                        :placeholder="$t('Choose_Warehouse')"
+                        :reduce="label => label.value"
+                        :options="warehouses.map(warehouse => ({label: warehouse.name, value: warehouse.id}))"
+                      />
+                      <b-form-invalid-feedback>{{ errors[0] }}</b-form-invalid-feedback>
+                    </b-form-group>
+                  </validation-provider>
+                </b-col>
+
                 <!-- Department -->
                 <b-col md="6" class="mb-2">
                   <validation-provider name="Department" :rules="{ required: true}">
@@ -234,6 +253,7 @@ export default {
       SubmitProcessing:false,
       data: new FormData(),
       companies: [],
+      warehouses: [],
       departments: [],
       designations: [],
       office_shifts: [],
@@ -251,6 +271,7 @@ export default {
           office_shift_id:"",
           joining_date:"",
           company_id:"",
+          warehouse_id:"",
       }, 
     };
   },
@@ -300,6 +321,7 @@ export default {
         .get("employees/create")
         .then(response => {
           this.companies = response.data.companies;
+          this.warehouses = response.data.warehouses;
           this.isLoading = false;
         })
         .catch(response => {
@@ -388,6 +410,7 @@ export default {
           phone: self.employee.phone,
           birth_date: self.employee.birth_date,
           company_id: self.employee.company_id,
+          warehouse_id: self.employee.warehouse_id,
           department_id: self.employee.department_id,
           designation_id: self.employee.designation_id,
           office_shift_id: self.employee.office_shift_id,

@@ -95,7 +95,7 @@
                 <lucide-icon class="text-primary" name="bell" />
               </div>
               <div class="notif-content" v-if="currentUserPermissions && currentUserPermissions.includes('Reports_quantity_alerts')">
-                <router-link tag="a" to="/app/reports/quantity_alerts">
+                <router-link to="/app/reports/quantity_alerts">
                   <p>{{ notifs_alert }} {{ $t('ProductQuantityAlerts') }}</p>
                 </router-link>
               </div>

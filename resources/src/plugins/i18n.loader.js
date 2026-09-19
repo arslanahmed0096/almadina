@@ -29,6 +29,9 @@ export const loadI18n = async () => {
     fallbackLocale: 'en',
     messages,
     silentTranslationWarn: true,
+    missing: (_locale, key) => key
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, character => character.toUpperCase()),
   });
 
   return i18n;

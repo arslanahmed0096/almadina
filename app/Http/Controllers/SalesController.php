@@ -579,18 +579,12 @@ class SalesController extends BaseController
                 'discount_from_points' => $order_discount_from_points,
             ]);
 
+            if ($order->statut === 'completed') {
+                app(\App\Services\CommissionService::class)->calculateForSale($order);
+            }
             return $order;
 
         }, 10);
-
-        // Calculate commissions when sale is completed
-        if ($sale->statut === 'completed') {
-            try {
-                app(\App\Services\CommissionService::class)->calculateForSale($sale);
-            } catch (\Throwable $e) {
-                \Log::warning('Commission calculation failed (non-blocking): '.$e->getMessage(), ['sale_id' => $sale->id]);
-            }
-        }
 
         // (at the very end of your store() method, after the transaction)
         $qboSync = 'skipped';
@@ -1072,18 +1066,12 @@ class SalesController extends BaseController
                     ->snapshotSale($current_Sale->fresh(), array_values($new_sale_details), $request->user('api'));
             }
 
+            if ($current_Sale->statut === 'completed') {
+                app(\App\Services\CommissionService::class)->calculateForSale($current_Sale);
+            }
             return $current_Sale;
 
         }, 10);
-
-        // Calculate commissions when sale is completed (idempotent)
-        if ($sale->statut === 'completed') {
-            try {
-                app(\App\Services\CommissionService::class)->calculateForSale($sale->fresh());
-            } catch (\Throwable $e) {
-                \Log::warning('Commission calculation failed (non-blocking): '.$e->getMessage(), ['sale_id' => $sale->id]);
-            }
-        }
 
         // ---------- AFTER COMMIT: QBO sync (update-only) ----------
         $qboSync = 'skipped';
@@ -1249,6 +1237,7 @@ class SalesController extends BaseController
                 $batchService->reverseForSaleDetails($current->details);
             }
 
+            app(\App\Services\BranchCommissionService::class)->reverseForCancellation($current);
             // Delete details
             $current->details()->delete();
 
@@ -1459,6 +1448,7 @@ class SalesController extends BaseController
                         $shipment_data->delete();
                     }
 
+                    app(\App\Services\BranchCommissionService::class)->reverseForCancellation($current_Sale);
                     $current_Sale->details()->delete();
                     $current_Sale->update([
                         'deleted_at' => Carbon::now(),

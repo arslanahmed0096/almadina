@@ -88,7 +88,11 @@
         <table class="table table-bordered table-hover pricing-table mb-0">
           <thead>
             <tr>
-              <th rowspan="2">Name</th>
+              <th rowspan="2" class="product-name-heading">
+                <button type="button" class="name-sort-button" @click="toggleProductSort">
+                  Name <lucide-icon :name="productSortType === 'asc' ? 'arrow-up' : 'arrow-down'" />
+                </button>
+              </th>
               <th rowspan="2">Code</th>
               <th rowspan="2">Brand</th>
               <th rowspan="2">Category</th>
@@ -107,7 +111,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in pricingRows" :key="row.row_key" :class="{ 'pricing-row-dirty': isDirty(row.product_id) }">
+            <tr v-for="row in sortedPricingRows" :key="row.row_key" :class="{ 'pricing-row-dirty': isDirty(row.product_id) }">
               <td class="product-name-cell">
                 <strong>{{ row.name }}</strong>
                 <small v-if="row.variant_name">
@@ -117,7 +121,7 @@
               <td>{{ row.code }}</td>
               <td>{{ row.brand || "N/D" }}</td>
               <td class="category-cell">{{ row.category || "N/D" }}</td>
-              <td class="purchase-price-cell">{{ wholeNumber(row.purchase_price) }}</td>
+              <td class="purchase-price-cell">{{ wholeNumber(activePurchasePrice(row)) }}</td>
               <td v-for="field in priceFields" :key="`${row.row_key}-${field}`" class="price-input-cell">
                 <b-form-input
                   v-model.number="row[field]"
@@ -126,7 +130,7 @@
                   step="0.01"
                   :disabled="submitting"
                   :readonly="isMarginAppliedField(row, field)"
-                  @input="markDirty(row.product_id)"
+                  @input="onPriceInput(row, field)"
                   @blur="persistDraft"
                 />
               </td>
@@ -187,27 +191,27 @@
           </div>
           <div class="margin-modal-product__price">
             <small>PURCHASE PRICE</small>
-            <strong>{{ wholeNumber(activeMarginRow.purchase_price) }}</strong>
+            <strong>{{ wholeNumber(activePurchasePrice(activeMarginRow)) }}</strong>
           </div>
         </div>
 
         <div class="margin-modal-heading">
           <div>
             <h5>Margins</h5>
-            <p>The first three rows update Minimum, Wholesale, and Al-Madina prices.</p>
+            <p>The first four rows update Minimum, Wholesale, Al-Madina, and Regular prices.</p>
           </div>
           <b-button
             size="sm"
             variant="outline-primary"
-            :disabled="!Number(activeMarginRow.purchase_price)"
+            :disabled="!Number(activePurchasePrice(activeMarginRow))"
             @click="addMargin"
           >
             <lucide-icon name="plus" /> Add margin
           </b-button>
         </div>
 
-        <div v-if="!Number(activeMarginRow.purchase_price)" class="alert alert-warning">
-          A Purchase Price is required before margins can be added.
+        <div v-if="!Number(activePurchasePrice(activeMarginRow))" class="alert alert-warning">
+          Enter Product Cost in the pricing row first. It will become the Purchase Price when saved.
         </div>
         <div v-else-if="!marginDraft.length" class="margin-modal-empty">
           No margins added. Click Add margin to begin.
@@ -250,7 +254,7 @@
             </b-form-group>
           </b-col>
           <b-col lg="2" md="4" class="mb-3 text-center">
-            <b-button v-if="index >= 3" block variant="outline-danger" @click="removeMargin(index)">Remove</b-button>
+            <b-button v-if="index >= 4" block variant="outline-danger" @click="removeMargin(index)">Remove</b-button>
           </b-col>
         </b-row>
 
@@ -288,6 +292,7 @@ export default {
       dirtyProducts: {},
       activeMarginRow: null,
       marginDraft: [],
+      productSortType: "asc",
       marginTypeOptions: [
         { text: "%", value: "percentage" },
         { text: "Fixed amount", value: "fixed" }
@@ -327,6 +332,14 @@ export default {
     },
     variantRowCount() {
       return this.pricingRows.filter(row => row.variant_id).length;
+    },
+    sortedPricingRows() {
+      const direction = this.productSortType === "desc" ? -1 : 1;
+      return this.pricingRows.slice().sort((left, right) => {
+        const byName = String(left.name || "").localeCompare(String(right.name || ""), undefined, { sensitivity: "base" });
+        if (byName !== 0) return byName * direction;
+        return String(left.variant_name || "").localeCompare(String(right.variant_name || ""), undefined, { sensitivity: "base" }) * direction;
+      });
     }
   },
   methods: {
@@ -349,19 +362,19 @@ export default {
       return (Array.isArray(margins) ? margins : []).map((margin, index) => ({
         type: margin && margin.type === "fixed" ? "fixed" : "percentage",
         value: margin && margin.value !== undefined && margin.value !== null ? margin.value : "",
-        label: index < 3
-          ? ["Minimum Price", "Wholesale Price", "Al-Madina Price"][index]
+        label: index < 4
+          ? ["Minimum Price", "Wholesale Price", "Al-Madina Price", "Regular Price"][index]
           : (margin && String(margin.label || "").trim()) || `Custom Price ${index + 1}`
       }));
     },
     withStandardMargins(margins) {
       const normalized = this.normalizeMargins(margins);
-      while (normalized.length < 3) {
+      while (normalized.length < 4) {
         const index = normalized.length;
         normalized.push({
           type: "percentage",
           value: "",
-          label: ["Minimum Price", "Wholesale Price", "Al-Madina Price"][index]
+          label: ["Minimum Price", "Wholesale Price", "Al-Madina Price", "Regular Price"][index]
         });
       }
       return normalized;
@@ -370,7 +383,7 @@ export default {
       return Math.round(this.numericValue(value));
     },
     marginTierName(index, margin = null) {
-      return ["Minimum Price", "Wholesale Price", "Al-Madina Price"][index]
+      return ["Minimum Price", "Wholesale Price", "Al-Madina Price", "Regular Price"][index]
         || (margin && margin.label)
         || `Custom Price ${index + 1}`;
     },
@@ -384,7 +397,7 @@ export default {
       this.marginDraft = [];
     },
     addMargin() {
-      if (!this.activeMarginRow || !(Number(this.activeMarginRow.purchase_price) > 0)) return;
+      if (!this.activeMarginRow || !(Number(this.activePurchasePrice(this.activeMarginRow)) > 0)) return;
       this.marginDraft.push({
         type: "percentage",
         value: "",
@@ -395,23 +408,23 @@ export default {
       this.marginDraft.splice(index, 1);
     },
     marginProfit(row, margin) {
-      const base = Number(row.purchase_price);
+      const base = Number(this.activePurchasePrice(row));
       const amount = Number(margin.value);
       if (!Number.isFinite(base) || !Number.isFinite(amount) || margin.value === "") return "";
       return Math.round(margin.type === "percentage" ? base * amount / 100 : amount);
     },
     marginPrice(row, margin) {
-      const base = Number(row.purchase_price);
+      const base = Number(this.activePurchasePrice(row));
       const profit = Number(this.marginProfit(row, margin));
       if (!Number.isFinite(base) || !Number.isFinite(profit) || margin.value === "") return "";
       return Math.round(base + profit);
     },
     isMarginAppliedField(row, field) {
-      const index = { min_price: 0, wholesale_price: 1, price: 2 }[field];
+      const index = { min_price: 0, wholesale_price: 1, price: 2, fix_price: 3 }[field];
       return index !== undefined && row.pricing_margins.length > index;
     },
     applyMarginPrices(row) {
-      const fields = ["min_price", "wholesale_price", "price"];
+      const fields = ["min_price", "wholesale_price", "price", "fix_price"];
       row.pricing_margins.slice(0, fields.length).forEach((margin, index) => {
         const price = this.marginPrice(row, margin);
         if (price !== "") this.$set(row, fields[index], price);
@@ -419,7 +432,7 @@ export default {
     },
     validateMarginList(row, margins) {
       if (!margins.length) return true;
-      if (!(Number(row.purchase_price) > 0)) {
+      if (!(Number(this.activePurchasePrice(row)) > 0)) {
         this.makeToast("danger", `Purchase Price is required for ${row.name}.`, this.$t("Failed"));
         return false;
       }
@@ -433,7 +446,7 @@ export default {
           this.makeToast("danger", `Enter a non-negative margin for ${row.name}.`, this.$t("Failed"));
           return false;
         }
-        if (index >= 3 && !String(margin.label || "").trim()) {
+        if (index >= 4 && !String(margin.label || "").trim()) {
           this.makeToast("danger", `Enter a custom price label for ${row.name}.`, this.$t("Failed"));
           return false;
         }
@@ -516,6 +529,7 @@ export default {
               variant_name: variant.name,
               code: variant.code || product.code,
               purchase_price: this.numericValue(variant.purchase_price),
+              purchase_price_tracks_cost: ["none", "cost"].includes(variant.purchase_price_source),
               pricing_margins: this.normalizeMargins(variant.pricing_margins)
             });
             this.priceFields.forEach(field => { row[field] = this.numericValue(variant[field]); });
@@ -530,12 +544,26 @@ export default {
           variant_name: "",
           code: product.code,
           purchase_price: this.numericValue(product.purchase_price),
+          purchase_price_tracks_cost: ["none", "cost"].includes(product.purchase_price_source),
           pricing_margins: this.normalizeMargins(product.pricing_margins)
         });
         this.priceFields.forEach(field => { row[field] = this.numericValue(product[field]); });
         rows.push(row);
       });
       return rows;
+    },
+    activePurchasePrice(row) {
+      return this.numericValue(row && row.purchase_price);
+    },
+    onPriceInput(row, field) {
+      if (field === "cost" && (row.purchase_price_tracks_cost || !(Number(row.purchase_price) > 0))) {
+        this.$set(row, "purchase_price", this.numericValue(row.cost));
+        this.$set(row, "purchase_price_tracks_cost", true);
+      }
+      this.markDirty(row.product_id);
+    },
+    toggleProductSort() {
+      this.productSortType = this.productSortType === "asc" ? "desc" : "asc";
     },
     searchProducts() {
       if (!this.canSearch || this.searching) {
@@ -600,6 +628,7 @@ export default {
       return !!this.dirtyProducts[String(productId)];
     },
     persistDraft() {
+      if (!this.isEditing) return;
       if (typeof window === "undefined" || !window.localStorage) return;
       const draft = {
         entry_id: this.editingEntryId || null,
@@ -613,6 +642,7 @@ export default {
       window.localStorage.setItem(this.draftStorageKey, JSON.stringify(draft));
     },
     readDraft() {
+      if (!this.isEditing) return null;
       if (typeof window === "undefined" || !window.localStorage) return null;
       try {
         const value = window.localStorage.getItem(this.draftStorageKey);
@@ -711,6 +741,7 @@ export default {
   },
   created() {
     const directProductId = Number(this.$route.query.product || 0);
+    if (!this.isEditing) this.clearDraft();
     const draft = this.readDraft();
     this.loadOptions().then(() => {
       if (this.isEditing) {
@@ -723,6 +754,18 @@ export default {
         this.restoreDraft(draft);
       }
     });
+  },
+  beforeRouteLeave(to, from, next) {
+    if (!this.isEditing) {
+      this.clearDraft();
+      this.selectedBrandId = null;
+      this.selectedCategoryId = null;
+      this.categories = [];
+      this.pricingRows = [];
+      this.dirtyProducts = {};
+      this.hasSearched = false;
+    }
+    next();
   }
 };
 </script>
@@ -767,7 +810,7 @@ export default {
 }
 
 .pricing-table {
-  min-width: 2000px;
+  min-width: 1450px;
 }
 
 .pricing-table thead th {
@@ -787,7 +830,40 @@ export default {
 }
 
 .product-name-cell {
-  min-width: 230px;
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  width: 180px;
+  min-width: 180px;
+  max-width: 180px;
+  background: #fff;
+  white-space: normal;
+}
+
+.product-name-heading {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  width: 180px;
+  min-width: 180px;
+  background: #f7f8fa !important;
+}
+
+.name-sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  border: 0;
+  background: transparent;
+}
+
+.name-sort-button svg {
+  width: 14px;
+  height: 14px;
 }
 
 .product-name-cell strong,
@@ -813,20 +889,24 @@ export default {
 }
 
 .category-cell {
-  min-width: 150px;
+  min-width: 115px;
+  max-width: 145px;
   white-space: pre-line;
 }
 
 .price-input-cell {
-  min-width: 125px;
+  width: 98px;
+  min-width: 98px;
 }
 
 .price-input-cell input {
-  min-width: 105px;
+  min-width: 78px;
+  padding-right: 6px;
+  padding-left: 6px;
 }
 
 .purchase-price-cell {
-  min-width: 130px;
+  min-width: 105px;
   font-weight: 700;
   color: #5f2d86;
   background: #f7f1fb;

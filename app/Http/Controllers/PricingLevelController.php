@@ -129,9 +129,14 @@ class PricingLevelController extends Controller
 
         $details = PricingLevelDetail::query()
             ->with(['product.brand', 'product.category', 'product.categories', 'variant'])
-            ->whereHas('product', fn ($productQuery) => $productQuery->visibleTo($request->user('api')))
+            ->whereHas('product', fn ($productQuery) => $productQuery
+                ->visibleTo($request->user('api'))
+                ->where('is_active', 1))
             ->where('pricing_level_id', $entry->id)
-            ->orderBy('id')
+            ->orderBy(
+                Product::select('name')->whereColumn('products.id', 'pricing_level_details.product_id')
+            )
+            ->orderBy('product_variant_id')
             ->get();
 
         $products = $details->groupBy('product_id')->map(function ($productDetails) {
@@ -283,6 +288,7 @@ class PricingLevelController extends Controller
             ->visibleTo($user)
             ->whereIn('id', $productIds)
             ->whereNull('deleted_at')
+            ->where('is_active', 1)
             ->get()
             ->keyBy('id');
 
@@ -367,7 +373,12 @@ class PricingLevelController extends Controller
                 $model->fill($prices);
             }
 
-            $model->purchase_price = $pricingService->effectivePurchasePrice($model)['price'];
+            if ((float) ($model->purchase_price ?? 0) <= 0 && (float) $prices['cost'] > 0) {
+                // A cost entered in Pricing Level becomes the initial stored purchase price.
+                $model->purchase_price = $prices['cost'];
+            } else {
+                $model->purchase_price = $pricingService->effectivePurchasePrice($model)['price'];
+            }
             $margins = $detail['pricing_margins'] ?? ($model->pricing_margins ?: []);
             $pricingService->apply($model, $margins);
             $model->save();

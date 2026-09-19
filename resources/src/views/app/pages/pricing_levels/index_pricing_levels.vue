@@ -55,10 +55,20 @@
       <template slot="table-row" slot-scope="props">
         <span v-if="props.column.field === 'date'">{{ formatDate(props.row.date) }}</span>
         <span v-else-if="props.column.field === 'actions'">
+          <a
+            v-if="canView"
+            v-b-tooltip.hover
+            title="View pricing details"
+            class="cursor-pointer"
+            @click="openPricingView(props.row)"
+          >
+            <lucide-icon class="text-25 text-info" name="eye" />
+          </a>
           <router-link
             v-if="canEdit"
             v-b-tooltip.hover
             title="Edit"
+            class="ml-2"
             :to="{ name: 'pricing_levels_edit', params: { id: props.row.id } }"
           >
             <lucide-icon class="text-25 text-success" name="pencil" />
@@ -76,6 +86,50 @@
         <span v-else>{{ props.formattedRow[props.column.field] }}</span>
       </template>
     </vue-good-table>
+
+    <b-modal
+      id="pricing-level-view-modal"
+      size="xl"
+      centered
+      hide-footer
+      title="Pricing Level Details"
+    >
+      <div v-if="viewLoading" class="pricing-view-loading">
+        <div class="spinner spinner-primary"></div>
+      </div>
+      <template v-else>
+        <div class="pricing-view-summary">
+          <div><small>BRAND</small><strong>{{ viewEntry.brand || "N/D" }}</strong></div>
+          <div><small>CATEGORY</small><strong>{{ viewEntry.category || "N/D" }}</strong></div>
+          <div><small>DATE</small><strong>{{ formatDate(viewEntry.date) }}</strong></div>
+          <div><small>PRODUCTS</small><strong>{{ viewEntry.total_products || 0 }}</strong></div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-bordered table-hover pricing-view-table mb-0">
+            <thead>
+              <tr>
+                <th>Product</th><th>Code</th><th>Purchase Price</th><th>Product Cost</th>
+                <th>Regular Price</th><th>Al-Madina Price</th><th>Wholesale</th><th>Minimum</th><th>Margins</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in viewRows" :key="row.key">
+                <td><strong>{{ row.name }}</strong><small v-if="row.variant">{{ row.variant }}</small></td>
+                <td>{{ row.code }}</td>
+                <td>{{ priceDisplay(row.purchase_price) }}</td>
+                <td>{{ priceDisplay(row.cost) }}</td>
+                <td>{{ priceDisplay(row.fix_price) }}</td>
+                <td>{{ priceDisplay(row.price) }}</td>
+                <td>{{ priceDisplay(row.wholesale_price) }}</td>
+                <td>{{ priceDisplay(row.min_price) }}</td>
+                <td class="pricing-margin-summary">{{ marginSummary(row.pricing_margins) }}</td>
+              </tr>
+              <tr v-if="!viewRows.length"><td colspan="9" class="text-center text-muted">No active product pricing details.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </template>
+    </b-modal>
 
     <b-sidebar id="pricing-level-filter" :title="$t('Filter')" bg-variant="white" right shadow>
       <div class="px-3 py-2">
@@ -137,6 +191,9 @@ export default {
       search: "",
       searchTimer: null,
       requestSequence: 0,
+      viewLoading: false,
+      viewEntry: {},
+      viewRows: [],
       filters: { date: "", brand_id: null, category_id: null },
       serverParams: {
         page: 1,
@@ -149,6 +206,9 @@ export default {
     ...mapGetters(["currentUserPermissions"]),
     canCreate() {
       return this.hasPermission("pricing_level_add");
+    },
+    canView() {
+      return this.hasPermission("pricing_level_view");
     },
     canEdit() {
       return this.hasPermission("pricing_level_edit");
@@ -194,6 +254,43 @@ export default {
         : new Date(value);
       if (Number.isNaN(date.getTime())) return value;
       return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    },
+    priceDisplay(value) {
+      return Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    },
+    marginSummary(margins) {
+      if (!Array.isArray(margins) || !margins.length) return "No margins";
+      return margins.map(margin => `${margin.label || "Margin"}: ${margin.value}${margin.type === "percentage" ? "%" : ""}`).join(" | ");
+    },
+    flattenPricingProducts(products) {
+      const rows = [];
+      (products || []).forEach(product => {
+        if (Array.isArray(product.pricing_variants) && product.pricing_variants.length) {
+          product.pricing_variants.forEach(variant => rows.push(Object.assign({}, variant, {
+            key: `product-${product.id}-variant-${variant.id}`,
+            name: product.name,
+            variant: variant.name
+          })));
+        } else {
+          rows.push(Object.assign({}, product, { key: `product-${product.id}`, variant: "" }));
+        }
+      });
+      return rows.sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), undefined, { sensitivity: "base" }));
+    },
+    openPricingView(row) {
+      this.viewEntry = Object.assign({}, row);
+      this.viewRows = [];
+      this.viewLoading = true;
+      this.$bvModal.show("pricing-level-view-modal");
+      axios.get(`pricing-levels/${row.id}`)
+        .then(response => {
+          this.viewEntry = response.data.entry || row;
+          this.viewRows = this.flattenPricingProducts(response.data.products);
+        })
+        .catch(() => {
+          this.$root.$bvToast.toast("Unable to load pricing details.", { title: this.$t("Failed"), variant: "danger", solid: true });
+        })
+        .finally(() => { this.viewLoading = false; });
     },
     loadOptions(brandId) {
       this.categoriesLoading = !!brandId;
@@ -353,5 +450,57 @@ export default {
 .pricing-level-search {
   width: 250px;
   max-width: 100%;
+}
+
+.pricing-view-loading {
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pricing-view-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(130px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.pricing-view-summary > div {
+  padding: 12px 14px;
+  border: 1px solid #e7e1ec;
+  border-radius: 8px;
+  background: #faf8fc;
+}
+
+.pricing-view-summary small,
+.pricing-view-summary strong,
+.pricing-view-table td small {
+  display: block;
+}
+
+.pricing-view-summary small,
+.pricing-view-table td small {
+  color: #777;
+}
+
+.pricing-view-table {
+  min-width: 1180px;
+}
+
+.pricing-view-table th,
+.pricing-view-table td {
+  padding: 9px;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.pricing-margin-summary {
+  max-width: 280px;
+  white-space: normal !important;
+}
+
+@media (max-width: 767px) {
+  .pricing-view-summary { grid-template-columns: 1fr 1fr; }
 }
 </style>

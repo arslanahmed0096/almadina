@@ -327,6 +327,7 @@ class SalesReturnController extends BaseController
 
             app(\App\Services\Tax\TransactionTaxService::class)
                 ->reverseSaleReturn($order->fresh());
+            app(\App\Services\BranchCommissionService::class)->reverseForReturn($order->fresh());
 
             $refundService->record($order, $refunds, (int) Auth::id());
         }, 10);
@@ -570,6 +571,7 @@ class SalesReturnController extends BaseController
 
             app(\App\Services\Tax\TransactionTaxService::class)
                 ->reverseSaleReturn($current_SaleReturn->fresh());
+            app(\App\Services\BranchCommissionService::class)->reverseForReturn($current_SaleReturn->fresh());
 
         }, 10);
 

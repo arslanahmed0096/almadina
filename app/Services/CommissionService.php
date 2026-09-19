@@ -19,55 +19,7 @@ class CommissionService
      */
     public function calculateForSale(Sale $sale): array
     {
-        $agent = $this->resolveAgentForSale($sale);
-        if (! $agent) {
-            return [];
-        }
-
-        $date = $sale->date ? Carbon::parse($sale->date) : now();
-        $programs = CommissionProgram::active()
-            ->validAt($date)
-            ->with(['commissionRules' => function ($q) use ($agent) {
-                $q->active()->forAgent($agent->id)->orderBy('priority', 'desc');
-            }])
-            ->get();
-
-        $created = [];
-        foreach ($programs as $program) {
-            foreach ($program->commissionRules as $rule) {
-                $baseAmount = $this->getBaseAmount($sale, $rule->source);
-                if ($baseAmount <= 0) {
-                    continue;
-                }
-                if ($rule->min_threshold !== null && (float) $rule->min_threshold > $baseAmount) {
-                    continue;
-                }
-                $commissionAmount = $this->computeCommission($baseAmount, $rule);
-                if ($commissionAmount <= 0) {
-                    continue;
-                }
-                $existing = SaleCommission::where('sale_id', $sale->id)
-                    ->where('commission_rule_id', $rule->id)
-                    ->where('sales_agent_id', $agent->id)
-                    ->exists();
-                if ($existing) {
-                    continue;
-                }
-                $sc = SaleCommission::create([
-                    'sale_id' => $sale->id,
-                    'sales_agent_id' => $agent->id,
-                    'commission_program_id' => $program->id,
-                    'commission_rule_id' => $rule->id,
-                    'base_amount' => $baseAmount,
-                    'commission_amount' => $commissionAmount,
-                    'status' => 'pending',
-                    'calculated_at' => now(),
-                ]);
-                $created[] = $sc;
-            }
-        }
-
-        return $created;
+        return app(BranchCommissionService::class)->generateForCompletedSale($sale);
     }
 
     protected function resolveAgentForSale(Sale $sale): ?SalesAgent

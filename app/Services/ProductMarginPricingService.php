@@ -13,7 +13,9 @@ use Illuminate\Validation\ValidationException;
 
 class ProductMarginPricingService
 {
-    private const FIELDS = ['min_price', 'wholesale_price', 'price'];
+    private const FIELDS = ['min_price', 'wholesale_price', 'price', 'fix_price'];
+
+    private const LABELS = ['Minimum Price', 'Wholesale Price', 'Al-Madina Price', 'Regular Price'];
 
     public function apply(Model $product, array $rows): void
     {
@@ -38,7 +40,7 @@ class ProductMarginPricingService
             }
             $previous = $price;
             $label = $index < count(self::FIELDS)
-                ? ['Minimum Price', 'Wholesale Price', 'Al-Madina Price'][$index]
+                ? self::LABELS[$index]
                 : trim((string) ($row['label'] ?? ''));
             if ($label === '') {
                 $label = 'Custom Price '.($index + 1);

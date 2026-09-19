@@ -7,12 +7,16 @@ use App\Models\Company;
 use App\Models\Department;
 use App\Models\Designation;
 use App\Models\Employee;
+use App\Models\EmployeeBranchAssignment;
 use App\Models\EmployeeAccount;
 use App\Models\EmployeeExperience;
 use App\Models\OfficeShift;
+use App\Models\Warehouse;
 use App\utils\helpers;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class EmployeesController extends Controller
 {
@@ -98,9 +102,11 @@ class EmployeesController extends Controller
         $this->authorizeForUser($request->user('api'), 'create', Employee::class);
 
         $companies = Company::where('deleted_at', '=', null)->get(['id', 'name']);
+        $warehouses = Warehouse::whereNull('deleted_at')->orderBy('name')->get(['id', 'name']);
 
         return response()->json([
             'companies' => $companies,
+            'warehouses' => $warehouses,
         ]);
     }
 
@@ -118,6 +124,7 @@ class EmployeesController extends Controller
             'department_id' => 'required',
             'designation_id' => 'required',
             'office_shift_id' => 'required',
+            'warehouse_id' => ['required', 'integer', Rule::exists('warehouses', 'id')->whereNull('deleted_at')],
         ]);
 
         $data = [];
@@ -135,7 +142,10 @@ class EmployeesController extends Controller
         $data['office_shift_id'] = $request['office_shift_id'];
         $data['joining_date'] = $request['joining_date'];
 
-        Employee::create($data);
+        DB::transaction(function () use ($data, $request) {
+            $employee = Employee::create($data);
+            $this->replaceBranchAssignment($employee, (int) $request->warehouse_id, (int) $request->user('api')->id);
+        });
 
         return response()->json(['success' => true]);
     }
@@ -172,6 +182,8 @@ class EmployeesController extends Controller
         $office_shifts = OfficeShift::where('company_id', $employee->company_id)->where('deleted_at', '=', null)->get(['id', 'name']);
         $departments = Department::where('company_id', $employee->company_id)->where('deleted_at', '=', null)->get(['id', 'department']);
         $designations = Designation::where('department_id', $employee->department_id)->where('deleted_at', '=', null)->get(['id', 'designation']);
+        $warehouses = Warehouse::whereNull('deleted_at')->orderBy('name')->get(['id', 'name']);
+        $employee->warehouse_id = $this->currentWarehouseId($employee);
 
         return response()->json([
             'employee' => $employee,
@@ -179,6 +191,7 @@ class EmployeesController extends Controller
             'office_shifts' => $office_shifts,
             'departments' => $departments,
             'designations' => $designations,
+            'warehouses' => $warehouses,
         ]);
     }
 
@@ -200,6 +213,7 @@ class EmployeesController extends Controller
             'department_id' => 'required',
             'designation_id' => 'required',
             'office_shift_id' => 'required',
+            'warehouse_id' => ['required', 'integer', Rule::exists('warehouses', 'id')->whereNull('deleted_at')],
             'basic_salary' => 'nullable|numeric',
             'hourly_rate' => 'nullable|numeric',
         ]);
@@ -246,9 +260,62 @@ class EmployeesController extends Controller
             $data['remaining_leave'] = $employee_leave_info->remaining_leave;
         }
 
-        Employee::find($id)->update($data);
+        DB::transaction(function () use ($id, $data, $request) {
+            $employee = Employee::findOrFail($id);
+            $employee->update($data);
+            $this->replaceBranchAssignment($employee, (int) $request->warehouse_id, (int) $request->user('api')->id);
+        });
 
         return response()->json(['success' => true]);
+    }
+
+    private function currentWarehouseId(Employee $employee): ?int
+    {
+        $assignments = EmployeeBranchAssignment::effectiveAt(now()->toDateString())
+            ->where('employee_id', $employee->id)
+            ->get(['warehouse_id']);
+
+        return $assignments->count() === 1 ? (int) $assignments->first()->warehouse_id : null;
+    }
+
+    private function replaceBranchAssignment(Employee $employee, int $warehouseId, int $userId): void
+    {
+        $effectiveFrom = $employee->joining_date && Carbon::parse($employee->joining_date)->isFuture()
+            ? Carbon::parse($employee->joining_date)->toDateString()
+            : now()->toDateString();
+        $current = EmployeeBranchAssignment::where('employee_id', $employee->id)
+            ->where('is_active', true)
+            ->where(fn ($query) => $query->whereNull('effective_to')->orWhere('effective_to', '>=', $effectiveFrom))
+            ->lockForUpdate()
+            ->get();
+
+        if ($current->count() === 1
+            && (int) $current->first()->warehouse_id === $warehouseId
+            && (int) $current->first()->designation_id === (int) $employee->designation_id) {
+            return;
+        }
+
+        foreach ($current as $assignment) {
+            if (Carbon::parse($assignment->effective_from)->gte($effectiveFrom)) {
+                $assignment->delete();
+            } else {
+                $assignment->update([
+                    'effective_to' => Carbon::parse($effectiveFrom)->subDay()->toDateString(),
+                    'updated_by' => $userId,
+                ]);
+            }
+        }
+
+        EmployeeBranchAssignment::create([
+            'employee_id' => $employee->id,
+            'warehouse_id' => $warehouseId,
+            'designation_id' => $employee->designation_id,
+            'effective_from' => $effectiveFrom,
+            'effective_to' => $employee->leaving_date ?: null,
+            'is_active' => true,
+            'created_by' => $userId,
+            'updated_by' => $userId,
+        ]);
     }
 
     // ------------ Delete Employee -----------\\

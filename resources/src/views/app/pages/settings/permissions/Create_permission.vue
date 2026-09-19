@@ -3491,7 +3491,21 @@
                                 <span>Payroll</span>
                                 <span class="checkmark"></span>
                               </label>
-                            </b-col>
+                             </b-col>
+
+                             <b-col md="6" v-for="p in [
+                               ['payroll_salary_view','View basic salaries'],['payroll_salary_manage','Manage basic salaries'],
+                               ['payroll_commission_rules_view','View commission rules'],['payroll_commission_rules_manage','Manage commission rules'],
+                               ['payroll_commission_ledger_view','View commission ledger'],['payroll_generate','Generate payroll'],
+                               ['payroll_approve','Approve payroll'],['payroll_pay','Pay payroll'],
+                               ['payroll_payments_view','View payroll payments'],['payroll_payslip_print','Print payslips'],
+                               ['payroll_all_branches','View all payroll branches'],['payroll_assigned_branch','View assigned payroll branch']
+                             ]" :key="p[0]">
+                               <label class="checkbox checkbox-outline-primary">
+                                 <input type="checkbox" v-model="permissions" :value="p[0]">
+                                 <span>{{p[1]}}</span><span class="checkmark"></span>
+                               </label>
+                             </b-col>
 
                              <!--projects -->
                              <b-col md="6">

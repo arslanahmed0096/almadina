@@ -127,8 +127,13 @@ class ProductsController extends BaseController
                 });
             });
 
+        // Pricing maintenance must never offer inactive products, including to super admins.
+        if ($isPricingRequest) {
+            $filtered->where('products.is_active', 1);
+        }
+
         // Optional status filter: status=1 (active), status=0 (inactive)
-        if ($request->filled('status') && $request->status !== '') {
+        if (! $isPricingRequest && $request->filled('status') && $request->status !== '') {
             $status = $request->status;
             if ($status === '1' || $status === 1 || $status === 'active') {
                 $filtered->where('is_active', 1);
@@ -182,6 +187,7 @@ class ProductsController extends BaseController
                 $purchasePricing = app(\App\Services\ProductMarginPricingService::class)
                     ->effectivePurchasePrice($product);
                 $item['purchase_price'] = $purchasePricing['price'];
+                $item['purchase_price_source'] = $purchasePricing['source'];
                 $item['pricing_margins'] = $product->pricing_margins ?: [];
             } else {
                 $item['fix_price'] = number_format((float) $product->fix_price, 2, '.', '');
@@ -398,7 +404,10 @@ class ProductsController extends BaseController
     {
         $this->authorizePricingLevel($request, ['pricing_level_view', 'pricing_level_add', 'pricing_level_edit']);
 
-        $product = Product::visibleTo($request->user('api'))->whereNull('deleted_at')->findOrFail($id);
+        $product = Product::visibleTo($request->user('api'))
+            ->whereNull('deleted_at')
+            ->where('is_active', 1)
+            ->findOrFail($id);
 
         return response()->json([
             'pricing' => $this->pricingLevelPayload($product),
@@ -416,6 +425,7 @@ class ProductsController extends BaseController
                 $query->select(DB::raw(1))
                     ->from('products')
                     ->whereColumn('products.brand_id', 'brands.id')
+                    ->where('products.is_active', 1)
                     ->whereNull('products.deleted_at');
             })
             ->orderBy('name')
@@ -430,6 +440,7 @@ class ProductsController extends BaseController
                         ->from('products')
                         ->whereColumn('products.category_id', 'categories.id')
                         ->where('products.brand_id', $brandId)
+                        ->where('products.is_active', 1)
                         ->whereNull('products.deleted_at');
                 })
                 ->orderBy('name')
@@ -525,6 +536,8 @@ class ProductsController extends BaseController
             'min_price' => (float) $product->min_price,
             'purchase_price' => app(\App\Services\ProductMarginPricingService::class)
                 ->effectivePurchasePrice($product)['price'],
+            'purchase_price_source' => app(\App\Services\ProductMarginPricingService::class)
+                ->effectivePurchasePrice($product)['source'],
             'pricing_margins' => $product->pricing_margins ?: [],
             'variants' => [],
         ];
@@ -534,7 +547,11 @@ class ProductsController extends BaseController
                 ->whereNull('deleted_at')
                 ->orderBy('id')
                 ->get()
-                ->map(fn ($variant) => [
+                ->map(function ($variant) {
+                    $purchasePricing = app(\App\Services\ProductMarginPricingService::class)
+                        ->effectivePurchasePrice($variant);
+
+                    return [
                     'id' => $variant->id,
                     'name' => $variant->name,
                     'code' => $variant->code,
@@ -545,10 +562,11 @@ class ProductsController extends BaseController
                     'price' => (float) $variant->price,
                     'wholesale_price' => (float) $variant->wholesale,
                     'min_price' => (float) $variant->min_price,
-                    'purchase_price' => app(\App\Services\ProductMarginPricingService::class)
-                        ->effectivePurchasePrice($variant)['price'],
+                    'purchase_price' => $purchasePricing['price'],
+                    'purchase_price_source' => $purchasePricing['source'],
                     'pricing_margins' => $variant->pricing_margins ?: [],
-                ])
+                    ];
+                })
                 ->values()
                 ->all();
         }

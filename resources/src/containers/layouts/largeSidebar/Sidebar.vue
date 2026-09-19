@@ -19,7 +19,7 @@
             class="nav-item"
             data-item="dashboard"
           >
-            <router-link tag="a" class="nav-item-hold" to="/app/dashboard">
+            <router-link class="nav-item-hold" to="/app/dashboard">
               <lucide-icon class="nav-icon" name="bar-chart" />
               <span class="nav-text">{{ $t("dashboard") }}</span>
             </router-link>
@@ -204,7 +204,7 @@
             data-item="sale_return"
           >
 
-           <router-link tag="a" class="nav-item-hold" to="/app/sale_return/list">
+           <router-link class="nav-item-hold" to="/app/sale_return/list">
               <lucide-icon class="nav-icon" name="chevron-right" />
               <span class="nav-text">{{ $t("SalesReturn") }}</span>
             </router-link>
@@ -233,7 +233,7 @@
             class="nav-item"
             data-item="purchase_return"
           >
-          <router-link tag="a" class="nav-item-hold" to="/app/purchase_return/list">
+          <router-link class="nav-item-hold" to="/app/purchase_return/list">
               <lucide-icon class="nav-icon" name="chevron-left" />
               <span class="nav-text">{{ $t("PurchasesReturn") }}</span>
             </router-link>
@@ -333,7 +333,7 @@
             data-item="subscription_product"
           >
 
-           <router-link tag="a" class="nav-item-hold" to="/app/subscription_product/list">
+           <router-link class="nav-item-hold" to="/app/subscription_product/list">
               <lucide-icon class="nav-icon" name="dollar-sign" />
               <span class="nav-text">{{$t('Subscription_Product')}}</span>
             </router-link>
@@ -377,7 +377,7 @@
             class="nav-item"
             data-item="projects"
           >
-            <router-link tag="a" class="nav-item-hold" to="/app/projects">
+            <router-link class="nav-item-hold" to="/app/projects">
               <lucide-icon class="nav-icon" name="archive" />
               <span class="nav-text">{{$t('Projects')}}</span>
             </router-link>
@@ -390,7 +390,7 @@
             class="nav-item"
             data-item="contracts"
           >
-            <router-link tag="a" class="nav-item-hold" to="/app/contracts">
+            <router-link class="nav-item-hold" to="/app/contracts">
               <lucide-icon class="nav-icon" name="clipboard-list" />
               <span class="nav-text">{{$t('Contracts') || 'Contracts'}}</span>
             </router-link>
@@ -403,7 +403,7 @@
             class="nav-item"
             data-item="tasks"
           >
-            <router-link tag="a" class="nav-item-hold" to="/app/tasks">
+            <router-link class="nav-item-hold" to="/app/tasks">
               <lucide-icon class="nav-icon" name="check" />
               <span class="nav-text">{{$t('Tasks')}}</span>
             </router-link>
@@ -448,7 +448,7 @@
             class="nav-item"
             data-item="woocommerce_settings"
           >
-            <router-link tag="a" class="nav-item-hold" to="/app/woocommerce">
+            <router-link class="nav-item-hold" to="/app/woocommerce">
               <lucide-icon class="nav-icon" name="shopping-cart" />
               <span class="nav-text">{{$t('WooCommerce_Settings')}}</span>
             </router-link>
@@ -462,7 +462,7 @@
             class="nav-item"
             data-item="knowledge-base"
           >
-            <router-link tag="a" class="nav-item-hold" to="/app/knowledge-base">
+            <router-link class="nav-item-hold" to="/app/knowledge-base">
               <lucide-icon class="nav-icon" name="book" />
               <span class="nav-text">{{ $t('Knowledge_Base') || 'Knowledge Base' }}</span>
             </router-link>
@@ -510,7 +510,7 @@
             class="nav-item"
             data-item="ai_reports"
           >
-            <router-link tag="a" class="nav-item-hold" to="/app/reports/ai_reports">
+            <router-link class="nav-item-hold" to="/app/reports/ai_reports">
               <lucide-icon class="nav-icon" name="lightbulb" />
               <span class="nav-text">{{$t('AI_Reports') || 'AI Reports'}}</span>
             </router-link>
@@ -617,7 +617,7 @@
           class="nav-item"
           v-if="currentUserPermissions && currentUserPermissions.includes('Store_settings_view')"
         >
-          <router-link tag="a" class="nav-item-hold" to="/app/Store/Settings">
+          <router-link class="nav-item-hold" to="/app/Store/Settings">
             <lucide-icon class="nav-icon" name="settings" />
             <span class="item-name">{{ $t('Settings') }}</span>
           </router-link>
@@ -628,7 +628,7 @@
           class="nav-item"
           v-if="currentUserPermissions && currentUserPermissions.includes('Store_settings_view')"
         >
-          <router-link tag="a" class="nav-item-hold" to="/app/Store/TopCategories">
+          <router-link class="nav-item-hold" to="/app/Store/TopCategories">
             <lucide-icon class="nav-icon" name="list" />
             <span class="item-name">Top Categories</span>
           </router-link>
@@ -639,7 +639,7 @@
           class="nav-item"
           v-if="currentUserPermissions && currentUserPermissions.includes('Orders_view')"
         >
-          <router-link tag="a" class="nav-item-hold" to="/app/Store/Orders">
+          <router-link class="nav-item-hold" to="/app/Store/Orders">
             <lucide-icon class="nav-icon" name="receipt" />
             <span class="item-name">{{ $t('Online_Orders') }}</span>
           </router-link>
@@ -650,7 +650,7 @@
           class="nav-item"
           v-if="currentUserPermissions && currentUserPermissions.includes('Collections_view')"
         >
-          <router-link tag="a" class="nav-item-hold" to="/app/Store/Collections">
+          <router-link class="nav-item-hold" to="/app/Store/Collections">
             <lucide-icon class="nav-icon" name="check" />
             <span class="item-name">{{ $t('Collections') }}</span>
           </router-link>
@@ -661,7 +661,7 @@
           class="nav-item"
           v-if="currentUserPermissions && currentUserPermissions.includes('Banners_view')"
         >
-          <router-link tag="a" class="nav-item-hold" to="/app/Store/Banners">
+          <router-link class="nav-item-hold" to="/app/Store/Banners">
             <lucide-icon class="nav-icon" name="wallet" />
             <span class="item-name">{{ $t('Banners') }}</span>
           </router-link>
@@ -672,7 +672,7 @@
           class="nav-item"
           v-if="currentUserPermissions && currentUserPermissions.includes('Subscribers_view')"
         >
-          <router-link tag="a" class="nav-item-hold" to="/app/Store/Subscribers">
+          <router-link class="nav-item-hold" to="/app/Store/Subscribers">
             <lucide-icon class="nav-icon" name="users" />
             <span class="item-name">{{ $t('Subscribers') }}</span>
           </router-link>
@@ -683,7 +683,7 @@
           class="nav-item"
           v-if="currentUserPermissions && currentUserPermissions.includes('Messages_view')"
         >
-          <router-link tag="a" class="nav-item-hold" to="/app/Store/Messages">
+          <router-link class="nav-item-hold" to="/app/Store/Messages">
             <lucide-icon class="nav-icon" name="message-square" />
             <span class="item-name">{{ $t('Messages') }}</span>
           </router-link>
@@ -694,7 +694,7 @@
           class="nav-item"
           v-if="currentUserPermissions && currentUserPermissions.includes('Store_settings_view')"
         >
-          <router-link tag="a" class="nav-item-hold" to="/app/Store/InviteCodes">
+          <router-link class="nav-item-hold" to="/app/Store/InviteCodes">
             <lucide-icon class="nav-icon" name="ticket" />
             <span class="item-name">{{ $t('Invite_Codes') }}</span>
           </router-link>
@@ -705,7 +705,7 @@
           class="nav-item"
           v-if="currentUserPermissions && currentUserPermissions.includes('Store_settings_view')"
         >
-          <router-link tag="a" class="nav-item-hold" to="/app/Store/PendingCustomers">
+          <router-link class="nav-item-hold" to="/app/Store/PendingCustomers">
             <lucide-icon class="nav-icon" name="clock" />
             <span class="item-name">{{ $t('Pending_Customers') }}</span>
           </router-link>
@@ -722,7 +722,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('products_add')"
           >
-            <router-link tag="a" class to="/app/products/store">
+            <router-link class to="/app/products/store">
               <lucide-icon class="nav-icon" name="file-plus" />
               <span class="item-name">{{$t('AddProduct')}}</span>
             </router-link>
@@ -731,7 +731,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('products_view')"
           >
-            <router-link tag="a" class to="/app/products/list">
+            <router-link class to="/app/products/list">
               <lucide-icon class="nav-icon" name="files" />
               <span class="item-name">{{$t('productsList')}}</span>
             </router-link>
@@ -741,7 +741,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('product_import')"
           >
-            <router-link tag="a" class to="/app/products/import">
+            <router-link class to="/app/products/import">
               <lucide-icon class="nav-icon" name="download" />
               <span class="item-name">{{ $t('import_products') }}</span>
             </router-link>
@@ -751,7 +751,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('product_import')"
           >
-            <router-link tag="a" class to="/app/products/import-update">
+            <router-link class to="/app/products/import-update">
               <lucide-icon class="nav-icon" name="pencil" />
               <span class="item-name">Import (Update Only)</span>
             </router-link>
@@ -761,7 +761,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('opening_stock_import')"
           >
-            <router-link tag="a" class to="/app/products/opening_stock_import">
+            <router-link class to="/app/products/opening_stock_import">
               <lucide-icon class="nav-icon" name="file-plus" />
               <span class="item-name">{{$t('Opening_Stock')}}</span>
             </router-link>
@@ -771,7 +771,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('barcode_view')"
           >
-            <router-link tag="a" class to="/app/products/barcode">
+            <router-link class to="/app/products/barcode">
               <lucide-icon class="nav-icon" name="barcode" />
               <span class="item-name">{{$t('Printbarcode')}}</span>
             </router-link>
@@ -781,7 +781,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('count_stock')"
           >
-            <router-link tag="a" class to="/app/products/count_stock">
+            <router-link class to="/app/products/count_stock">
               <lucide-icon class="nav-icon" name="check-check" />
               <span class="item-name">{{$t('CountStock')}}</span>
             </router-link>
@@ -790,7 +790,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('category')"
           >
-            <router-link tag="a" class to="/app/products/Categories">
+            <router-link class to="/app/products/Categories">
               <lucide-icon class="nav-icon" name="copy" />
               <span class="item-name">{{$t('Categories')}}</span>
             </router-link>
@@ -799,7 +799,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('subcategory')"
           >
-            <router-link tag="a" class to="/app/products/SubCategories">
+            <router-link class to="/app/products/SubCategories">
               <lucide-icon class="nav-icon" name="library" />
               <span class="item-name">{{$t('SubCategory')}}</span>
             </router-link>
@@ -808,7 +808,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('brand')"
           >
-            <router-link tag="a" class to="/app/products/Brands">
+            <router-link class to="/app/products/Brands">
               <lucide-icon class="nav-icon" name="bookmark" />
               <span class="item-name">{{$t('Brand')}}</span>
             </router-link>
@@ -817,7 +817,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('unit')"
           >
-            <router-link tag="a" class to="/app/products/Units">
+            <router-link class to="/app/products/Units">
               <lucide-icon class="nav-icon" name="quote" />
               <span class="item-name">{{$t('Units')}}</span>
             </router-link>
@@ -826,7 +826,7 @@
             class="nav-item"
             v-if="currentUserPermissions && (currentUserPermissions.includes('view_batches') || currentUserPermissions.includes('batch_view'))"
           >
-            <router-link tag="a" class to="/app/products/Batches">
+            <router-link class to="/app/products/Batches">
               <lucide-icon class="nav-icon" name="heart-pulse" />
               <span class="item-name">{{$t('Batches')}}</span>
             </router-link>
@@ -842,7 +842,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('pricing_level_view')"
           >
-            <router-link tag="a" class to="/app/pricing-levels/list">
+            <router-link class to="/app/pricing-levels/list">
               <lucide-icon class="nav-icon" name="files" />
               <span class="item-name">All Pricing Levels</span>
             </router-link>
@@ -851,7 +851,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('pricing_level_add')"
           >
-            <router-link tag="a" class to="/app/pricing-levels/create">
+            <router-link class to="/app/pricing-levels/create">
               <lucide-icon class="nav-icon" name="file-plus" />
               <span class="item-name">Create Pricing Level</span>
             </router-link>
@@ -865,43 +865,43 @@
         >
           <!-- NEW FEATURE - SAFE ADDITION: Advanced Accounting under Accounting -->
           <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('accounting_dashboard')">
-            <router-link tag="a" class to="/app/accounting-v2/dashboard">
+            <router-link class to="/app/accounting-v2/dashboard">
               <lucide-icon class="nav-icon" name="trending-up" />
               <span class="item-name">{{ $t("dashboard") }}</span>
             </router-link>
           </li>
           <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('chart_of_accounts')">
-            <router-link tag="a" class to="/app/accounting-v2/chart-of-accounts">
+            <router-link class to="/app/accounting-v2/chart-of-accounts">
               <lucide-icon class="nav-icon" name="database" />
               <span class="item-name">{{ $t('Chart_of_Accounts_Title') }}</span>
             </router-link>
           </li>
           <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('journal_entries')">
-            <router-link tag="a" class to="/app/accounting-v2/journal-entries">
+            <router-link class to="/app/accounting-v2/journal-entries">
               <lucide-icon class="nav-icon" name="files" />
               <span class="item-name">{{ $t('Journal_Entries_Title') }}</span>
             </router-link>
           </li>
           <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('trial_balance')">
-            <router-link tag="a" class to="/app/accounting-v2/reports/trial-balance">
+            <router-link class to="/app/accounting-v2/reports/trial-balance">
               <lucide-icon class="nav-icon" name="trending-up" />
               <span class="item-name">{{ $t('Trial_Balance_Title') }}</span>
             </router-link>
           </li>
           <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('accounting_profit_loss')">
-            <router-link tag="a" class to="/app/accounting-v2/reports/profit-and-loss">
+            <router-link class to="/app/accounting-v2/reports/profit-and-loss">
               <lucide-icon class="nav-icon" name="wallet" />
               <span class="item-name">{{ $t('Profit_Loss_Title') }}</span>
             </router-link>
           </li>
           <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('balance_sheet')">
-            <router-link tag="a" class to="/app/accounting-v2/reports/balance-sheet">
+            <router-link class to="/app/accounting-v2/reports/balance-sheet">
               <lucide-icon class="nav-icon" name="pie-chart" />
               <span class="item-name">{{ $t('Balance_Sheet_Title') }}</span>
             </router-link>
           </li>
           <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('accounting_tax_report')">
-            <router-link tag="a" class to="/app/accounting-v2/reports/tax-report">
+            <router-link class to="/app/accounting-v2/reports/tax-report">
               <lucide-icon class="nav-icon" name="files" />
               <span class="item-name">{{ $t('Tax_Summary_Report') }}</span>
             </router-link>
@@ -917,7 +917,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('adjustment_add')"
           >
-            <router-link tag="a" class to="/app/adjustments/store">
+            <router-link class to="/app/adjustments/store">
               <lucide-icon class="nav-icon" name="file-plus" />
               <span class="item-name">{{$t('CreateAdjustment')}}</span>
             </router-link>
@@ -926,7 +926,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('adjustment_view')"
           >
-            <router-link tag="a" class to="/app/adjustments/list">
+            <router-link class to="/app/adjustments/list">
               <lucide-icon class="nav-icon" name="files" />
               <span class="item-name">{{$t('ListAdjustments')}}</span>
             </router-link>
@@ -942,7 +942,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('transfer_add')"
           >
-            <router-link tag="a" class to="/app/transfers/store">
+            <router-link class to="/app/transfers/store">
               <lucide-icon class="nav-icon" name="file-plus" />
               <span class="item-name">{{$t('CreateTransfer')}}</span>
             </router-link>
@@ -951,7 +951,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('transfer_view')"
           >
-            <router-link tag="a" class to="/app/transfers/list">
+            <router-link class to="/app/transfers/list">
               <lucide-icon class="nav-icon" name="files" />
               <span class="item-name">{{$t('ListTransfers')}}</span>
             </router-link>
@@ -967,7 +967,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('damage_view')"
           >
-            <router-link tag="a" class to="/app/damages/store">
+            <router-link class to="/app/damages/store">
               <lucide-icon class="nav-icon" name="file-plus" />
               <span class="item-name">{{ $t('Create_Damage') }}</span>
             </router-link>
@@ -976,7 +976,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('damage_view')"
           >
-            <router-link tag="a" class to="/app/damages/list">
+            <router-link class to="/app/damages/list">
               <lucide-icon class="nav-icon" name="files" />
               <span class="item-name">{{ $t('Damages') }}</span>
             </router-link>
@@ -984,8 +984,8 @@
         </ul>
 
         <ul class="childNav d-none" data-parent="targets" :class="{ 'd-block': selectedParentMenu == 'targets' }">
-          <li class="nav-item"><router-link tag="a" to="/app/targets/dashboard"><lucide-icon class="nav-icon" name="layout-dashboard" /><span class="item-name">Target Dashboard</span></router-link></li>
-          <li class="nav-item"><router-link tag="a" to="/app/targets/list"><lucide-icon class="nav-icon" name="list" /><span class="item-name">Manage Targets</span></router-link></li>
+          <li class="nav-item"><router-link to="/app/targets/dashboard"><lucide-icon class="nav-icon" name="layout-dashboard" /><span class="item-name">Target Dashboard</span></router-link></li>
+          <li class="nav-item"><router-link to="/app/targets/list"><lucide-icon class="nav-icon" name="list" /><span class="item-name">Manage Targets</span></router-link></li>
         </ul>
 
         <ul
@@ -998,7 +998,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('account')"
           >
-            <router-link tag="a" class to="/app/accounts">
+            <router-link class to="/app/accounts">
               <lucide-icon class="nav-icon" name="files" />
               <span class="item-name">{{$t('List_accounts')}}</span>
             </router-link>
@@ -1008,7 +1008,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('transfer_money')"
           >
-            <router-link tag="a" class to="/app/transfer_money">
+            <router-link class to="/app/transfer_money">
               <lucide-icon class="nav-icon" name="files" />
               <span class="item-name">{{$t('Transfers_Money')}}</span>
             </router-link>
@@ -1018,7 +1018,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('expense_add')"
           >
-            <router-link tag="a" class to="/app/expenses/store">
+            <router-link class to="/app/expenses/store">
               <lucide-icon class="nav-icon" name="file-plus" />
               <span class="item-name">{{$t('Create_Expense')}}</span>
             </router-link>
@@ -1027,7 +1027,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('expense_view')"
           >
-            <router-link tag="a" class to="/app/expenses/list">
+            <router-link class to="/app/expenses/list">
               <lucide-icon class="nav-icon" name="files" />
               <span class="item-name">{{$t('ListExpenses')}}</span>
             </router-link>
@@ -1037,7 +1037,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('deposit_add')"
           >
-            <router-link tag="a" class to="/app/deposits/store">
+            <router-link class to="/app/deposits/store">
               <lucide-icon class="nav-icon" name="file-plus" />
               <span class="item-name">{{$t('Create_deposit')}}</span>
             </router-link>
@@ -1046,7 +1046,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('deposit_view')"
           >
-            <router-link tag="a" class to="/app/deposits/list">
+            <router-link class to="/app/deposits/list">
               <lucide-icon class="nav-icon" name="files" />
               <span class="item-name">{{$t('List_Deposit')}}</span>
             </router-link>
@@ -1055,7 +1055,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('expense_view')"
           >
-            <router-link tag="a" class to="/app/expenses/category">
+            <router-link class to="/app/expenses/category">
               <lucide-icon class="nav-icon" name="files" />
               <span class="item-name">{{$t('Expense_Category')}}</span>
             </router-link>
@@ -1065,7 +1065,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('deposit_view')"
           >
-            <router-link tag="a" class to="/app/deposits/category">
+            <router-link class to="/app/deposits/category">
               <lucide-icon class="nav-icon" name="files" />
               <span class="item-name">{{$t('Deposit_Category')}}</span>
             </router-link>
@@ -1081,16 +1081,16 @@
           :class="{ 'd-block': selectedParentMenu == 'purchases' }"
         >
           <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('purchase_orders_view')">
-            <router-link tag="a" class to="/app/procurement/purchase-orders"><lucide-icon class="nav-icon" name="clipboard-list" /><span class="item-name">Purchase Orders</span></router-link>
+            <router-link class to="/app/procurement/purchase-orders"><lucide-icon class="nav-icon" name="clipboard-list" /><span class="item-name">Purchase Orders</span></router-link>
           </li>
           <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('gate_passes_view')">
-            <router-link tag="a" class to="/app/procurement/gate-passes"><lucide-icon class="nav-icon" name="truck" /><span class="item-name">Gate Passes</span></router-link>
+            <router-link class to="/app/procurement/gate-passes"><lucide-icon class="nav-icon" name="truck" /><span class="item-name">Gate Passes</span></router-link>
           </li>
           <li
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('Purchases_view')"
           >
-            <router-link tag="a" class to="/app/purchases/list">
+            <router-link class to="/app/purchases/list">
               <lucide-icon class="nav-icon" name="files" />
               <span class="item-name">{{$t('ListPurchases')}}</span>
             </router-link>
@@ -1100,7 +1100,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('Purchases_add')"
           >
-            <router-link tag="a" class to="/app/purchases/import_purchases">
+            <router-link class to="/app/purchases/import_purchases">
               <lucide-icon class="nav-icon" name="file-plus" />
               <span class="item-name">{{$t('Import_Purchases')}}</span>
             </router-link>
@@ -1114,49 +1114,49 @@
           :class="{ 'd-block': selectedParentMenu == 'service' }"
         >
           <li class="nav-item">
-            <router-link tag="a" class to="/app/service/jobs">
+            <router-link class to="/app/service/jobs">
               <lucide-icon class="nav-icon" name="files" />
               <span class="item-name">{{$t('Service_Jobs')}}</span>
             </router-link>
           </li>
           <li class="nav-item">
-            <router-link tag="a" class :to="{ path: '/app/service/jobs', query: { status: 'quoted' } }">
+            <router-link class :to="{ path: '/app/service/jobs', query: { status: 'quoted' } }">
               <lucide-icon class="nav-icon" name="hourglass" />
               <span class="item-name">{{$t('Awaiting_Approval') || 'Awaiting Approval'}}</span>
             </router-link>
           </li>
           <li class="nav-item">
-            <router-link tag="a" class :to="{ path: '/app/service/jobs', query: { status: 'ready' } }">
+            <router-link class :to="{ path: '/app/service/jobs', query: { status: 'ready' } }">
               <lucide-icon class="nav-icon" name="bell" />
               <span class="item-name">{{$t('Ready_For_Pickup') || 'Ready for Pickup'}}</span>
             </router-link>
           </li>
           <li class="nav-item">
-            <router-link tag="a" class :to="{ path: '/app/service/jobs', query: { payment_status: 'unpaid' } }">
+            <router-link class :to="{ path: '/app/service/jobs', query: { payment_status: 'unpaid' } }">
               <lucide-icon class="nav-icon" name="banknote" />
               <span class="item-name">{{$t('Awaiting_Payment') || 'Awaiting Payment'}}</span>
             </router-link>
           </li>
           <li class="nav-item">
-            <router-link tag="a" class to="/app/service/technicians">
+            <router-link class to="/app/service/technicians">
               <lucide-icon class="nav-icon" name="files" />
               <span class="item-name">{{$t('Service_Technicians')}}</span>
             </router-link>
           </li>
           <li class="nav-item">
-            <router-link tag="a" class to="/app/service/checklist-categories">
+            <router-link class to="/app/service/checklist-categories">
               <lucide-icon class="nav-icon" name="folder" />
               <span class="item-name">{{$t('Checklist_Categories')}}</span>
             </router-link>
           </li>
           <li class="nav-item">
-            <router-link tag="a" class to="/app/service/checklists">
+            <router-link class to="/app/service/checklists">
               <lucide-icon class="nav-icon" name="check" />
               <span class="item-name">{{$t('Checklist_Items')}}</span>
             </router-link>
           </li>
           <li class="nav-item">
-            <router-link tag="a" class to="/app/service/history">
+            <router-link class to="/app/service/history">
               <lucide-icon class="nav-icon" name="calendar-days" />
               <span class="item-name">{{$t('Maintenance_History')}}</span>
             </router-link>
@@ -1169,25 +1169,25 @@
           :class="{ 'd-block': selectedParentMenu == 'assets' }"
         >
           <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('assets')">
-            <router-link tag="a" class to="/app/assets/store">
+            <router-link class to="/app/assets/store">
               <lucide-icon class="nav-icon" name="file-plus" />
               <span class="item-name">{{$t('Add_Asset')}}</span>
             </router-link>
           </li>
           <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('assets')">
-            <router-link tag="a" class to="/app/assets/list">
+            <router-link class to="/app/assets/list">
               <lucide-icon class="nav-icon" name="files" />
               <span class="item-name">{{$t('Assets_List')}}</span>
             </router-link>
           </li>
           <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('assets')">
-            <router-link tag="a" class to="/app/assets/due">
+            <router-link class to="/app/assets/due">
               <lucide-icon class="nav-icon" name="clock" />
               <span class="item-name">{{$t('Due_Assets')}}</span>
             </router-link>
           </li>
           <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('assets')">
-            <router-link tag="a" class to="/app/assets/category">
+            <router-link class to="/app/assets/category">
               <lucide-icon class="nav-icon" name="folder" />
               <span class="item-name">{{$t('Asset_Category')}}</span>
             </router-link>
@@ -1203,7 +1203,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('Sales_add')"
           >
-            <router-link tag="a" class to="/app/sales/store">
+            <router-link class to="/app/sales/store">
               <lucide-icon class="nav-icon" name="file-plus" />
               <span class="item-name">{{$t('AddSale')}}</span>
             </router-link>
@@ -1212,7 +1212,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('Sales_add')"
           >
-            <router-link tag="a" class to="/app/sales/import_sales">
+            <router-link class to="/app/sales/import_sales">
               <lucide-icon class="nav-icon" name="file-plus" />
               <span class="item-name">{{$t('Import_Sales')}}</span>
             </router-link>
@@ -1221,7 +1221,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('Sales_view')"
           >
-            <router-link tag="a" class to="/app/sales/list">
+            <router-link class to="/app/sales/list">
               <lucide-icon class="nav-icon" name="files" />
               <span class="item-name">{{$t('ListSales')}}</span>
             </router-link>
@@ -1230,7 +1230,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('Pos_view')"
           >
-            <router-link tag="a" class to="/app/pos">
+            <router-link class to="/app/pos">
               <lucide-icon class="nav-icon" name="files" />
               <span class="item-name">POS</span>
             </router-link>
@@ -1239,7 +1239,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('customer_display_screen_setup')"
           >
-            <router-link tag="a" class to="/app/customer-display/setup">
+            <router-link class to="/app/customer-display/setup">
               <lucide-icon class="nav-icon" name="barcode" />
               <span class="item-name">{{$t('Customer_Screen')}}</span>
             </router-link>
@@ -1248,7 +1248,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('shipment')"
           >
-            <router-link tag="a" class to="/app/sales/shipment">
+            <router-link class to="/app/sales/shipment">
               <lucide-icon class="nav-icon" name="files" />
               <span class="item-name">{{$t('Shipments')}}</span>
             </router-link>
@@ -1257,7 +1257,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('real_time_sales_counter')"
           >
-            <router-link tag="a" class to="/app/real-time-sales-counter">
+            <router-link class to="/app/real-time-sales-counter">
               <lucide-icon class="nav-icon" name="shopping-cart" />
               <span class="item-name">{{ $t("Real_time_Sales_Counter") || "Real-time Sales Counter" }}</span>
             </router-link>
@@ -1273,7 +1273,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('bookings')"
           >
-            <router-link tag="a" class to="/app/bookings/list">
+            <router-link class to="/app/bookings/list">
               <lucide-icon class="nav-icon" name="files" />
               <span class="item-name">{{ $t('Booking_List') || 'Booking List' }}</span>
             </router-link>
@@ -1282,7 +1282,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('bookings')"
           >
-            <router-link tag="a" class to="/app/bookings/calendar">
+            <router-link class to="/app/bookings/calendar">
               <lucide-icon class="nav-icon" name="calendar-days" />
               <span class="item-name">{{ $t('Calendar_View') }}</span>
             </router-link>
@@ -1295,31 +1295,31 @@
           :class="{ 'd-block': selectedParentMenu == 'commissions' }"
         >
           <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('commissions_view')">
-            <router-link tag="a" class to="/app/commissions/programs">
+            <router-link class to="/app/commissions/programs">
               <lucide-icon class="nav-icon" name="files" />
               <span class="item-name">{{ $t('Commission_Programs') }}</span>
             </router-link>
           </li>
           <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('commissions_view')">
-            <router-link tag="a" class to="/app/commissions/agents">
+            <router-link class to="/app/commissions/agents">
               <lucide-icon class="nav-icon" name="users" />
               <span class="item-name">{{ $t('Sales_Agents') }}</span>
             </router-link>
           </li>
           <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('commissions_view')">
-            <router-link tag="a" class to="/app/commissions/rules">
+            <router-link class to="/app/commissions/rules">
               <lucide-icon class="nav-icon" name="settings" />
               <span class="item-name">{{ $t('Commission_Rules') }}</span>
             </router-link>
           </li>
           <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('commissions_view')">
-            <router-link tag="a" class to="/app/commissions/receipts">
+            <router-link class to="/app/commissions/receipts">
               <lucide-icon class="nav-icon" name="receipt" />
               <span class="item-name">{{ $t('Commission_Receipts') }}</span>
             </router-link>
           </li>
           <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('commissions_view')">
-            <router-link tag="a" class to="/app/commissions/report">
+            <router-link class to="/app/commissions/report">
               <lucide-icon class="nav-icon" name="trending-up" />
               <span class="item-name">{{ $t('Commission_Report') }}</span>
             </router-link>
@@ -1335,7 +1335,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('Quotations_add')"
           >
-            <router-link tag="a" class to="/app/quotations/store">
+            <router-link class to="/app/quotations/store">
               <lucide-icon class="nav-icon" name="file-plus" />
               <span class="item-name">{{$t('AddQuote')}}</span>
             </router-link>
@@ -1344,7 +1344,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('Quotations_view')"
           >
-            <router-link tag="a" class to="/app/quotations/list">
+            <router-link class to="/app/quotations/list">
               <lucide-icon class="nav-icon" name="files" />
               <span class="item-name">{{$t('ListQuotations')}}</span>
             </router-link>
@@ -1362,7 +1362,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('company')"
           >
-            <router-link tag="a" class to="/app/hrm/company">
+            <router-link class to="/app/hrm/company">
               <lucide-icon class="nav-icon" name="briefcase-business" />
               <span class="item-name">{{$t('Company')}}</span>
             </router-link>
@@ -1371,7 +1371,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('department')"
           >
-            <router-link tag="a" class to="/app/hrm/departments">
+            <router-link class to="/app/hrm/departments">
               <lucide-icon class="nav-icon" name="store" />
               <span class="item-name">{{$t('Departments')}}</span>
             </router-link>
@@ -1380,7 +1380,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('designation')"
           >
-            <router-link tag="a" class to="/app/hrm/designations">
+            <router-link class to="/app/hrm/designations">
               <lucide-icon class="nav-icon" name="camera" />
               <span class="item-name">{{$t('Designations')}}</span>
             </router-link>
@@ -1389,7 +1389,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('office_shift')"
           >
-            <router-link tag="a" class to="/app/hrm/office_Shift">
+            <router-link class to="/app/hrm/office_Shift">
               <lucide-icon class="nav-icon" name="clock" />
               <span class="item-name">{{$t('Office_Shift')}}</span>
             </router-link>
@@ -1398,7 +1398,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('view_employee')"
           >
-            <router-link tag="a" class to="/app/hrm/employees">
+            <router-link class to="/app/hrm/employees">
               <lucide-icon class="nav-icon" name="wrench" />
               <span class="item-name">{{$t('Employees')}}</span>
             </router-link>
@@ -1407,7 +1407,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('attendance')"
           >
-            <router-link tag="a" class to="/app/hrm/attendance">
+            <router-link class to="/app/hrm/attendance">
               <lucide-icon class="nav-icon" name="clock" />
               <span class="item-name">{{$t('Attendance')}}</span>
             </router-link>
@@ -1427,14 +1427,14 @@
             <ul class="submenu">
               <li
               >
-                <router-link tag="a" class to="/app/hrm/leaves/list">
+                <router-link class to="/app/hrm/leaves/list">
                   <lucide-icon class="nav-icon" name="id-card" />
                   <span class="item-name">{{$t('Leave_request')}}</span>
                 </router-link>
               </li>
               <li
               >
-                <router-link tag="a" class to="/app/hrm/leaves/type">
+                <router-link class to="/app/hrm/leaves/type">
                   <lucide-icon class="nav-icon" name="id-card" />
                   <span class="item-name">{{$t('Leave_type')}}</span>
                 </router-link>
@@ -1447,7 +1447,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('holiday')"
           >
-            <router-link tag="a" class to="/app/hrm/holidays">
+            <router-link class to="/app/hrm/holidays">
               <lucide-icon class="nav-icon" name="bell-ring" />
               <span class="item-name">{{$t('Holidays')}}</span>
             </router-link>
@@ -1457,7 +1457,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('payroll')"
           >
-            <router-link tag="a" class to="/app/hrm/payrolls">
+            <router-link class to="/app/hrm/payrolls">
               <lucide-icon class="nav-icon" name="banknote" />
               <span class="item-name">{{$t('Payroll')}}</span>
             </router-link>
@@ -1476,7 +1476,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('Customers_view')"
           >
-            <router-link tag="a" class to="/app/People/Customers">
+            <router-link class to="/app/People/Customers">
               <lucide-icon class="nav-icon" name="shield-check" />
               <span class="item-name">{{$t('Customers')}}</span>
             </router-link>
@@ -1486,7 +1486,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('Customers_add')"
           >
-            <router-link tag="a" class to="/app/People/Customers/create">
+            <router-link class to="/app/People/Customers/create">
               <lucide-icon class="nav-icon" name="plus" />
               <span class="item-name">{{$t('Add')}} {{$t('Customer')}}</span>
             </router-link>
@@ -1496,7 +1496,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('customers_import')"
           >
-            <router-link tag="a" class to="/app/People/Customers_import">
+            <router-link class to="/app/People/Customers_import">
               <lucide-icon class="nav-icon" name="download" />
               <span class="item-name">{{$t('Import_Customers')}}</span>
             </router-link>
@@ -1506,7 +1506,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('Customers_view')"
           >
-            <router-link tag="a" class to="/app/People/Customers_without_ecommerce">
+            <router-link class to="/app/People/Customers_without_ecommerce">
               <lucide-icon class="nav-icon" name="shield-check" />
               <span class="item-name">{{$t('Customers_without_Login')}}</span>
             </router-link>
@@ -1516,7 +1516,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('Customers_view')"
           >
-            <router-link tag="a" class to="/app/People/Customers_ecommerce">
+            <router-link class to="/app/People/Customers_ecommerce">
               <lucide-icon class="nav-icon" name="shield-check" />
               <span class="item-name">{{$t('Customers_with_Login')}}</span>
             </router-link>
@@ -1536,7 +1536,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('Suppliers_view')"
           >
-            <router-link tag="a" class to="/app/People/Suppliers">
+            <router-link class to="/app/People/Suppliers">
               <lucide-icon class="nav-icon" name="shield-check" />
               <span class="item-name">{{$t('Suppliers')}}</span>
             </router-link>
@@ -1546,7 +1546,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('Suppliers_add')"
           >
-            <router-link tag="a" class to="/app/People/Suppliers/create">
+            <router-link class to="/app/People/Suppliers/create">
               <lucide-icon class="nav-icon" name="plus" />
               <span class="item-name">{{$t('Add')}} {{$t('Supplier')}}</span>
             </router-link>
@@ -1556,7 +1556,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('Suppliers_import')"
           >
-            <router-link tag="a" class to="/app/People/Suppliers_import">
+            <router-link class to="/app/People/Suppliers_import">
               <lucide-icon class="nav-icon" name="download" />
               <span class="item-name">{{$t('Import_Suppliers')}}</span>
             </router-link>
@@ -1573,7 +1573,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('users_view')"
           >
-            <router-link tag="a" class to="/app/User_Management/Users">
+            <router-link class to="/app/User_Management/Users">
               <lucide-icon class="nav-icon" name="shield-check" />
               <span class="item-name">{{$t('Users')}}</span>
             </router-link>
@@ -1583,7 +1583,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('permissions_view')"
           >
-            <router-link tag="a" class to="/app/User_Management/permissions">
+            <router-link class to="/app/User_Management/permissions">
               <lucide-icon class="nav-icon" name="key" />
               <span class="item-name">{{$t('GroupPermissions')}}</span>
             </router-link>
@@ -1600,7 +1600,7 @@
             class="nav-item"
             v-if="currentUserPermissions && (currentUserPermissions.includes('policies.view') || currentUserPermissions.includes('setting_system'))"
           >
-            <router-link tag="a" class to="/app/settings/policies/credit-limit">
+            <router-link class to="/app/settings/policies/credit-limit">
               <lucide-icon class="nav-icon" name="shield" />
               <span class="item-name">Policies</span>
             </router-link>
@@ -1609,14 +1609,14 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('setting_system')"
           >
-            <router-link tag="a" class to="/app/settings/System_settings">
+            <router-link class to="/app/settings/System_settings">
               <lucide-icon class="nav-icon" name="settings" />
               <span class="item-name">{{$t('SystemSettings')}}</span>
             </router-link>
           </li>
 
           <li class="nav-item">
-            <router-link tag="a" class to="/app/settings/tax-management">
+            <router-link class to="/app/settings/tax-management">
               <lucide-icon class="nav-icon" name="receipt-text" />
               <span class="item-name">Tax Management</span>
             </router-link>
@@ -1626,7 +1626,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('quickbooks_settings')"
           >
-            <router-link tag="a" class to="/app/settings/quickbooks_sync">
+            <router-link class to="/app/settings/quickbooks_sync">
               <lucide-icon class="nav-icon" name="banknote" />
               <span class="item-name">{{$t('Quickbooks_Sync')}}</span>
             </router-link>
@@ -1636,7 +1636,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('appearance_settings')"
           >
-            <router-link tag="a" class to="/app/settings/appearance_settings">
+            <router-link class to="/app/settings/appearance_settings">
               <lucide-icon class="nav-icon" name="database-zap" />
               <span class="item-name">{{$t('Dynamic_Appearance')}} </span>
             </router-link>
@@ -1646,7 +1646,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('translations_settings')"
           >
-            <router-link tag="a" class to="/app/settings/translations_settings">
+            <router-link class to="/app/settings/translations_settings">
               <lucide-icon class="nav-icon" name="database-zap" />
               <span class="item-name">{{$t('Languages')}} </span>
             </router-link>
@@ -1656,7 +1656,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('payment_methods')"
           >
-            <router-link tag="a" class to="/app/settings/payment_methods">
+            <router-link class to="/app/settings/payment_methods">
               <lucide-icon class="nav-icon" name="banknote" />
               <span class="item-name">{{$t('Payment_Methods')}}</span>
             </router-link>
@@ -1666,7 +1666,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('sms_settings')"
           >
-            <router-link tag="a" class to="/app/settings/sms_settings">
+            <router-link class to="/app/settings/sms_settings">
               <lucide-icon class="nav-icon" name="message-square" />
               <span class="item-name">{{$t('sms_settings')}}</span>
             </router-link>
@@ -1676,7 +1676,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('notification_template')"
           >
-            <router-link tag="a" class to="/app/settings/sms_templates">
+            <router-link class to="/app/settings/sms_templates">
               <lucide-icon class="nav-icon" name="message-square" />
               <span class="item-name">{{$t('sms_templates')}}</span>
             </router-link>
@@ -1686,7 +1686,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('mail_settings')"
           >
-            <router-link tag="a" class to="/app/settings/mail_settings">
+            <router-link class to="/app/settings/mail_settings">
               <lucide-icon class="nav-icon" name="mail" />
               <span class="item-name">{{$t('mail_settings')}}</span>
             </router-link>
@@ -1696,7 +1696,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('notification_template')"
           >
-            <router-link tag="a" class to="/app/settings/email_templates">
+            <router-link class to="/app/settings/email_templates">
               <lucide-icon class="nav-icon" name="mail" />
               <span class="item-name">{{$t('email_templates')}}</span>
             </router-link>
@@ -1707,7 +1707,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('pos_settings')"
           >
-            <router-link tag="a" class to="/app/settings/pos_settings">
+            <router-link class to="/app/settings/pos_settings">
               <lucide-icon class="nav-icon" name="database-zap" />
               <span class="item-name">{{$t('Pos_Settings')}}</span>
             </router-link>
@@ -1718,7 +1718,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('pos_settings')"
           >
-            <router-link tag="a" class to="/app/settings/pos_receipt">
+            <router-link class to="/app/settings/pos_receipt">
               <lucide-icon class="nav-icon" name="calculator" />
               <span class="item-name">{{$t('POS_Receipt')}}</span>
             </router-link>
@@ -1728,7 +1728,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('module_settings')"
           >
-            <router-link tag="a" class to="/app/settings/module_settings">
+            <router-link class to="/app/settings/module_settings">
               <lucide-icon class="nav-icon" name="database-zap" />
               <span class="item-name">{{$t('module_settings')}}</span>
             </router-link>
@@ -1738,7 +1738,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('update_settings')"
           >
-            <router-link tag="a" class to="/app/settings/update_settings">
+            <router-link class to="/app/settings/update_settings">
               <lucide-icon class="nav-icon" name="arrow-up-circle" />
               <span class="item-name">{{$t('update_settings')}}</span>
             </router-link>
@@ -1748,7 +1748,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('payment_gateway')"
           >
-            <router-link tag="a" class to="/app/settings/payment_gateway">
+            <router-link class to="/app/settings/payment_gateway">
               <lucide-icon class="nav-icon" name="banknote" />
               <span class="item-name">{{$t('Payment_Gateway')}}</span>
             </router-link>
@@ -1760,7 +1760,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('warehouse')"
           >
-            <router-link tag="a" class to="/app/settings/Warehouses">
+            <router-link class to="/app/settings/Warehouses">
               <lucide-icon class="nav-icon" name="store" />
               <span class="item-name">{{$t('Warehouses')}}</span>
             </router-link>
@@ -1770,7 +1770,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('warehouse_locations')"
           >
-            <router-link tag="a" class to="/app/settings/Warehouse_Locations">
+            <router-link class to="/app/settings/Warehouse_Locations">
               <lucide-icon class="nav-icon" name="map-pin" />
               <span class="item-name">{{$t('Warehouse_Locations')}}</span>
             </router-link>
@@ -1779,7 +1779,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('currency')"
           >
-            <router-link tag="a" class to="/app/settings/Currencies">
+            <router-link class to="/app/settings/Currencies">
               <lucide-icon class="nav-icon" name="dollar-sign" />
               <span class="item-name">{{$t('Currencies')}}</span>
             </router-link>
@@ -1789,7 +1789,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('backup')"
           >
-            <router-link tag="a" class to="/app/settings/Backup">
+            <router-link class to="/app/settings/Backup">
               <lucide-icon class="nav-icon" name="database-backup" />
               <span class="item-name">{{$t('Backup')}}</span>
             </router-link>
@@ -1799,7 +1799,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('system_health_view')"
           >
-            <router-link tag="a" class to="/app/settings/system_health">
+            <router-link class to="/app/settings/system_health">
               <lucide-icon class="nav-icon" name="monitor-up" />
               <span class="item-name">{{$t('System_Health')}}</span>
             </router-link>
@@ -1809,7 +1809,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('webhooks_view')"
           >
-            <router-link tag="a" class to="/app/settings/webhooks">
+            <router-link class to="/app/settings/webhooks">
               <lucide-icon class="nav-icon" name="cloud" />
               <span class="item-name">{{$t('Webhooks')}}</span>
             </router-link>
@@ -1819,7 +1819,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('login_device_management')"
           >
-            <router-link tag="a" class to="/app/settings/login_devices">
+            <router-link class to="/app/settings/login_devices">
               <lucide-icon class="nav-icon" name="lock" />
               <span class="item-name">{{$t('Login_Device_Management')}}</span>
             </router-link>
@@ -1836,7 +1836,7 @@
             v-if="currentUserPermissions && currentUserPermissions.includes('targets.reports')"
             class="nav-item"
           >
-            <router-link tag="a" class to="/app/targets/reports">
+            <router-link class to="/app/targets/reports">
               <lucide-icon class="nav-icon" name="bar-chart-3" />
               <span class="item-name">Target Reports</span>
             </router-link>
@@ -1846,7 +1846,7 @@
             v-if="currentUserPermissions && currentUserPermissions.includes('sales_3d_dashboard')"
             class="nav-item"
           >
-            <router-link tag="a" class to="/app/reports/sales-3d-dashboard">
+            <router-link class to="/app/reports/sales-3d-dashboard">
               <lucide-icon class="nav-icon" name="atom" />
               <span class="item-name">{{$t('sales_3d_dashboard')}}</span>
             </router-link>
@@ -1856,7 +1856,7 @@
             v-if="currentUserPermissions && currentUserPermissions.includes('daily_reports_view')"
             class="nav-item"
           >
-            <router-link tag="a" class to="/app/reports/daily_reports">
+            <router-link class to="/app/reports/daily_reports">
               <lucide-icon class="nav-icon" name="calendar-days" />
               <span class="item-name">Daily Reports</span>
             </router-link>
@@ -1880,7 +1880,7 @@
               <li
                 v-if="currentUserPermissions && currentUserPermissions.includes('Reports_payments_Purchases')"
               >
-                <router-link tag="a" class to="/app/reports/payments_purchase">
+                <router-link class to="/app/reports/payments_purchase">
                   <lucide-icon class="nav-icon" name="id-card" />
                   <span class="item-name">{{$t('Purchases')}}</span>
                 </router-link>
@@ -1888,7 +1888,7 @@
               <li
                 v-if="currentUserPermissions && currentUserPermissions.includes('Reports_payments_Sales')"
               >
-                <router-link tag="a" class to="/app/reports/payments_sale">
+                <router-link class to="/app/reports/payments_sale">
                   <lucide-icon class="nav-icon" name="id-card" />
                   <span class="item-name">{{$t('Sales')}}</span>
                 </router-link>
@@ -1896,7 +1896,7 @@
               <li
                 v-if="currentUserPermissions && currentUserPermissions.includes('Reports_payments_Sale_Returns')"
               >
-                <router-link tag="a" class to="/app/reports/payments_sales_returns">
+                <router-link class to="/app/reports/payments_sales_returns">
                   <lucide-icon class="nav-icon" name="id-card" />
                   <span class="item-name">{{$t('SalesReturn')}}</span>
                 </router-link>
@@ -1904,7 +1904,7 @@
               <li
                 v-if="currentUserPermissions && currentUserPermissions.includes('Reports_payments_purchase_Return')"
               >
-                <router-link tag="a" class to="/app/reports/payments_purchases_returns">
+                <router-link class to="/app/reports/payments_purchases_returns">
                   <lucide-icon class="nav-icon" name="id-card" />
                   <span class="item-name">{{$t('PurchasesReturn')}}</span>
                 </router-link>
@@ -1916,7 +1916,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('report_transactions')"
           >
-            <router-link tag="a" class to="/app/reports/report_transactions">
+            <router-link class to="/app/reports/report_transactions">
               <lucide-icon class="nav-icon" name="dollar-sign" />
               <span class="item-name">{{$t('Report_Transactions')}}</span>
             </router-link>
@@ -1926,7 +1926,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('cash_flow_report')"
           >
-            <router-link tag="a" class to="/app/reports/cash_flow_report">
+            <router-link class to="/app/reports/cash_flow_report">
               <lucide-icon class="nav-icon" name="trending-up" />
               <span class="item-name">{{$t('Cash_Flow_Report')}}</span>
             </router-link>
@@ -1936,7 +1936,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('seller_report')"
           >
-            <router-link tag="a" class to="/app/reports/seller_report">
+            <router-link class to="/app/reports/seller_report">
               <lucide-icon class="nav-icon" name="user" />
               <span class="item-name">{{$t('Seller_report')}}</span>
             </router-link>
@@ -1946,7 +1946,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('report_attendance_summary')"
           >
-            <router-link tag="a" class :to="{ name: 'attendance_report' }">
+            <router-link class :to="{ name: 'attendance_report' }">
               <lucide-icon class="nav-icon" name="clock" />
               <span class="item-name">{{$t('attendance_summary')}}</span>
             </router-link>
@@ -1956,7 +1956,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('Reports_profit')"
           >
-            <router-link tag="a" class to="/app/reports/profit_and_loss">
+            <router-link class to="/app/reports/profit_and_loss">
               <lucide-icon class="nav-icon" name="wallet" />
               <span class="item-name">{{$t('ProfitandLoss')}}</span>
             </router-link>
@@ -1966,7 +1966,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('analytics_report')"
           >
-            <router-link tag="a" class to="/app/reports/analytics_report">
+            <router-link class to="/app/reports/analytics_report">
               <lucide-icon class="nav-icon" name="bar-chart" />
               <span class="item-name">{{$t('Analytics_Report')}}</span>
             </router-link>
@@ -1976,7 +1976,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('Stock_Inventory_Valuation')"
           >
-            <router-link tag="a" class to="/app/reports/stock_inventory_valuation">
+            <router-link class to="/app/reports/stock_inventory_valuation">
               <lucide-icon class="nav-icon" name="trending-up" />
               <span class="item-name">{{$t('Stock_Inventory_Valuation')}}</span>
             </router-link>
@@ -1986,7 +1986,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('cash_register_report')"
           >
-            <router-link tag="a" class :to="{ name: 'cash_register_report' }">
+            <router-link class :to="{ name: 'cash_register_report' }">
               <lucide-icon class="nav-icon" name="banknote" />
               <span class="item-name">{{$t('Cash_Register_Report')}}</span>
             </router-link>
@@ -1995,7 +1995,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('report_warranty')"
           >
-            <router-link tag="a" class :to="{ name: 'warranty_guarantee_report' }">
+            <router-link class :to="{ name: 'warranty_guarantee_report' }">
               <lucide-icon class="nav-icon" name="shield" />
               <span class="item-name">{{ $t('Warranty_Guarantee_Report') }}</span>
             </router-link>
@@ -2005,7 +2005,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('inventory_valuation')"
           >
-            <router-link tag="a" class to="/app/reports/inventory_valuation_summary">
+            <router-link class to="/app/reports/inventory_valuation_summary">
               <lucide-icon class="nav-icon" name="pie-chart" />
               <span class="item-name">{{$t('Inventory_Valuation')}}</span>
             </router-link>
@@ -2015,7 +2015,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('expenses_report')"
           >
-            <router-link tag="a" class to="/app/reports/expenses_report">
+            <router-link class to="/app/reports/expenses_report">
               <lucide-icon class="nav-icon" name="receipt-text" />
               <span class="item-name">{{$t('Expense_Report')}}</span>
             </router-link>
@@ -2025,7 +2025,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('deposits_report')"
           >
-            <router-link tag="a" class to="/app/reports/deposits_report">
+            <router-link class to="/app/reports/deposits_report">
               <lucide-icon class="nav-icon" name="shield" />
               <span class="item-name">{{$t('Deposits_Report')}}</span>
             </router-link>
@@ -2035,7 +2035,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('Reports_quantity_alerts')"
           >
-            <router-link tag="a" class to="/app/reports/quantity_alerts">
+            <router-link class to="/app/reports/quantity_alerts">
               <lucide-icon class="nav-icon" name="alarm-clock" />
               <span class="item-name">{{$t('ProductQuantityAlerts')}}</span>
             </router-link>
@@ -2044,7 +2044,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('Warehouse_report')"
           >
-            <router-link tag="a" class to="/app/reports/warehouse_report">
+            <router-link class to="/app/reports/warehouse_report">
               <lucide-icon class="nav-icon" name="warehouse" />
               <span class="item-name">{{$t('Warehouse_report')}}</span>
             </router-link>
@@ -2054,7 +2054,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('internal_location_report')"
           >
-            <router-link tag="a" class to="/app/reports/internal_location_report">
+            <router-link class to="/app/reports/internal_location_report">
               <lucide-icon class="nav-icon" name="map-pin" />
               <span class="item-name">{{$t('Internal_Location_Report')}}</span>
             </router-link>
@@ -2063,7 +2063,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('stock_report')"
           >
-            <router-link tag="a" class to="/app/reports/stock_report">
+            <router-link class to="/app/reports/stock_report">
               <lucide-icon class="nav-icon" name="trending-up" />
               <span class="item-name">{{$t('stock_report')}}</span>
             </router-link>
@@ -2072,7 +2072,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('negative_stock_report')"
           >
-            <router-link tag="a" class to="/app/reports/negative_stock_report">
+            <router-link class to="/app/reports/negative_stock_report">
               <lucide-icon class="nav-icon" name="trending-up" />
               <span class="item-name">{{$t('Negative_Stock_Report')}}</span>
             </router-link>
@@ -2082,35 +2082,35 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('product_report')"
           >
-            <router-link tag="a" class to="/app/reports/product_report">
+            <router-link class to="/app/reports/product_report">
               <lucide-icon class="nav-icon" name="barcode" />
               <span class="item-name">{{$t('product_report')}}</span>
             </router-link>
           </li>
 
           <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('zeroSalesProducts')">
-            <router-link tag="a" class :to="{ name: 'zero_sales_products_report' }">
+            <router-link class :to="{ name: 'zero_sales_products_report' }">
               <lucide-icon class="nav-icon" name="shopping-bag" />
               <span class="item-name">{{$t('Zero_Sales_Products_Report')}}</span>
             </router-link>
           </li>
 
           <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('Dead_Stock_Report')">
-            <router-link tag="a" class :to="{ name: 'dead_stock_report' }">
+            <router-link class :to="{ name: 'dead_stock_report' }">
               <lucide-icon class="nav-icon" name="shopping-bag" />
               <span class="item-name">{{$t('Dead_Stock_Report')}}</span>
             </router-link>
           </li>
 
           <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('expiry_report')">
-            <router-link tag="a" class :to="{ name: 'expiry_report' }">
+            <router-link class :to="{ name: 'expiry_report' }">
               <lucide-icon class="nav-icon" name="timer" />
               <span class="item-name">{{$t('Expiry_Report')}}</span>
             </router-link>
           </li>
 
           <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('Batch_Register_Report')">
-            <router-link tag="a" class :to="{ name: 'batch_register_report' }">
+            <router-link class :to="{ name: 'batch_register_report' }">
               <lucide-icon class="nav-icon" name="package" />
               <span class="item-name">{{ $t('Batch_Register_Report') || 'Batch Register' }}</span>
             </router-link>
@@ -2120,21 +2120,21 @@
           class="nav-item"
           v-if="currentUserPermissions && currentUserPermissions.includes('Stock_Aging_Report')"
         >
-          <router-link tag="a" class :to="{ name: 'stock_aging_report' }">
+          <router-link class :to="{ name: 'stock_aging_report' }">
             <lucide-icon class="nav-icon" name="clock" />
             <span class="item-name">{{$t('Stock_Aging_Report')}}</span>
           </router-link>
         </li>
 
         <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('Stock_Transfer_Report')">
-        <router-link tag="a" class :to="{ name: 'stock_transfer_report' }">
+        <router-link class :to="{ name: 'stock_transfer_report' }">
           <lucide-icon class="nav-icon" name="arrow-left" />
           <span class="item-name">{{$t('Stock_Transfer_Report')}}</span>
         </router-link>
       </li>
 
       <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('Stock_Adjustment_Report')">
-        <router-link tag="a" :to="{ name: 'stock_adjustment_report' }">
+        <router-link :to="{ name: 'stock_adjustment_report' }">
           <lucide-icon class="nav-icon" name="pencil" />
           <span class="item-name">{{$t('Stock_Adjustment_Report')}}</span>
         </router-link>
@@ -2142,27 +2142,27 @@
 
 
         <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('discount_summary_report')">
-          <router-link tag="a" class :to="{ name: 'discount_summary_report' }">
+          <router-link class :to="{ name: 'discount_summary_report' }">
             <lucide-icon class="nav-icon" name="receipt" />
             <span class="item-name">{{$t('Discount_Summary_Report')}}</span>
           </router-link>
         </li>
       <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('customer_loyalty_points_report')">
-        <router-link tag="a" class :to="{ name: 'customer_loyalty_points_report' }">
+        <router-link class :to="{ name: 'customer_loyalty_points_report' }">
           <lucide-icon class="nav-icon" name="heart" />
           <span class="item-name">{{$t('Customer_Loyalty_Points_Report')}}</span>
         </router-link>
       </li>
 
         <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('tax_summary_report')">
-          <router-link tag="a" class :to="{ name: 'tax_summary_report' }">
+          <router-link class :to="{ name: 'tax_summary_report' }">
             <lucide-icon class="nav-icon" name="files" />
             <span class="item-name">{{$t('Tax_Summary_Report')}}</span>
           </router-link>
         </li>
 
         <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('taxes.report')">
-          <router-link tag="a" class :to="{ name: 'managed_tax_report' }">
+          <router-link class :to="{ name: 'managed_tax_report' }">
             <lucide-icon class="nav-icon" name="receipt-text" />
             <span class="item-name">Tax Report</span>
           </router-link>
@@ -2171,7 +2171,7 @@
 
 
         <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('draft_invoices_report')">
-          <router-link tag="a" class :to="{ name: 'draft_invoices_report' }">
+          <router-link class :to="{ name: 'draft_invoices_report' }">
             <lucide-icon class="nav-icon" name="receipt" />
             <span class="item-name">{{$t('Draft_Invoices_Report')}}</span>
           </router-link>
@@ -2184,7 +2184,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('return_ratio_report')"
           >
-            <router-link tag="a" class to="/app/reports/return_ratio_report">
+            <router-link class to="/app/reports/return_ratio_report">
               <lucide-icon class="nav-icon" name="trending-up" />
               <span class="item-name">{{$t('Return_Ratio_Report')}}</span>
             </router-link>
@@ -2194,7 +2194,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('Reports_sales')"
           >
-            <router-link tag="a" class to="/app/reports/sales_report">
+            <router-link class to="/app/reports/sales_report">
               <lucide-icon class="nav-icon" name="bar-chart" />
               <span class="item-name">{{$t('SalesReport')}}</span>
             </router-link>
@@ -2204,7 +2204,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('Reports_sales')"
           >
-            <router-link tag="a" class :to="{ name: 'branch_year_comparison_report' }">
+            <router-link class :to="{ name: 'branch_year_comparison_report' }">
               <lucide-icon class="nav-icon" name="bar-chart-3" />
               <span class="item-name">Branch Performance Comparison</span>
             </router-link>
@@ -2214,7 +2214,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('product_sales_report')"
           >
-            <router-link tag="a" class to="/app/reports/product_sales_report">
+            <router-link class to="/app/reports/product_sales_report">
               <lucide-icon class="nav-icon" name="trending-up" />
               <span class="item-name">{{$t('product_sales_report')}}</span>
             </router-link>
@@ -2224,7 +2224,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('report_sales_by_category')"
           >
-            <router-link tag="a" class to="/app/reports/report_sales_by_category">
+            <router-link class to="/app/reports/report_sales_by_category">
               <lucide-icon class="nav-icon" name="tag" />
               <span class="item-name">{{$t('Sales_by_Category')}}</span>
             </router-link>
@@ -2234,7 +2234,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('report_sales_by_brand')"
           >
-            <router-link tag="a" class to="/app/reports/report_sales_by_brand">
+            <router-link class to="/app/reports/report_sales_by_brand">
               <lucide-icon class="nav-icon" name="store" />
               <span class="item-name">{{$t('Sales_by_Brand')}}</span>
             </router-link>
@@ -2244,7 +2244,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('Reports_purchase')"
           >
-            <router-link tag="a" class to="/app/reports/purchase_report">
+            <router-link class to="/app/reports/purchase_report">
               <lucide-icon class="nav-icon" name="shopping-cart" />
               <span class="item-name">{{$t('PurchasesReport')}}</span>
             </router-link>
@@ -2254,7 +2254,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('product_purchases_report')"
           >
-            <router-link tag="a" class to="/app/reports/product_purchases_report">
+            <router-link class to="/app/reports/product_purchases_report">
               <lucide-icon class="nav-icon" name="shopping-basket" />
               <span class="item-name">{{$t('Product_purchases_report')}}</span>
             </router-link>
@@ -2264,7 +2264,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('Reports_customers')"
           >
-            <router-link tag="a" class to="/app/reports/customers_report">
+            <router-link class to="/app/reports/customers_report">
               <lucide-icon class="nav-icon" name="user" />
               <span class="item-name">{{$t('CustomersReport')}}</span>
             </router-link>
@@ -2274,14 +2274,14 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('inactive_customers_report')"
           >
-            <router-link tag="a" class to="/app/reports/inactive_customers">
+            <router-link class to="/app/reports/inactive_customers">
               <lucide-icon class="nav-icon" name="user-minus" />
               <span class="item-name">{{$t('Inactive_Customers_Report')}}</span>
             </router-link>
           </li>
 
           <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('Top_Suppliers_Report')">
-            <router-link tag="a" class :to="{ name: 'top_suppliers_report' }">
+            <router-link class :to="{ name: 'top_suppliers_report' }">
               <lucide-icon class="nav-icon" name="users" />
               <span class="item-name">{{$t('Top_Suppliers_Report')}}</span>
             </router-link>
@@ -2292,7 +2292,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('Reports_suppliers')"
           >
-            <router-link tag="a" class to="/app/reports/providers_report">
+            <router-link class to="/app/reports/providers_report">
               <lucide-icon class="nav-icon" name="user" />
               <span class="item-name">{{$t('SuppliersReport')}}</span>
             </router-link>
@@ -2302,7 +2302,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('Reports_suppliers')"
           >
-            <router-link tag="a" class :to="{ name: 'supplier_year_comparison_report' }">
+            <router-link class :to="{ name: 'supplier_year_comparison_report' }">
               <lucide-icon class="nav-icon" name="bar-chart-3" />
               <span class="item-name">Supplier Sales &amp; Payments</span>
             </router-link>
@@ -2312,7 +2312,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('Top_products')"
           >
-            <router-link tag="a" class to="/app/reports/top_selling_products">
+            <router-link class to="/app/reports/top_selling_products">
               <lucide-icon class="nav-icon" name="trophy" />
               <span class="item-name">{{$t('Top_Selling_Products')}}</span>
             </router-link>
@@ -2322,7 +2322,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('Top_customers')"
           >
-            <router-link tag="a" class to="/app/reports/top_customers">
+            <router-link class to="/app/reports/top_customers">
               <lucide-icon class="nav-icon" name="trophy" />
               <span class="item-name">{{$t('Top_customers')}}</span>
             </router-link>
@@ -2332,7 +2332,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('users_report')"
           >
-            <router-link tag="a" class to="/app/reports/users_report">
+            <router-link class to="/app/reports/users_report">
               <lucide-icon class="nav-icon" name="user" />
               <span class="item-name">{{$t('Users_Report')}}</span>
             </router-link>
@@ -2342,7 +2342,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('report_device_management')"
           >
-            <router-link tag="a" class to="/app/reports/login_activity_report">
+            <router-link class to="/app/reports/login_activity_report">
               <lucide-icon class="nav-icon" name="lock" />
               <span class="item-name">{{$t('Login_Activity_Report')}}</span>
             </router-link>
@@ -2352,7 +2352,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('report_error_logs')"
           >
-            <router-link tag="a" class to="/app/reports/report_error_logs">
+            <router-link class to="/app/reports/report_error_logs">
               <lucide-icon class="nav-icon" name="bug" />
               <span class="item-name">{{$t('Error_Logs')}}</span>
             </router-link>
@@ -2362,7 +2362,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('service_jobs_report')"
           >
-            <router-link tag="a" class :to="{ name: 'service_jobs_report' }">
+            <router-link class :to="{ name: 'service_jobs_report' }">
               <lucide-icon class="nav-icon" name="wrench" />
               <span class="item-name">{{$t('Service_Jobs_Report')}}</span>
             </router-link>
@@ -2372,7 +2372,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('checklist_completion_report')"
           >
-            <router-link tag="a" class :to="{ name: 'checklist_completion_report' }">
+            <router-link class :to="{ name: 'checklist_completion_report' }">
               <lucide-icon class="nav-icon" name="check" />
               <span class="item-name">{{$t('Checklist_Completion_Report')}}</span>
             </router-link>
@@ -2382,7 +2382,7 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('customer_maintenance_history_report')"
           >
-            <router-link tag="a" class :to="{ name: 'customer_maintenance_history_report' }">
+            <router-link class :to="{ name: 'customer_maintenance_history_report' }">
               <lucide-icon class="nav-icon" name="calendar-days" />
               <span class="item-name">{{$t('Customer_Maintenance_History_Report')}}</span>
             </router-link>

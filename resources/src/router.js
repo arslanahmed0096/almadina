@@ -1147,10 +1147,7 @@ const baseRoutes = [
                     {
                         name: "commission_programs",
                         path: "programs",
-                        component: () =>
-                            import(
-                                /* webpackChunkName: "commission_programs" */ "./views/app/pages/commissions/index_programs"
-                            )
+                        redirect: "/app/hrm/payrolls"
                     },
                     {
                         name: "commission_agents",
@@ -1163,10 +1160,7 @@ const baseRoutes = [
                     {
                         name: "commission_rules",
                         path: "rules",
-                        component: () =>
-                            import(
-                                /* webpackChunkName: "commission_rules" */ "./views/app/pages/commissions/index_rules"
-                            )
+                        redirect: "/app/hrm/payrolls"
                     },
                     {
                         name: "commission_receipts",
@@ -1344,7 +1338,13 @@ const baseRoutes = [
                         name: "payrolls",
                         path: "payrolls",
                         component: () =>
-                            import(/* webpackChunkName: "payrolls" */"./views/app/pages/hrm/payrolls")
+                            import(/* webpackChunkName: "payrolls" */"./views/app/pages/hrm/payroll_dashboard")
+                    },
+                    {
+                        name: "payrolls_create",
+                        path: "payrolls/create",
+                        component: () =>
+                            import(/* webpackChunkName: "payrolls-create" */"./views/app/pages/hrm/payroll_generate")
                     },
 
 
@@ -2776,7 +2776,7 @@ const baseRoutes = [
     },
 
     {
-        path: "not_authorize",
+        path: "/not_authorize",
         name: "not_authorize",
         component: () =>
             import(
