@@ -1348,7 +1348,7 @@ class PosController extends BaseController
     public function data_draft_convert_sale(Request $request, $id)
     {
         $this->authorizeForUser($request->user('api'), 'Sales_pos', Sale::class);
-        $clients = Client::where('deleted_at', '=', null)->get(['id', 'name', 'phone']);
+        $clients = collect();
         $settings = Setting::where('deleted_at', '=', null)->with('Client')->first();
         $accounts = Account::where('deleted_at', '=', null)->orderBy('id', 'desc')->get(['id', 'account_name']);
 
@@ -1374,6 +1374,7 @@ class PosController extends BaseController
                 $client_name = $client->name;
 
                 // ✅ Pass royalty data for frontend usage
+                $clients->push($client->only(['id', 'name', 'phone']));
                 $defaultClient = $client->id;
                 $default_client_points = $client->points;
                 $default_client_eligible = $client->is_royalty_eligible;
@@ -1495,6 +1496,18 @@ class PosController extends BaseController
 
             $tax_price = $detail->TaxNet * (($detail->price - $data['DiscountNet']) / 100);
             $data['Unit_price'] = $detail->price;
+            $priceSource = $detail->product_variant_id ? $productsVariants : $detail['product'];
+            $saleFactor = $unit
+                ? ($unit->operator == '/' ? 1 / $unit->operator_value : $unit->operator_value)
+                : 1;
+            $data['retail_unit_price'] = (float) ($priceSource->price ?? 0) * $saleFactor;
+            $data['wholesale_unit_price'] = (float) ($detail->product_variant_id
+                ? ($priceSource->wholesale ?: $detail['product']->wholesale_price)
+                : $priceSource->wholesale_price) * $saleFactor;
+            $data['Unit_price_wholesale'] = $data['wholesale_unit_price'];
+            $data['min_price'] = (float) (($priceSource->min_price ?: $detail['product']->min_price) ?? 0) * $saleFactor;
+            $data['regular_unit_price'] = (float) ($priceSource->fix_price ?? 0) * $saleFactor;
+            $data['cost_price'] = (float) ($priceSource->cost ?? 0) * $saleFactor;
             $data['price_type'] = method_exists($detail, 'getAttribute') && $detail->getAttribute('price_type') ? $detail->price_type : 'retail';
 
             $data['tax_percent'] = $detail->TaxNet;
@@ -1683,7 +1696,7 @@ class PosController extends BaseController
             $item['Unit_price'] = $price;
             $item['fix_price'] = $product_price;
 
-            // --- Compute wholesale price per sale unit (min_price is returned raw from DB) ---
+            // --- Compute wholesale and minimum prices for the sale unit ---
             // For variant products, prefer variant-level wholesale/min prices when available.
             $baseWholesale = null;
             $baseMinPrice = null;
@@ -1795,8 +1808,16 @@ class PosController extends BaseController
 
             $item['Unit_price_wholesale'] = $wholesale_unit_price;
             $item['wholesale_Net_price'] = $wholesale_net_price;
-            // Return raw min price from DB without discount/tax/unit conversion
-            $item['min_price'] = $baseMinPrice;
+            // Keep every reference price in the same sale unit as Unit_price.
+            $saleUnit = $product_warehouse['product']['unitSale'];
+            $saleFactor = $saleUnit
+                ? ($saleUnit->operator == '/' ? 1 / $saleUnit->operator_value : $saleUnit->operator_value)
+                : 1;
+            $priceSource = $product_warehouse->product_variant_id && isset($productsVariants)
+                ? $productsVariants : $product_warehouse['product'];
+            $item['min_price'] = (float) $baseMinPrice * $saleFactor;
+            $item['regular_unit_price'] = (float) ($priceSource->fix_price ?? 0) * $saleFactor;
+            $item['cost_price'] = (float) ($priceSource->cost ?? 0) * $saleFactor;
 
             $data[] = $item;
         }
@@ -1890,7 +1911,7 @@ class PosController extends BaseController
     public function GetELementPos(Request $request)
     {
         $this->authorizeForUser($request->user('api'), 'Sales_pos', Sale::class);
-        $clients = Client::where('deleted_at', '=', null)->get(['id', 'name', 'phone']);
+        $clients = collect();
         $settings = Setting::where('deleted_at', '=', null)->with('Client')->first();
         $accounts = Account::where('deleted_at', '=', null)->orderBy('id', 'desc')->get(['id', 'account_name']);
 
@@ -1930,6 +1951,7 @@ class PosController extends BaseController
                 ->first();
 
             if ($client) {
+                $clients->push($client->only(['id', 'name', 'phone']));
                 $defaultClient = $client->id;
                 $default_client_name = $client->name;
                 $default_client_points = $client->points;

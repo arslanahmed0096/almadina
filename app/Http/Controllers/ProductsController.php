@@ -2047,15 +2047,21 @@ class ProductsController extends BaseController
             foreach ($productsVariants as $variant) {
                 $ProductVariant['code'] = $variant->code;
                 $ProductVariant['name'] = $variant->name;
-                $ProductVariant['cost'] = number_format($variant->cost, 2, '.', ',');
-                $ProductVariant['price'] = number_format($variant->price, 2, '.', ',');
-                $ProductVariant['fix_price'] = number_format((float) $variant->fix_price, 2, '.', ',');
+                $variantPurchasePricing = app(\App\Services\ProductMarginPricingService::class)
+                    ->effectivePurchasePrice($variant);
+                $ProductVariant['purchase_price'] = $variantPurchasePricing['price'];
+                $ProductVariant['pricing_margins'] = $variant->pricing_margins ?: [];
+                $ProductVariant['company_rb_price'] = $variant->company_rb_price ?? 0;
+                $ProductVariant['mrp_price'] = $variant->mrp_price ?? 0;
+                $ProductVariant['cost'] = (float) $variant->cost;
+                $ProductVariant['price'] = (float) $variant->price;
+                $ProductVariant['fix_price'] = (float) $variant->fix_price;
                 $ProductVariant['wholesale'] = isset($variant->wholesale)
-                    ? number_format((float) $variant->wholesale, 2, '.', ',')
-                    : number_format(0, 2, '.', ',');
+                    ? (float) $variant->wholesale
+                    : 0;
                 $ProductVariant['min_price'] = isset($variant->min_price)
-                    ? number_format((float) $variant->min_price, 2, '.', ',')
-                    : number_format(0, 2, '.', ',');
+                    ? (float) $variant->min_price
+                    : 0;
 
                 $item['products_variants_data'][] = $ProductVariant;
 
@@ -2545,7 +2551,7 @@ class ProductsController extends BaseController
 
         // Compute min price per sale unit (no discount/tax), to compare with Net_price
         $min_price_raw = ($Product_data['type'] == 'is_variant' && isset($product_variant_data))
-            ? ($product_variant_data['min_price'] ?? 0)
+            ? ($product_variant_data['min_price'] ?: ($Product_data->min_price ?? 0))
             : ($Product_data->min_price ?? 0);
 
         if ($Product_data['unitSale']) {
@@ -2558,6 +2564,13 @@ class ProductsController extends BaseController
             $min_unit_price = $min_price_raw;
         }
         $item['min_price'] = $min_unit_price ?: 0;
+        $saleFactor = $Product_data['unitSale']
+            ? ($Product_data['unitSale']->operator == '/' ? 1 / $Product_data['unitSale']->operator_value : $Product_data['unitSale']->operator_value)
+            : 1;
+        $priceSource = $Product_data['type'] == 'is_variant' && isset($product_variant_data)
+            ? $product_variant_data : $Product_data;
+        $item['regular_unit_price'] = (float) ($priceSource['fix_price'] ?? 0) * $saleFactor;
+        $item['cost_price'] = (float) $product_cost * $saleFactor;
 
         // Add warehouse stock quantity data
         $item['qte'] = 0;

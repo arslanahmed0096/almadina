@@ -30,6 +30,22 @@
 .target-section { padding:15px; overflow:hidden; }
 .target-section-title { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
 .target-section-title h3 { margin:0; font-size:16px; }
+.target-chart-legend { display:flex; justify-content:flex-end; gap:18px; margin:0 6px 12px; color:#514b72; font-size:12px; }
+.target-chart-legend span { display:inline-flex; align-items:center; gap:6px; }
+.target-chart-key { display:inline-block; width:10px; height:10px; border-radius:2px; }
+.target-chart-key-target,.target-chart-bar-target { background:#7938d4; }
+.target-chart-key-achieved,.target-chart-bar-achieved { background:#20b875; }
+.target-chart-scroll { overflow-x:auto; }
+.target-chart-body { display:flex; min-width:540px; width:100%; }
+.target-chart-axis { width:44px; height:240px; flex:none; display:flex; flex-direction:column; justify-content:space-between; align-items:flex-end; padding-right:8px; color:#615b7b; font-size:11px; line-height:1; }
+.target-chart-main { flex:1; min-width:0; }
+.target-chart-plot { position:relative; height:240px; }
+.target-chart-gridline { position:absolute; left:0; right:0; border-top:1px solid #eceaf3; }
+.target-chart-columns { position:absolute; inset:0; display:grid; }
+.target-chart-column { display:flex; align-items:flex-end; justify-content:center; gap:3px; padding:0 4px; }
+.target-chart-bar { width:34%; max-width:26px; min-width:2px; border-radius:3px 3px 0 0; }
+.target-chart-labels { display:grid; padding-top:8px; color:#615b7b; font-size:11px; text-align:center; }
+.target-chart-labels span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .target-table-wrap { overflow-x:auto; }
 .target-table { width:100%; border-collapse:collapse; min-width:680px; }
 .target-table th,.target-table td { padding:9px 10px; border-bottom:1px solid #ececf3; font-size:12px; vertical-align:middle; }

@@ -101,7 +101,7 @@ const offlinePos = {
   cacheBootstrap(data) {
     if (!data || typeof data !== 'object') return;
     writeJSON(POS_BOOTSTRAP_KEY, {
-      clients: data.clients || [],
+      clients: Array.isArray(data.clients) ? data.clients.slice(0, 20) : [],
       accounts: data.accounts || [],
       warehouses: data.warehouses || [],
       categories: data.categories || [],
@@ -122,6 +122,21 @@ const offlinePos = {
 
   getCachedBootstrap() {
     return readJSON(POS_BOOTSTRAP_KEY, null);
+  },
+
+  cacheRecentClient(client) {
+    if (!client || client.id == null) return;
+    const cached = readJSON(POS_BOOTSTRAP_KEY, null);
+    if (!cached) return;
+    const clients = Array.isArray(cached.clients) ? cached.clients : [];
+    const compact = item => ({ id: item.id, name: item.name, phone: item.phone || '' });
+    const fallback = clients.find(item => item && String(item.id) === String(cached.defaultClient));
+    const recent = [client, ...clients].filter((item, index, list) =>
+      item && item.id != null && list.findIndex(other => other && String(other.id) === String(item.id)) === index
+        && (!fallback || String(item.id) !== String(fallback.id))
+    ).slice(0, fallback ? 19 : 20).map(compact);
+    cached.clients = fallback ? [compact(fallback), ...recent] : recent;
+    writeJSON(POS_BOOTSTRAP_KEY, cached);
   },
 
   // ---- Per-warehouse products snapshots (grid + scan data) ----

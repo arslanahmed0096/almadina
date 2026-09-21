@@ -170,26 +170,10 @@ class PricingLevelController extends Controller
                         'name' => $variant?->name ?: 'Deleted variant',
                         'code' => $variant?->code ?: '',
                     ];
-                    foreach (self::PRICE_FIELDS as $field) {
-                        $row[$field] = (float) $detail->{$field};
-                    }
-                    $row['purchase_price'] = $detail->purchase_price !== null
-                        ? (float) $detail->purchase_price
-                        : (float) ($variant?->purchase_price ?? 0);
-                    $row['pricing_margins'] = $detail->pricing_margins
-                        ?? ($variant?->pricing_margins ?: []);
-
-                    return $row;
+                    return array_merge($row, $this->currentPrices($variant, $detail));
                 })->values()->all();
             } else {
-                foreach (self::PRICE_FIELDS as $field) {
-                    $payload[$field] = (float) $first->{$field};
-                }
-                $payload['purchase_price'] = $first->purchase_price !== null
-                    ? (float) $first->purchase_price
-                    : (float) ($product->purchase_price ?? 0);
-                $payload['pricing_margins'] = $first->pricing_margins
-                    ?? ($product->pricing_margins ?: []);
+                $payload = array_merge($payload, $this->currentPrices($product, $first));
             }
 
             return $payload;
@@ -404,6 +388,30 @@ class PricingLevelController extends Controller
                 'min_price' => $model->min_price,
             ]);
         }
+    }
+
+    /**
+     * Pricing Level is a current-price editor. Saved details remain snapshots
+     * for history, while purchases can reprice a product after entry creation.
+     */
+    private function currentPrices($model, PricingLevelDetail $detail): array
+    {
+        $prices = [];
+        foreach (self::PRICE_FIELDS as $field) {
+            $modelField = $model instanceof ProductVariant && $field === 'wholesale_price'
+                ? 'wholesale'
+                : $field;
+            $prices[$field] = (float) ($model ? $model->{$modelField} : $detail->{$field});
+        }
+
+        $prices['purchase_price'] = $model
+            ? (float) ($model->purchase_price ?? 0)
+            : (float) ($detail->purchase_price ?? 0);
+        $prices['pricing_margins'] = $model
+            ? ($model->pricing_margins ?: [])
+            : ($detail->pricing_margins ?: []);
+
+        return $prices;
     }
 
     private function findVisibleEntry(Request $request, $id): PricingLevel

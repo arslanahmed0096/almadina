@@ -454,7 +454,9 @@ class ClientController extends BaseController
 
     public function search(Request $request)
     {
-        $this->authorizeForUser($request->user('api'), 'create', \App\Models\Sale::class);
+        if (! $request->user('api')->can('create', \App\Models\Sale::class)) {
+            $this->authorizeForUser($request->user('api'), 'Sales_pos', \App\Models\Sale::class);
+        }
 
         $search = trim((string) $request->input('q', ''));
         $limit = min(max((int) $request->input('limit', 20), 1), 50);

@@ -103,7 +103,7 @@
             <div>
               <span class="pricing-view-header__eyebrow">PRODUCT PRICING</span>
               <h3>Pricing Level Details</h3>
-              <p>Review the saved purchase prices, sale prices, and margin rules.</p>
+              <p>Review current purchase prices, sale prices, and margin rules.</p>
             </div>
           </div>
           <button type="button" class="pricing-view-close" aria-label="Close" @click="$bvModal.hide('pricing-level-view-modal')">

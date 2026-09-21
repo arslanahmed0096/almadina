@@ -387,8 +387,7 @@
                   <span style="font-size: 12px; color: #54546a; font-weight: 500; font-family: 'JetBrains Mono', monospace; white-space: nowrap;">× {{ formatPriceWithCurrentCurrency(item.Total_price, 2) }}</span>
                   <!-- Price type (sized to match qty stepper, dark text instead of muted) -->
                   <select v-model="item.price_type" @change="onChangePriceType(item)" style="height: 24px; padding: 0 6px; font-size: 11px; font-weight: 500; border: 1px solid #d8d8e0; border-radius: 5px; background: #ffffff; color: #1f1f2c; outline: none; cursor: pointer; flex-shrink: 0;">
-                    <option value="retail">{{ $t('Al-Madina Price') }}</option>
-                    <option value="wholesale">{{ $t('Wholesale Price') }}</option>
+                    <option v-for="option in salePriceOptions(item)" :key="option.value" :value="option.value">{{ option.label }} — {{ formatPriceWithCurrentCurrency(option.amount, 2) }}</option>
                   </select>
                 </div>
               </div>
@@ -1683,7 +1682,7 @@
   </b-modal>
 
   <validation-observer ref="Update_Detail">
-    <b-modal hide-footer size="lg" id="form_Update_Detail" :title="detail.name">
+    <b-modal hide-footer size="lg" modal-class="pos-edit-detail-modal" id="form_Update_Detail" :title="detail.name">
     <b-form @submit.prevent="submit_Update_Detail">
         <b-row>
           <!-- Unit Price + Price Type -->
@@ -1692,28 +1691,27 @@
               <div class="spinner sm spinner-primary"></div>
             </div>
           </b-col>
-          <b-col lg="6" md="6" sm="12" v-show="!detailLoading">
+          <b-col lg="6" md="12" sm="12" v-show="!detailLoading">
             <validation-provider
               name="Product Price"
               :rules="{ required: true , regex: /^\d*\.?\d*$/}"
               v-slot="validationContext"
             >
               <b-form-group :label="$t('ProductPrice') + ' ' + '*'" id="Price-input">
-                <div class="d-flex align-items-center">
+                <div class="pos-edit-price-controls">
                   <b-form-input
                     label="Product Price"
                     v-model="detail.Unit_price"
                     :state="getValidationState(validationContext)"
                     aria-describedby="Price-feedback"
-                    class="mr-2"
+                    class="pos-edit-price-input"
                   ></b-form-input>
                   <select
                     class="form-control pos-price-select"
                     v-model="detail.price_type"
                     @change="onChangePriceType(detail)"
                   >
-                    <option :value="'retail'">{{$t('Al-Madina Price')}}</option>
-                    <option :value="'wholesale'">{{$t('Wholesale Price')}}</option>
+                    <option v-for="option in salePriceOptions(detail)" :key="option.value" :value="option.value">{{ option.label }} — {{ formatPriceWithCurrentCurrency(option.amount, 2) }}</option>
                   </select>
                 </div>
                 <b-form-invalid-feedback id="Price-feedback">{{ validationContext.errors[0] }}</b-form-invalid-feedback>
@@ -1722,7 +1720,7 @@
           </b-col>
 
            <!-- Unit Sale -->
-           <b-col lg="6" md="6" sm="12" v-if="detail.product_type != 'is_service'" v-show="!detailLoading">
+           <b-col lg="6" md="12" sm="12" v-if="detail.product_type != 'is_service'" v-show="!detailLoading">
             <validation-provider name="Unit Sale" :rules="{ required: true}">
               <b-form-group slot-scope="{ valid, errors }" :label="$t('UnitSale') + ' ' + '*'"><v-select
                   :class="{'is-invalid': !!errors.length}"
@@ -1735,6 +1733,19 @@
                 <b-form-invalid-feedback>{{ errors[0] }}</b-form-invalid-feedback>
               </b-form-group>
             </validation-provider>
+          </b-col>
+
+          <b-col lg="12" v-show="!detailLoading" class="mb-3">
+            <div class="pos-price-reference">
+              <div v-for="option in salePriceOptions(detail)" :key="option.value" class="pos-price-reference-item">
+                <span>{{ option.label }}</span>
+                <strong>{{ formatPriceWithCurrentCurrency(option.amount, 2) }}</strong>
+              </div>
+              <div class="pos-price-reference-item pos-price-reference-cost">
+                <span>Cost Price <small>(reference only)</small></span>
+                <strong>{{ formatPriceWithCurrentCurrency(detail.cost_price || 0, 2) }}</strong>
+              </div>
+            </div>
           </b-col>
 
            <!-- Tax -->
@@ -2818,7 +2829,7 @@
               <div class="cust-drawer-hero-eyebrow">{{ $t('Customer') || 'Customer' }}</div>
               <div class="cust-drawer-hero-title">{{ $t('Select_Customer') || 'Select Customer' }}</div>
               <div class="cust-drawer-hero-sub">
-                {{ filteredCustomers.length }} / {{ clientCount }}
+                {{ filteredCustomers.length }}
               </div>
             </div>
             <button
@@ -2895,7 +2906,13 @@
               </span>
             </button>
 
-            <div class="cust-drawer-empty" v-if="filteredCustomers.length === 0">
+            <div class="cust-drawer-empty" v-if="customersLoading">
+              <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+            </div>
+            <div class="cust-drawer-empty" v-else-if="customerSearchError">
+              <div class="cust-drawer-empty-text">Could not load customers. Try searching again.</div>
+            </div>
+            <div class="cust-drawer-empty" v-else-if="filteredCustomers.length === 0">
               <div class="cust-drawer-empty-icon"><lucide-icon name="users" /></div>
               <div class="cust-drawer-empty-text">
                 {{ custDrawerSearch ? ($t('No_results') || 'No results') : ($t('No_Customers') || 'No customers') }}
@@ -3001,6 +3018,11 @@ export default {
       total: 0,
       Ref: "",
       clients: [],
+      defaultCustomer: null,
+      customerSearchResults: [],
+      customersLoading: false,
+      customerSearchError: false,
+      customerSearchSeq: 0,
       units: [],
       unitsByProductId: {},
       warehouses: [],
@@ -3161,6 +3183,8 @@ export default {
         price_type: 'retail',
         retail_unit_price: "",
         wholesale_unit_price: "",
+        regular_unit_price: 0,
+        cost_price: 0,
         Total_price: "",
         subtotal: "",
         product_id: "",
@@ -3299,7 +3323,7 @@ export default {
 
     // Customer options for v-select with phone search capability
     customerOptions() {
-      const clients = Array.isArray(this.clients) ? this.clients : [];
+      const clients = this.isOnline ? this.customerSearchResults : this.clients;
       return clients.map(client => {
         const display = String(client.phone || '').trim();
         return ({
@@ -3339,10 +3363,6 @@ export default {
 
     warehouseCount() {
       return Array.isArray(this.warehouses) ? this.warehouses.length : 0;
-    },
-
-    clientCount() {
-      return Array.isArray(this.clients) ? this.clients.length : 0;
     },
 
     // Label shown on the categories trigger button — falls back to "All Categories"
@@ -3393,20 +3413,17 @@ export default {
     // Label shown on the customer trigger button
     selectedCustomerLabel() {
       if (!this.selectedClientId) return this.$t('Select_Customer') || 'Select customer';
-      const c = (Array.isArray(this.clients) ? this.clients : []).find(x => x.id === this.selectedClientId);
-      return c ? c.name : (this.$t('Select_Customer') || 'Select customer');
+      const c = (Array.isArray(this.clients) ? this.clients : []).find(x => String(x.id) === String(this.selectedClientId));
+      return c ? c.name : (this.client_name || this.$t('Select_Customer') || 'Select customer');
     },
 
-    // Customers filtered by the drawer's search box (matches name OR phone)
+    // The server filters online results; the small offline cache is filtered locally.
     filteredCustomers() {
+      const list = this.customerOptions;
+      if (this.isOnline) return list;
       const q = (this.custDrawerSearch || '').trim().toLowerCase();
-      const list = Array.isArray(this.customerOptions) ? this.customerOptions : [];
       if (!q) return list;
-      return list.filter(c => {
-        const name = (c.name || c.label || '').toLowerCase();
-        const phone = (c.phone || '').toLowerCase();
-        return name.includes(q) || phone.includes(q);
-      });
+      return list.filter(c => (c.name || '').toLowerCase().includes(q) || (c.phone || '').toLowerCase().includes(q));
     },
 
     // Total pages for product list
@@ -3648,6 +3665,21 @@ export default {
       if(val){
         this.$nextTick(() => { this.renderZatcaQrPos(); this.renderInvoiceUrlQr(); });
       }
+    },
+    custDrawerOpen(open) {
+      if (open) {
+        this.queueCustomerSearch('', true);
+        this.$nextTick(() => {
+          if (this.$refs.custDrawerSearchInput) this.$refs.custDrawerSearchInput.focus();
+        });
+      } else {
+        this.cancelCustomerSearch();
+        this.custDrawerSearch = '';
+        this.customerSearchResults = [];
+      }
+    },
+    custDrawerSearch(search) {
+      if (this.custDrawerOpen) this.queueCustomerSearch(search);
     }
   },
   mounted() {
@@ -3702,6 +3734,47 @@ export default {
         }
       })();
       return this._posPingInFlight;
+    },
+    cancelCustomerSearch() {
+      if (this._customerSearchTimer) clearTimeout(this._customerSearchTimer);
+      this._customerSearchTimer = null;
+      this.customerSearchSeq += 1;
+      this.customersLoading = false;
+    },
+    queueCustomerSearch(search, immediate = false) {
+      this.cancelCustomerSearch();
+      this.customerSearchResults = [];
+      this.customerSearchError = false;
+      if (!this.custDrawerOpen || !this.isOnline) return;
+      const sequence = this.customerSearchSeq;
+      this.customersLoading = true;
+      if (immediate) {
+        this.fetchCustomers(search, sequence);
+      } else {
+        this._customerSearchTimer = setTimeout(() => this.fetchCustomers(search, sequence), 250);
+      }
+    },
+    async fetchCustomers(search, sequence) {
+      try {
+        const response = await axios.get('clients/search', { params: { q: (search || '').trim(), limit: 20 } });
+        if (sequence !== this.customerSearchSeq || !this.custDrawerOpen) return;
+        const results = Array.isArray(response.data.clients) ? response.data.clients : [];
+        this.customerSearchResults = results;
+        this.rememberCustomers(results);
+      } catch (error) {
+        if (sequence === this.customerSearchSeq && this.custDrawerOpen) this.customerSearchError = true;
+      } finally {
+        if (sequence === this.customerSearchSeq) this.customersLoading = false;
+      }
+    },
+    rememberCustomers(results) {
+      const selected = this.clients.find(client => String(client.id) === String(this.selectedClientId));
+      const seen = new Set();
+      this.clients = [selected, this.defaultCustomer, ...(results || [])].filter(client => {
+        if (!client || client.id == null || seen.has(String(client.id))) return false;
+        seen.add(String(client.id));
+        return true;
+      }).slice(0, 22);
     },
     // Custom filter function for customer v-select to search by name and phone
     filterCustomerByPhone(option, label, search) {
@@ -4574,6 +4647,8 @@ export default {
         this.product.Unit_price_wholesale = data.Unit_price_wholesale;
         this.product.wholesale_Net_price   = data.wholesale_Net_price;
         this.product.min_price             = data.min_price || 0;
+        this.product.regular_unit_price    = data.regular_unit_price || 0;
+        this.product.cost_price            = data.cost_price || 0;
         this.product.retail_unit_price     = data.Unit_price;
         this.product.wholesale_unit_price  = data.Unit_price_wholesale;
         this.product.price_type            = 'retail';
@@ -4624,6 +4699,8 @@ export default {
           Unit_price_wholesale: p.Unit_price_wholesale != null ? p.Unit_price_wholesale : (p.Unit_price != null ? p.Unit_price : (p.Net_price != null ? p.Net_price : 0)),
           wholesale_Net_price: p.wholesale_Net_price != null ? p.wholesale_Net_price : (p.Net_price != null ? p.Net_price : 0),
           min_price: p.min_price != null ? p.min_price : 0,
+          regular_unit_price: p.regular_unit_price != null ? p.regular_unit_price : 0,
+          cost_price: p.cost_price != null ? p.cost_price : 0,
           // Discount & tax
           discount: p.discount != null ? p.discount : 0,
           DiscountNet: p.DiscountNet != null ? p.DiscountNet : 0,
@@ -5030,6 +5107,8 @@ export default {
           this.detail.retail_unit_price = detail.retail_unit_price !== undefined ? detail.retail_unit_price : detail.Unit_price;
           this.detail.wholesale_unit_price = detail.wholesale_unit_price !== undefined ? detail.wholesale_unit_price : detail.Unit_price_wholesale;
           this.detail.min_price = detail.min_price !== undefined ? detail.min_price : 0;
+          this.detail.regular_unit_price = detail.regular_unit_price || 0;
+          this.detail.cost_price = detail.cost_price || 0;
           this.detail.fix_price = detail.fix_price;
           this.detail.fix_stock = detail.fix_stock;
           this.detail.current = detail.current;
@@ -5128,18 +5207,27 @@ export default {
       }, 1000);
     },
 
-    // Toggle between retail and wholesale price baselines and recompute amounts
-    onChangePriceType(detail){
-      const isWholesale = detail.price_type === 'wholesale';
-      const wholesaleBase = detail.wholesale_unit_price;
-      const retailBase = detail.retail_unit_price;
+    salePriceOptions(detail) {
+      if (!detail) return [];
+      const retail = Number(detail.retail_unit_price != null ? detail.retail_unit_price : detail.Unit_price) || 0;
+      const wholesale = Number(detail.wholesale_unit_price != null ? detail.wholesale_unit_price : detail.Unit_price_wholesale) || retail;
+      const options = [
+        { value: 'retail', label: this.$t('Al-Madina Price'), amount: retail },
+        { value: 'wholesale', label: this.$t('Wholesale Price'), amount: wholesale },
+      ];
+      const minimum = Number(detail.min_price) || 0;
+      const regular = Number(detail.regular_unit_price) || 0;
+      options.push({ value: 'minimum', label: 'Minimum Price', amount: minimum });
+      options.push({ value: 'regular', label: 'Regular Price', amount: regular });
+      return options;
+    },
 
-      // 1) Apply selected baseline
-      if (isWholesale) {
-        detail.Unit_price = (wholesaleBase !== undefined && wholesaleBase !== null && wholesaleBase !== '') ? wholesaleBase : detail.Unit_price;
-      } else {
-        detail.Unit_price = (retailBase !== undefined && retailBase !== null && retailBase !== '') ? retailBase : detail.Unit_price;
-      }
+    // Apply a configured sale price and recompute the line amount.
+    onChangePriceType(detail){
+      const retailBase = detail.retail_unit_price;
+      const selected = this.salePriceOptions(detail).find(option => option.value === detail.price_type);
+      if (!selected) detail.price_type = 'retail';
+      detail.Unit_price = selected ? selected.amount : (retailBase || detail.Unit_price);
 
       // 2) Recompute derived values
       if (detail.discount_Method == "2") {
@@ -5183,7 +5271,7 @@ export default {
       // 4) Update baseline for the (final) selected type
       if (detail.price_type === 'wholesale') {
         detail.wholesale_unit_price = detail.Unit_price;
-      } else {
+      } else if (detail.price_type === 'retail') {
         detail.retail_unit_price = detail.Unit_price;
       }
 
@@ -5245,10 +5333,10 @@ export default {
       this.pointsConverted = false;
       try { this._cd_emit && this._cd_emit({ currency: (this.currentUser && this.currentUser.currency) || '', details: [], discount: 0, TaxNet: 0, GrandTotal: 0 }, true); } catch(e) {}
       
-      const client = this.clients.find(client => client.id === 1);
+      const client = this.defaultCustomer;
       if (client) {
         this.client_name = client.name;
-        this.selectedClientId = 1;
+        this.selectedClientId = client.id;
 
         try {
           const response = await axios.get(`/get_points_client/${this.selectedClientId}`);
@@ -5263,6 +5351,9 @@ export default {
           }
         } catch (error) {
         }
+      } else {
+        this.client_name = '';
+        this.selectedClientId = '';
       }
 
       // NOTE: We intentionally avoid the previous blanket re-fetch of the
@@ -5493,7 +5584,7 @@ export default {
           const data = response.data || {};
 
           // Basic references (keep layout/logic unchanged; just inject data)
-          if (Array.isArray(data.clients)) this.clients = data.clients;
+          if (Array.isArray(data.clients)) this.rememberCustomers(data.clients);
           if (Array.isArray(data.accounts)) this.accounts = data.accounts;
           if (Array.isArray(data.warehouses)) this.warehouses = data.warehouses;
           if (Array.isArray(data.categories)) this.categories = data.categories;
@@ -5533,6 +5624,8 @@ export default {
             if (d.retail_unit_price === undefined) d.retail_unit_price = d.Unit_price;
             if (d.wholesale_unit_price === undefined) d.wholesale_unit_price = (d.Unit_price_wholesale !== undefined ? d.Unit_price_wholesale : d.Unit_price);
             if (d.min_price === undefined) d.min_price = 0;
+            if (d.regular_unit_price === undefined) d.regular_unit_price = 0;
+            if (d.cost_price === undefined) d.cost_price = 0;
             if (d.current === undefined || d.current === null) d.current = (d.fix_stock !== undefined ? d.fix_stock : d.quantity);
             if (d.fix_stock === undefined || d.fix_stock === null) d.fix_stock = d.current;
 
@@ -6195,6 +6288,8 @@ export default {
           this.detail.retail_unit_price = baseRetail;
           this.detail.wholesale_unit_price = baseWholesale;
           this.detail.min_price = detail.min_price !== undefined ? detail.min_price : 0;
+          this.detail.regular_unit_price = detail.regular_unit_price || 0;
+          this.detail.cost_price = detail.cost_price || 0;
           this.detail.fix_price = detail.fix_price;
           this.detail.fix_stock = detail.fix_stock;
           this.detail.current = detail.current;
@@ -6273,6 +6368,8 @@ export default {
           }
         this.details[i].Unit_price = unitPriceNum;
         this.details[i].price_type = this.detail.price_type;
+        if (this.detail.price_type === 'retail') this.details[i].retail_unit_price = unitPriceNum;
+        if (this.detail.price_type === 'wholesale') this.details[i].wholesale_unit_price = unitPriceNum;
           this.details[i].tax_percent = this.detail.tax_percent;
           this.details[i].tax_method = this.detail.tax_method;
           this.details[i].discount_Method = this.detail.discount_Method;
@@ -6317,6 +6414,7 @@ export default {
       if (client) {
         this.client_name = client.name;
         this.selectedClientId = selectedClientId;
+        try { Util.offlinePos.cacheRecentClient(client); } catch (e) {}
 
         try {
           const response = await axios.get(`/get_points_client/${selectedClientId}`);
@@ -6960,10 +7058,11 @@ export default {
         .then(response => {
           NProgress.done();
           const newClient = response.data;
-          this.clients.push({
+          this.rememberCustomers([{
             id: newClient.id,
             name: newClient.name,
-          });
+            phone: newClient.phone || '',
+          }]);
           this.selectedClientId = newClient.id;
           this.client_name = newClient.name;
           this.onClientSelected(newClient.id);
@@ -6972,7 +7071,6 @@ export default {
             this.$t("Successfully_Created"),
             this.$t("Success")
           );
-          this.Get_Client_Without_Paginate();
           this.$bvModal.hide("New_Customer");
         })
         .catch(() => {
@@ -7016,11 +7114,11 @@ export default {
             const afterCustoms = () => {
               NProgress.done();
               this.SubmitProcessing = false;
-              this.clients.push({
+              this.rememberCustomers([{
                 id: newClient.id,
                 name: newClient.name,
                 phone: newClient.phone || '',
-              });
+              }]);
               this.selectedClientId = newClient.id;
               this.client_name = newClient.name;
               this.onClientSelected(newClient.id);
@@ -7029,7 +7127,6 @@ export default {
                 this.$t("Successfully_Created"),
                 this.$t("Success")
               );
-              this.Get_Client_Without_Paginate();
               this.$bvModal.hide("Quick_Add_Customer");
               this.reset_Form_client();
               this.quickAddCustomFieldValues = {};
@@ -7073,11 +7170,7 @@ export default {
         is_royalty_eligible: false
       };
     },
-    Get_Client_Without_Paginate() {
-      axios
-        .get("get_clients_without_paginate")
-        .then(({ data }) => (this.clients = data));
-    },
+
 
     // ==================== SALES SNAPSHOT (from old_pos) ====================
     get_today_sales() {
@@ -7626,7 +7719,8 @@ export default {
       axios
         .get("pos/data_create_pos")
         .then(response => {
-          this.clients = response.data.clients;
+          this.clients = Array.isArray(response.data.clients) ? response.data.clients : [];
+          this.defaultCustomer = this.clients.find(client => String(client.id) === String(response.data.defaultClient)) || null;
           this.accounts = response.data.accounts;
           this.warehouses = response.data.warehouses;
           this.categories = response.data.categories;
@@ -7724,7 +7818,8 @@ export default {
               : null;
 
             if (cached) {
-              this.clients = cached.clients || [];
+              this.clients = Array.isArray(cached.clients) ? cached.clients.slice(0, 20) : [];
+              this.defaultCustomer = this.clients.find(client => String(client.id) === String(cached.defaultClient)) || null;
               this.accounts = cached.accounts || [];
               this.warehouses = cached.warehouses || [];
               this.categories = cached.categories || [];
@@ -8553,6 +8648,7 @@ export default {
 
   },
   beforeDestroy() {
+    this.cancelCustomerSearch();
     try {
       if (typeof document !== 'undefined' && document.documentElement) {
         document.documentElement.classList.remove('pos-active');
@@ -9458,7 +9554,7 @@ $transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .pos-price-select {
-  min-width: 120px;
+  min-width: 190px;
   padding: 2px 6px;
   height: 28px;
 }
@@ -16686,4 +16782,72 @@ html.pos-active:fullscreen .layout-sidebar-large .main-content-wrap {
   background: #b83838;
   border-color: #b83838;
 }
+.pos-edit-detail-modal .modal-dialog {
+  max-width: min(1120px, calc(100vw - 32px));
+}
+
+.pos-edit-detail-modal .modal-body {
+  padding: 22px 28px 26px;
+}
+
+.pos-edit-detail-modal .pos-edit-price-controls {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(220px, 1.35fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.pos-edit-detail-modal .pos-edit-price-input,
+.pos-edit-detail-modal .pos-price-select {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+
+.pos-edit-detail-modal .pos-price-select {
+  height: 31px;
+}
+
+.pos-edit-detail-modal .pos-price-reference {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+}
+
+.pos-edit-detail-modal .pos-price-reference-item {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 11px 13px;
+  border: 1px solid #e6e6ec;
+  border-radius: 8px;
+  background: #f8f8fb;
+}
+
+.pos-edit-detail-modal .pos-price-reference-item span {
+  color: #54546a;
+  font-size: 11px;
+}
+
+.pos-edit-detail-modal .pos-price-reference-item strong {
+  color: #1f1f2c;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.pos-edit-detail-modal .pos-price-reference-cost {
+  background: #f3f0fb;
+}
+
+@media (max-width: 767px) {
+  .pos-edit-detail-modal .modal-body {
+    padding: 18px;
+  }
+
+  .pos-edit-detail-modal .pos-edit-price-controls {
+    grid-template-columns: 1fr;
+  }
+}
+
 </style>

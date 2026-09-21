@@ -32,7 +32,7 @@
         </div>
       </div></div>
       <div class='target-grid'>
-        <section class='target-card target-section'><div class='target-section-title'><h3>{{ chartTitle }}</h3><span>Target &nbsp; Achieved</span></div><apexchart height='260' type='bar' :options='chartOptions' :series='chartSeries'/></section>
+        <section class='target-card target-section'><div class='target-section-title'><h3>{{ chartTitle }}</h3></div><achievement-chart :points='data.monthly'/></section>
         <section class='target-card target-section'><div class='target-section-title'><h3>Warehouse Performance</h3></div><div v-if='!data.warehouses.length' class='text-muted p-4'>No warehouse performance yet.</div><div v-for='row in data.warehouses' :key='row.id' class='mb-3'><div class='d-flex justify-content-between'><strong>{{ row.name }}</strong><span>{{ row.percentage }}%</span></div><small>{{ fmt(row.achieved) }} / {{ fmt(row.target) }} units</small><div class='target-progress mt-1'><span :style='{width:width(row.percentage)}'></span></div></div></section>
       </div>
       <section class='target-card target-section'><div class='target-section-title'><h3>Product / Category Performance</h3><div><router-link class='btn btn-sm btn-link' to='/app/targets/list'>View Details</router-link><button class='btn btn-sm btn-link' @click='printReport'>Print Report</button></div></div>
@@ -42,13 +42,13 @@
   </div>
 </template>
 <script>
-import VueApexCharts from 'vue-apexcharts';
+import AchievementChart from './AchievementChart.vue';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import '../../../../assets/styles/targets.scss';
 
 export default {
-  components:{apexchart:VueApexCharts,vSelect},
+  components:{AchievementChart,vSelect},
   data(){return{
     loading:true,
     filters:{supplier_id:null,period_type:'annual',year:new Date().getFullYear(),month:'',warehouse_id:null},
@@ -68,16 +68,6 @@ export default {
       {label:'Remaining',value:s.remaining,progress:Math.max(0,100-s.percentage),icon:'pie-chart',tone:'orange'},
       {label:'Achievement',value:s.percentage,progress:s.percentage,icon:'trophy',percent:true,tone:'purple'}
     ]},
-    chartSeries(){return[
-      {name:'Target',data:this.data.monthly.map(x=>x.target)},
-      {name:'Achieved',data:this.data.monthly.map(x=>x.achieved)}
-    ]},
-    chartOptions(){return{
-      chart:{toolbar:{show:false}},colors:['#7938d4','#cab6f4'],
-      plotOptions:{bar:{borderRadius:3,columnWidth:'70%'}},dataLabels:{enabled:false},
-      xaxis:{categories:this.data.monthly.map(x=>x.label)},yaxis:{title:{text:'Units'}},
-      tooltip:{shared:true},legend:{position:'top'}
-    }}
   },
   watch:{filters:{deep:true,handler(){clearTimeout(this.timer);this.timer=setTimeout(this.load,250)}}},
   created(){this.loadOptions();this.load()},

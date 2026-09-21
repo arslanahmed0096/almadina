@@ -7,6 +7,7 @@ use App\Models\PricingLevel;
 use App\Models\PricingLevelDetail;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Services\ProductMarginPricingService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -124,6 +125,72 @@ class PricingLevelCostSyncTest extends TestCase
 
         $this->savePricing($product->id, null, 100, true);
         $this->assertSame(100.0, $product->fresh()->purchase_price);
+    }
+
+    public function test_pricing_level_displays_current_product_prices_after_purchase_price_changes(): void
+    {
+        $product = Product::create([
+            'name' => 'Current product',
+            'type' => 'is_single',
+            'purchase_price' => 27000,
+        ]);
+        $margins = [
+            ['type' => 'percentage', 'value' => 2],
+            ['type' => 'percentage', 'value' => 5],
+            ['type' => 'percentage', 'value' => 7],
+        ];
+        $service = new ProductMarginPricingService;
+        $service->apply($product, $margins);
+        $product->save();
+
+        $snapshot = PricingLevelDetail::create([
+            'pricing_level_id' => 1,
+            'product_id' => $product->id,
+            'purchase_price' => $product->purchase_price,
+            'min_price' => $product->min_price,
+            'wholesale_price' => $product->wholesale_price,
+            'price' => $product->price,
+            'pricing_margins' => $product->pricing_margins,
+        ]);
+
+        $product->purchase_price = 30000;
+        $service->apply($product, $margins);
+        $product->save();
+
+        $method = new \ReflectionMethod(new PricingLevelController, 'currentPrices');
+        $current = $method->invoke(new PricingLevelController, $product->fresh(), $snapshot->fresh());
+
+        $this->assertSame(30000.0, $current['purchase_price']);
+        $this->assertSame(30600.0, $current['min_price']);
+        $this->assertSame(31500.0, $current['wholesale_price']);
+        $this->assertSame(32100.0, $current['price']);
+        $this->assertSame(600.0, (float) $current['pricing_margins'][0]['profit']);
+        $this->assertSame(27000.0, $snapshot->fresh()->purchase_price);
+        $this->assertSame(27540.0, $snapshot->fresh()->min_price);
+    }
+
+    public function test_pricing_level_uses_current_variant_wholesale_price(): void
+    {
+        $product = Product::create(['name' => 'Variant product', 'type' => 'is_variant']);
+        $variant = ProductVariant::create([
+            'product_id' => $product->id,
+            'purchase_price' => 1000,
+            'wholesale' => 1100,
+        ]);
+        $snapshot = PricingLevelDetail::create([
+            'pricing_level_id' => 1,
+            'product_id' => $product->id,
+            'product_variant_id' => $variant->id,
+            'purchase_price' => 900,
+            'wholesale_price' => 950,
+        ]);
+
+        $method = new \ReflectionMethod(new PricingLevelController, 'currentPrices');
+        $current = $method->invoke(new PricingLevelController, $variant, $snapshot);
+
+        $this->assertSame(1000.0, $current['purchase_price']);
+        $this->assertSame(1100.0, $current['wholesale_price']);
+        $this->assertSame(950.0, $snapshot->fresh()->wholesale_price);
     }
 
     private function savePricing(

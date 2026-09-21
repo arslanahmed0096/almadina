@@ -225,6 +225,54 @@
           </div>
         </div>
 
+        <!-- Current prices and saved purchase-price margins -->
+        <div :style='cardStyle' class='pd-pricing-card'>
+          <div :style='cardHeaderStyle'>
+            <lucide-icon name='badge-dollar-sign' :style='{ marginRight: `8px`, color: `#7c3aed` }' />
+            Pricing &amp; Margins
+          </div>
+          <div class='pd-pricing-body' :style='{ color: pdTheme.valueColor }'>
+            <div v-for='(entry, index) in pricingEntries' :key='entry.id || entry.code || index' class='pd-pricing-entry'>
+              <div v-if='product.type === `is_variant`' class='pd-pricing-variant-title'>
+                {{ entry.name }} <small v-if='entry.code'>({{ entry.code }})</small>
+              </div>
+              <div class='pd-pricing-grid'>
+                <div class='pd-pricing-price'><span>Purchase Price</span><strong>{{ formatPriceWithSymbol(currentUser && currentUser.currency, entry.purchase_price, 2) }}</strong></div>
+                <div class='pd-pricing-price'><span>Cost</span><strong>{{ formatPriceWithSymbol(currentUser && currentUser.currency, entry.cost, 2) }}</strong></div>
+                <div class='pd-pricing-price'><span>Minimum Price</span><strong>{{ formatPriceWithSymbol(currentUser && currentUser.currency, entry.min_price, 2) }}</strong></div>
+                <div class='pd-pricing-price'><span>Wholesale Price</span><strong>{{ formatPriceWithSymbol(currentUser && currentUser.currency, entry.wholesale_price != null ? entry.wholesale_price : entry.wholesale, 2) }}</strong></div>
+                <div class='pd-pricing-price'><span>Al-Madina Price</span><strong>{{ formatPriceWithSymbol(currentUser && currentUser.currency, entry.price, 2) }}</strong></div>
+                <div class='pd-pricing-price'><span>Regular Price</span><strong>{{ formatPriceWithSymbol(currentUser && currentUser.currency, entry.fix_price, 2) }}</strong></div>
+                <div class='pd-pricing-price'><span>MRP</span><strong>{{ formatPriceWithSymbol(currentUser && currentUser.currency, entry.mrp_price, 2) }}</strong></div>
+                <div class='pd-pricing-price'><span>Company RB</span><strong>{{ formatPriceWithSymbol(currentUser && currentUser.currency, entry.company_rb_price, 2) }}</strong></div>
+              </div>
+              <div class='pd-pricing-subtitle'>Applied purchase-price margins</div>
+              <div v-if='entry.pricing_margins && entry.pricing_margins.length' class='pd-pricing-table-wrap'>
+                <table :style='tableStyle'>
+                  <thead>
+                    <tr>
+                      <th :style='thStyle'>Price Label</th>
+                      <th :style='{ ...thStyle, textAlign: `right` }'>Margin</th>
+                      <th :style='{ ...thStyle, textAlign: `right` }'>Profit</th>
+                      <th :style='{ ...thStyle, textAlign: `right` }'>Applied Price</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for='(margin, marginIndex) in entry.pricing_margins' :key='marginIndex'>
+                      <td :style='tdStyle'>{{ margin.label || `Margin ${marginIndex + 1}` }}</td>
+                      <td :style='{ ...tdStyle, textAlign: `right` }'>{{ formatMargin(margin) }}</td>
+                      <td :style='{ ...tdStyle, textAlign: `right` }'>{{ margin.profit != null ? formatPriceWithSymbol(currentUser && currentUser.currency, margin.profit, 0) : '-' }}</td>
+                      <td :style='{ ...tdStyle, textAlign: `right`, fontWeight: 700 }'>{{ margin.calculated_price != null ? formatPriceWithSymbol(currentUser && currentUser.currency, margin.calculated_price, 0) : '-' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div v-else class='pd-pricing-empty' :style='{ color: pdTheme.mutedColor }'>No purchase-price margins saved for this product.</div>
+            </div>
+            <div v-if='!pricingEntries.length' class='pd-pricing-empty' :style='{ color: pdTheme.mutedColor }'>No variant pricing available.</div>
+          </div>
+        </div>
+
         <!-- Main two-column grid -->
         <div
           class="pd-main-grid"
@@ -268,31 +316,6 @@
                   <div :style="infoRow"><span :style="infoKey">{{ $t('Categorie') }}</span><span :style="infoVal">{{ categoriesLine || '—' }}</span></div>
                   <div :style="infoRow" v-if="subcategoriesLine"><span :style="infoKey">{{ $t('SubCategory') }}</span><span :style="infoVal">{{ subcategoriesLine }}</span></div>
                   <div :style="infoRow"><span :style="infoKey">{{ $t('Brand') }}</span><span :style="infoVal">{{ product.brand }}</span></div>
-
-                  <div :style="infoRow" v-if="product.type == 'is_single' || product.type == 'is_combo'">
-                    <span :style="infoKey">{{ $t('Cost') }}</span>
-                    <span :style="infoValAccent('#4f46e5')">{{ formatPriceWithSymbol(currentUser && currentUser.currency, product.cost, 2) }}</span>
-                  </div>
-                  <div :style="infoRow" v-if="product.type == 'is_single' || product.type == 'is_combo'">
-                    <span :style="infoKey">Purchase Price</span>
-                    <span :style="infoVal">{{ formatPriceWithSymbol(currentUser && currentUser.currency, product.purchase_price || 0, 2) }}</span>
-                  </div>
-                  <div :style="infoRow" v-if="product.type != 'is_variant'">
-                    <span :style="infoKey">Al-Madina Price</span>
-                    <span :style="infoValAccent('#10b981')">{{ formatPriceWithSymbol(currentUser && currentUser.currency, product.price, 2) }}</span>
-                  </div>
-                  <div :style="infoRow" v-if="product.type != 'is_variant'">
-                    <span :style="infoKey">{{ $t('FixPrice') }}</span>
-                    <span :style="infoValAccent('#7c3aed')">{{ formatPriceWithSymbol(currentUser && currentUser.currency, product.fix_price, 2) }}</span>
-                  </div>
-                  <div :style="infoRow" v-if="product.type != 'is_variant'">
-                    <span :style="infoKey">{{ $t('Wholesale_Price') }}</span>
-                    <span :style="infoValAccent('#f59e0b')">{{ formatPriceWithSymbol(currentUser && currentUser.currency, product.wholesale_price, 2) }}</span>
-                  </div>
-                  <div :style="infoRow" v-if="product.type != 'is_variant'">
-                    <span :style="infoKey">{{ $t('MinPrice') }}</span>
-                    <span :style="infoValAccent('#ef4444')">{{ formatPriceWithSymbol(currentUser && currentUser.currency, product.min_price, 2) }}</span>
-                  </div>
 
                   <div :style="infoRow" v-if="product.type != 'is_service'">
                     <span :style="infoKey">{{ $t('Unit') }}</span>
@@ -1046,6 +1069,13 @@ export default {
       if (!this.product || !Array.isArray(this.product.CountQTY)) return 0;
       return this.product.CountQTY.reduce((sum, w) => sum + (parseFloat(w.qte) || 0), 0);
     },
+    pricingEntries() {
+      const product = this.product || {};
+      if (product.type === 'is_variant') {
+        return Array.isArray(product.products_variants_data) ? product.products_variants_data : [];
+      }
+      return [product];
+    },
     batchesTotalQty() {
       if (!Array.isArray(this.batches)) return 0;
       return this.batches.reduce((sum, b) => sum + (Number(b.qty) || 0), 0);
@@ -1162,6 +1192,11 @@ export default {
       const safeSymbol = symbol || "";
       const value = this.formatPriceDisplay(number, dec);
       return safeSymbol ? `${safeSymbol} ${value}` : value;
+    },
+
+    formatMargin(row) {
+      if (row.type === 'percentage') return `${Number(row.value || 0)}%`;
+      return this.formatPriceWithSymbol(this.currentUser && this.currentUser.currency, row.value, 2);
     },
 
     print_product() {
@@ -1332,6 +1367,61 @@ export default {
 </script>
 
 <style scoped>
+.pd-pricing-body {
+  padding: 20px;
+}
+.pd-pricing-entry + .pd-pricing-entry {
+  border-top: 1px solid rgba(124, 58, 237, 0.2);
+  margin-top: 24px;
+  padding-top: 24px;
+}
+.pd-pricing-variant-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 14px;
+}
+.pd-pricing-variant-title small {
+  font-size: 12px;
+  font-weight: 400;
+  opacity: 0.7;
+}
+.pd-pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+.pd-pricing-price {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid rgba(124, 58, 237, 0.14);
+  border-radius: 8px;
+  background: rgba(124, 58, 237, 0.05);
+}
+.pd-pricing-price span {
+  font-size: 12px;
+  opacity: 0.75;
+}
+.pd-pricing-price strong {
+  font-size: 16px;
+}
+.pd-pricing-subtitle {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 20px 0 8px;
+}
+.pd-pricing-table-wrap {
+  overflow-x: auto;
+}
+.pd-pricing-table-wrap table {
+  min-width: 520px;
+}
+.pd-pricing-empty {
+  font-size: 13px;
+  padding: 10px 0;
+}
+
 /* Stack gallery under details on tablet and below */
 @media (max-width: 992px) {
   .pd-main-grid {
