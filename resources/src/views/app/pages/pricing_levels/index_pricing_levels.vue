@@ -92,43 +92,77 @@
       size="xl"
       centered
       hide-footer
-      title="Pricing Level Details"
+      hide-header
+      modal-class="pricing-level-view-modal"
+      body-class="pricing-level-view-modal-body"
     >
-      <div v-if="viewLoading" class="pricing-view-loading">
-        <div class="spinner spinner-primary"></div>
+      <div class="pricing-view-shell">
+        <header class="pricing-view-header">
+          <div class="pricing-view-header__identity">
+            <span class="pricing-view-header__icon"><lucide-icon name="tags" /></span>
+            <div>
+              <span class="pricing-view-header__eyebrow">PRODUCT PRICING</span>
+              <h3>Pricing Level Details</h3>
+              <p>Review the saved purchase prices, sale prices, and margin rules.</p>
+            </div>
+          </div>
+          <button type="button" class="pricing-view-close" aria-label="Close" @click="$bvModal.hide('pricing-level-view-modal')">
+            <lucide-icon name="x" />
+          </button>
+        </header>
+
+        <div class="pricing-view-content">
+          <div v-if="viewLoading" class="pricing-view-loading">
+            <div class="spinner spinner-primary"></div>
+          </div>
+          <template v-else>
+            <div class="pricing-view-summary">
+              <div><span class="pricing-view-summary__icon"><lucide-icon name="tag" /></span><section><small>BRAND</small><strong>{{ viewEntry.brand || "N/D" }}</strong></section></div>
+              <div><span class="pricing-view-summary__icon"><lucide-icon name="folder" /></span><section><small>CATEGORY</small><strong>{{ viewEntry.category || "N/D" }}</strong></section></div>
+              <div><span class="pricing-view-summary__icon"><lucide-icon name="calendar" /></span><section><small>DATE</small><strong>{{ formatDate(viewEntry.date) }}</strong></section></div>
+              <div><span class="pricing-view-summary__icon"><lucide-icon name="package" /></span><section><small>PRODUCTS</small><strong>{{ viewEntry.total_products || 0 }}</strong></section></div>
+            </div>
+
+            <section class="pricing-view-panel">
+              <div class="pricing-view-panel__heading">
+                <div><h5>Product pricing</h5><p>Only active products in this pricing level are shown.</p></div>
+                <span>{{ viewRows.length }} pricing row{{ viewRows.length === 1 ? "" : "s" }}</span>
+              </div>
+              <div class="table-responsive pricing-view-table-wrap">
+                <table class="table table-hover pricing-view-table mb-0">
+                  <thead>
+                    <tr>
+                      <th>Product</th><th>Code</th><th>Purchase Price</th><th>Product Cost</th>
+                      <th>Regular Price</th><th>Al-Madina Price</th><th>Wholesale</th><th>Minimum</th><th>Margins</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="row in viewRows" :key="row.key">
+                      <td class="pricing-view-product"><strong>{{ row.name }}</strong><small v-if="row.variant"><span>VARIANT</span>{{ row.variant }}</small></td>
+                      <td class="pricing-view-code">{{ row.code }}</td>
+                      <td>{{ priceDisplay(row.purchase_price) }}</td>
+                      <td>{{ priceDisplay(row.cost) }}</td>
+                      <td>{{ priceDisplay(row.fix_price) }}</td>
+                      <td>{{ priceDisplay(row.price) }}</td>
+                      <td>{{ priceDisplay(row.wholesale_price) }}</td>
+                      <td>{{ priceDisplay(row.min_price) }}</td>
+                      <td class="pricing-margin-summary">
+                        <template v-if="row.pricing_margins && row.pricing_margins.length">
+                          <span v-for="(margin, index) in row.pricing_margins" :key="`${row.key}-margin-${index}`" class="pricing-margin-chip">
+                            {{ margin.label || "Margin" }}: {{ margin.value }}{{ margin.type === "percentage" ? "%" : "" }}
+                          </span>
+                        </template>
+                        <span v-else class="pricing-no-margin">No margins</span>
+                      </td>
+                    </tr>
+                    <tr v-if="!viewRows.length"><td colspan="9" class="text-center text-muted py-5">No active product pricing details.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </template>
+        </div>
       </div>
-      <template v-else>
-        <div class="pricing-view-summary">
-          <div><small>BRAND</small><strong>{{ viewEntry.brand || "N/D" }}</strong></div>
-          <div><small>CATEGORY</small><strong>{{ viewEntry.category || "N/D" }}</strong></div>
-          <div><small>DATE</small><strong>{{ formatDate(viewEntry.date) }}</strong></div>
-          <div><small>PRODUCTS</small><strong>{{ viewEntry.total_products || 0 }}</strong></div>
-        </div>
-        <div class="table-responsive">
-          <table class="table table-bordered table-hover pricing-view-table mb-0">
-            <thead>
-              <tr>
-                <th>Product</th><th>Code</th><th>Purchase Price</th><th>Product Cost</th>
-                <th>Regular Price</th><th>Al-Madina Price</th><th>Wholesale</th><th>Minimum</th><th>Margins</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in viewRows" :key="row.key">
-                <td><strong>{{ row.name }}</strong><small v-if="row.variant">{{ row.variant }}</small></td>
-                <td>{{ row.code }}</td>
-                <td>{{ priceDisplay(row.purchase_price) }}</td>
-                <td>{{ priceDisplay(row.cost) }}</td>
-                <td>{{ priceDisplay(row.fix_price) }}</td>
-                <td>{{ priceDisplay(row.price) }}</td>
-                <td>{{ priceDisplay(row.wholesale_price) }}</td>
-                <td>{{ priceDisplay(row.min_price) }}</td>
-                <td class="pricing-margin-summary">{{ marginSummary(row.pricing_margins) }}</td>
-              </tr>
-              <tr v-if="!viewRows.length"><td colspan="9" class="text-center text-muted">No active product pricing details.</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </template>
     </b-modal>
 
     <b-sidebar id="pricing-level-filter" :title="$t('Filter')" bg-variant="white" right shadow>
@@ -453,7 +487,7 @@ export default {
 }
 
 .pricing-view-loading {
-  min-height: 220px;
+  min-height: 360px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -463,14 +497,19 @@ export default {
   display: grid;
   grid-template-columns: repeat(4, minmax(130px, 1fr));
   gap: 12px;
-  margin-bottom: 18px;
+  margin-bottom: 20px;
 }
 
 .pricing-view-summary > div {
-  padding: 12px 14px;
-  border: 1px solid #e7e1ec;
-  border-radius: 8px;
-  background: #faf8fc;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 15px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 5px 16px rgba(15, 23, 42, .04);
 }
 
 .pricing-view-summary small,
@@ -481,26 +520,109 @@ export default {
 
 .pricing-view-summary small,
 .pricing-view-table td small {
-  color: #777;
+  color: #64748b;
 }
 
 .pricing-view-table {
-  min-width: 1180px;
+  min-width: 1240px;
 }
 
 .pricing-view-table th,
 .pricing-view-table td {
-  padding: 9px;
+  padding: 12px 10px;
   white-space: nowrap;
   vertical-align: middle;
 }
 
 .pricing-margin-summary {
-  max-width: 280px;
+  min-width: 235px;
+  max-width: 300px;
   white-space: normal !important;
 }
 
+.pricing-view-shell { background: #f8fafc; }
+.pricing-view-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 112px;
+  padding: 24px 30px;
+  overflow: hidden;
+  color: #fff;
+  background: linear-gradient(135deg, #71379f, #4f46e5);
+}
+.pricing-view-header::after {
+  position: absolute;
+  right: -45px;
+  bottom: -85px;
+  width: 210px;
+  height: 210px;
+  content: "";
+  border-radius: 50%;
+  background: rgba(255,255,255,.08);
+}
+.pricing-view-header__identity { position: relative; z-index: 1; display: flex; align-items: center; gap: 15px; }
+.pricing-view-header__icon { display: flex; align-items: center; justify-content: center; width: 50px; height: 50px; border-radius: 13px; background: rgba(255,255,255,.16); }
+.pricing-view-header__icon svg { width: 25px; height: 25px; }
+.pricing-view-header__eyebrow { font-size: 10px; font-weight: 800; letter-spacing: 1.2px; opacity: .78; }
+.pricing-view-header h3 { margin: 2px 0 3px; color: #fff; font-size: 22px; font-weight: 700; }
+.pricing-view-header p { margin: 0; color: rgba(255,255,255,.78); font-size: 12px; }
+.pricing-view-close { position: relative; z-index: 2; display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; color: #fff; border: 1px solid rgba(255,255,255,.22); border-radius: 10px; background: rgba(255,255,255,.1); }
+.pricing-view-close svg { width: 19px; height: 19px; }
+.pricing-view-content { padding: 24px 28px 28px; }
+.pricing-view-summary__icon { display: flex; flex: 0 0 38px; align-items: center; justify-content: center; width: 38px; height: 38px; color: #71379f; border-radius: 10px; background: #f0e7f8; }
+.pricing-view-summary__icon svg { width: 18px; height: 18px; }
+.pricing-view-summary section { min-width: 0; }
+.pricing-view-summary strong { overflow: hidden; color: #1e293b; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.pricing-view-panel { overflow: hidden; border: 1px solid #e2e8f0; border-radius: 13px; background: #fff; box-shadow: 0 7px 20px rgba(15,23,42,.05); }
+.pricing-view-panel__heading { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 17px 20px; border-bottom: 1px solid #e8edf3; }
+.pricing-view-panel__heading h5 { margin: 0; color: #1e293b; font-size: 16px; font-weight: 700; }
+.pricing-view-panel__heading p { margin: 3px 0 0; color: #64748b; font-size: 11px; }
+.pricing-view-panel__heading > span { padding: 5px 10px; color: #71379f; border-radius: 14px; background: #f0e7f8; font-size: 11px; font-weight: 700; }
+.pricing-view-table-wrap { max-height: calc(100vh - 345px); }
+.pricing-view-table thead th { position: sticky; top: 0; z-index: 1; color: #475569; border-top: 0; border-bottom: 1px solid #dfe6ee; background: #f8fafc; font-size: 11px; font-weight: 750; }
+.pricing-view-table tbody td { color: #334155; border-top: 1px solid #edf1f5; font-size: 12px; }
+.pricing-view-product { min-width: 220px; white-space: normal !important; }
+.pricing-view-product strong { display: block; color: #1e293b; }
+.pricing-view-product small { margin-top: 4px; }
+.pricing-view-product small span { display: inline-block; padding: 2px 5px; margin-right: 5px; color: #71379f; border-radius: 7px; background: #f0e7f8; font-size: 9px; font-weight: 800; }
+.pricing-view-code { color: #64748b !important; font-family: monospace; }
+.pricing-margin-chip { display: inline-block; padding: 3px 7px; margin: 2px; color: #5f2d86; border: 1px solid #e3d5ef; border-radius: 9px; background: #faf7fd; font-size: 10px; }
+.pricing-no-margin { color: #94a3b8; font-size: 11px; }
+
 @media (max-width: 767px) {
   .pricing-view-summary { grid-template-columns: 1fr 1fr; }
+  .pricing-view-header { padding: 20px; }
+  .pricing-view-header p { display: none; }
+  .pricing-view-content { padding: 16px; }
+  .pricing-view-panel__heading { align-items: flex-start; flex-direction: column; }
+}
+</style>
+
+<style>
+/* BootstrapVue mounts modal wrappers under body, so these sizing rules must remain unscoped. */
+.pricing-level-view-modal .modal-dialog {
+  width: calc(100vw - 48px) !important;
+  max-width: 1400px !important;
+  margin: 24px auto !important;
+}
+.pricing-level-view-modal .modal-content {
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+  border: 0 !important;
+  border-radius: 18px !important;
+  background: #f8fafc;
+  box-shadow: 0 28px 70px -22px rgba(30,27,75,.48), 0 12px 28px -16px rgba(15,23,42,.35) !important;
+}
+.pricing-level-view-modal .pricing-level-view-modal-body {
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  padding: 0 !important;
+}
+@media (max-width: 767px) {
+  .pricing-level-view-modal .modal-dialog { width: calc(100vw - 20px) !important; margin: 10px auto !important; }
+  .pricing-level-view-modal .modal-content,
+  .pricing-level-view-modal .pricing-level-view-modal-body { max-height: calc(100vh - 20px); }
 }
 </style>

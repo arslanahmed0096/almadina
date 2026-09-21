@@ -486,7 +486,8 @@ class ProductsController extends BaseController
                     $variant = ProductVariant::where('product_id', $product->id)
                         ->whereNull('deleted_at')
                         ->findOrFail($variantData['id']);
-                    $variant->update([
+                    $costChanged = (float) $variant->cost !== (float) $variantData['cost'];
+                    $variant->fill([
                         'company_rb_price' => $variantData['company_rb_price'],
                         'mrp_price' => $variantData['mrp_price'],
                         'cost' => $variantData['cost'],
@@ -495,11 +496,28 @@ class ProductsController extends BaseController
                         'wholesale' => $variantData['wholesale_price'],
                         'min_price' => $variantData['min_price'],
                     ]);
+                    if ($costChanged) {
+                        $variant->purchase_price = $variantData['cost'];
+                        if ($variant->pricing_margins) {
+                            app(\App\Services\ProductMarginPricingService::class)
+                                ->apply($variant, $variant->pricing_margins);
+                        }
+                    }
+                    $variant->save();
                 }
             });
         } else {
             $validated = $request->validate($priceRules);
-            $product->update($validated);
+            $costChanged = (float) $product->cost !== (float) $validated['cost'];
+            $product->fill($validated);
+            if ($costChanged) {
+                $product->purchase_price = $validated['cost'];
+                if ($product->pricing_margins) {
+                    app(\App\Services\ProductMarginPricingService::class)
+                        ->apply($product, $product->pricing_margins);
+                }
+            }
+            $product->save();
         }
 
         $product->refresh();

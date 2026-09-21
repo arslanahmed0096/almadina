@@ -530,6 +530,7 @@ export default {
               code: variant.code || product.code,
               purchase_price: this.numericValue(variant.purchase_price),
               purchase_price_tracks_cost: ["none", "cost"].includes(variant.purchase_price_source),
+              cost_updated: false,
               pricing_margins: this.normalizeMargins(variant.pricing_margins)
             });
             this.priceFields.forEach(field => { row[field] = this.numericValue(variant[field]); });
@@ -545,6 +546,7 @@ export default {
           code: product.code,
           purchase_price: this.numericValue(product.purchase_price),
           purchase_price_tracks_cost: ["none", "cost"].includes(product.purchase_price_source),
+          cost_updated: false,
           pricing_margins: this.normalizeMargins(product.pricing_margins)
         });
         this.priceFields.forEach(field => { row[field] = this.numericValue(product[field]); });
@@ -556,9 +558,11 @@ export default {
       return this.numericValue(row && row.purchase_price);
     },
     onPriceInput(row, field) {
-      if (field === "cost" && (row.purchase_price_tracks_cost || !(Number(row.purchase_price) > 0))) {
+      if (field === "cost") {
         this.$set(row, "purchase_price", this.numericValue(row.cost));
         this.$set(row, "purchase_price_tracks_cost", true);
+        this.$set(row, "cost_updated", true);
+        this.applyMarginPrices(row);
       }
       this.markDirty(row.product_id);
     },
@@ -698,6 +702,7 @@ export default {
         const detail = {
           product_id: row.product_id,
           product_variant_id: row.variant_id || null,
+          cost_updated: !!row.cost_updated,
           pricing_margins: (row.pricing_margins || []).map(margin => ({
             type: margin.type,
             value: this.numericValue(margin.value),

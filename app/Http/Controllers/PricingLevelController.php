@@ -273,6 +273,7 @@ class PricingLevelController extends Controller
             'details.*.pricing_margins.*.type' => ['required', 'in:percentage,fixed'],
             'details.*.pricing_margins.*.value' => ['required', 'numeric', 'min:0'],
             'details.*.pricing_margins.*.label' => ['nullable', 'string', 'max:100'],
+            'details.*.cost_updated' => ['sometimes', 'boolean'],
         ];
         foreach (self::PRICE_FIELDS as $field) {
             $rules["details.*.{$field}"] = ['required', 'numeric', 'min:0'];
@@ -336,6 +337,7 @@ class PricingLevelController extends Controller
             foreach (self::PRICE_FIELDS as $field) {
                 $row[$field] = (float) $detail[$field];
             }
+            $row['cost_updated'] = (bool) ($detail['cost_updated'] ?? false);
             $row['pricing_margins'] = array_key_exists('pricing_margins', $detail)
                 ? collect($detail['pricing_margins'] ?? [])->map(fn ($margin) => [
                     'type' => $margin['type'],
@@ -359,7 +361,7 @@ class PricingLevelController extends Controller
                 $model = ProductVariant::where('product_id', $detail['product_id'])
                     ->whereNull('deleted_at')
                     ->findOrFail($detail['product_variant_id']);
-                $model->fill([
+                $attributes = [
                     'company_rb_price' => $prices['company_rb_price'],
                     'mrp_price' => $prices['mrp_price'],
                     'cost' => $prices['cost'],
@@ -367,14 +369,16 @@ class PricingLevelController extends Controller
                     'price' => $prices['price'],
                     'wholesale' => $prices['wholesale_price'],
                     'min_price' => $prices['min_price'],
-                ]);
+                ];
             } else {
                 $model = Product::whereNull('deleted_at')->findOrFail($detail['product_id']);
-                $model->fill($prices);
+                $attributes = $prices;
             }
 
-            if ((float) ($model->purchase_price ?? 0) <= 0 && (float) $prices['cost'] > 0) {
-                // A cost entered in Pricing Level becomes the initial stored purchase price.
+            $costChanged = (float) ($model->cost ?? 0) !== (float) $prices['cost'];
+            $model->fill($attributes);
+            if ($costChanged || $detail['cost_updated'] ||
+                ((float) ($model->purchase_price ?? 0) <= 0 && (float) $prices['cost'] > 0)) {
                 $model->purchase_price = $prices['cost'];
             } else {
                 $model->purchase_price = $pricingService->effectivePurchasePrice($model)['price'];
