@@ -168,6 +168,9 @@ class SettingsController extends Controller
             'show_language' => $show_language,
             'dark_mode' => $dark_mode,
             'rtl' => $rtl,
+            'sidebar_layout' => in_array($request->input('sidebar_layout'), ['horizontal', 'vertical'], true)
+                ? $request->input('sidebar_layout')
+                : ($setting->sidebar_layout ?: 'vertical'),
             'invoice_footer' => $request['invoice_footer'],
             'sms_gateway' => $sms_gateway,
             'logo' => $filename,
@@ -645,6 +648,9 @@ class SettingsController extends Controller
             $item['show_language'] = $settings->show_language;
             $item['dark_mode'] = (bool) ($settings->dark_mode ?? false);
             $item['rtl'] = (bool) ($settings->rtl ?? false);
+            $item['sidebar_layout'] = in_array($settings->sidebar_layout ?? null, ['horizontal', 'vertical'], true)
+                ? $settings->sidebar_layout
+                : 'vertical';
             $item['point_to_amount_rate'] = $settings->point_to_amount_rate;
             $item['default_tax'] = $settings->default_tax;
             $item['default_dashboard_date_range'] = in_array($settings->default_dashboard_date_range ?? 'week', ['today', 'week', 'month'], true) ? $settings->default_dashboard_date_range : 'week';
@@ -870,6 +876,9 @@ class SettingsController extends Controller
             $item['show_language'] = $settings->show_language;
             $item['dark_mode'] = (bool) ($settings->dark_mode ?? false);
             $item['rtl'] = (bool) ($settings->rtl ?? false);
+            $item['sidebar_layout'] = in_array($settings->sidebar_layout ?? null, ['horizontal', 'vertical'], true)
+                ? $settings->sidebar_layout
+                : 'vertical';
             $item['point_to_amount_rate'] = $settings->point_to_amount_rate;
             $item['default_tax'] = $settings->default_tax;
             $item['default_dashboard_date_range'] = in_array($settings->default_dashboard_date_range ?? 'week', ['today', 'week', 'month'], true) ? $settings->default_dashboard_date_range : 'week';

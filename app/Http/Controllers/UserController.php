@@ -123,6 +123,9 @@ class UserController extends BaseController
             'date_format' => $settings->date_format ?? 'YYYY-MM-DD',
             'price_format' => $settings->price_format ?? null,
             'dark_mode' => (bool) ($settings->dark_mode ?? false),
+            'sidebar_layout' => in_array($settings->sidebar_layout ?? null, ['horizontal', 'vertical'], true)
+                ? $settings->sidebar_layout
+                : 'vertical',
             'timezone' => $this->getEnvValue('APP_TIMEZONE', 'UTC'),
         ];
 

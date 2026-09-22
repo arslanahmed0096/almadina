@@ -124,6 +124,12 @@ const actions = {
             // every refresh.
             const darkMode = user.dark_mode ?? false;
             commit('setDarkMode', darkMode);
+            // Sidebar layout is a shared system setting. Apply it for every
+            // authenticated role and refresh this browser's cached layout.
+            const sidebarLayout = ['horizontal', 'vertical'].includes(user.sidebar_layout)
+                ? user.sidebar_layout
+                : 'vertical';
+            commit('setSidebarLayout', sidebarLayout, { root: true });
             // Sync customize button visibility from DB to config store
             const customizeVisible = user.customize_button_visible ?? true;
             commit('config/setCustomizeButtonVisible', customizeVisible, { root: true });

@@ -70,6 +70,15 @@ class PricingLevelCostSyncTest extends TestCase
             $table->decimal('price', 15, 2)->default(0);
             $table->decimal('wholesale_price', 15, 2)->default(0);
             $table->decimal('min_price', 15, 2)->default(0);
+            $table->decimal('previous_company_rb_price', 15, 2)->nullable();
+            $table->decimal('previous_mrp_price', 15, 2)->nullable();
+            $table->decimal('previous_cost', 15, 2)->nullable();
+            $table->decimal('previous_purchase_price', 15, 2)->nullable();
+            $table->json('previous_pricing_margins')->nullable();
+            $table->decimal('previous_fix_price', 15, 2)->nullable();
+            $table->decimal('previous_price', 15, 2)->nullable();
+            $table->decimal('previous_wholesale_price', 15, 2)->nullable();
+            $table->decimal('previous_min_price', 15, 2)->nullable();
             $table->timestamps();
         });
     }
@@ -81,6 +90,9 @@ class PricingLevelCostSyncTest extends TestCase
             'type' => 'single',
             'cost' => 100,
             'purchase_price' => 120,
+            'pricing_margins' => [
+                ['label' => 'Previous margin', 'type' => 'fixed', 'value' => 5, 'profit' => 5, 'calculated_price' => 125],
+            ],
         ]);
 
         $this->savePricing($product->id, null, 150, false, [
@@ -94,6 +106,10 @@ class PricingLevelCostSyncTest extends TestCase
         $this->assertSame(150.0, $product->purchase_price);
         $this->assertSame(160.0, $product->min_price);
         $this->assertSame(150.0, $detail->purchase_price);
+        $this->assertSame(100.0, $detail->previous_cost);
+        $this->assertSame(120.0, $detail->previous_purchase_price);
+        $this->assertSame(0.0, $detail->previous_min_price);
+        $this->assertSame('Previous margin', $detail->previous_pricing_margins[0]['label']);
     }
 
     public function test_changed_variant_cost_replaces_its_existing_purchase_price(): void
@@ -118,6 +134,9 @@ class PricingLevelCostSyncTest extends TestCase
             'type' => 'single',
             'cost' => 100,
             'purchase_price' => 120,
+            'pricing_margins' => [
+                ['label' => 'Previous margin', 'type' => 'fixed', 'value' => 5, 'profit' => 5, 'calculated_price' => 125],
+            ],
         ]);
 
         $this->savePricing($product->id, null, 100);

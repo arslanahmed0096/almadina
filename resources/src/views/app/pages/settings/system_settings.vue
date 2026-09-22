@@ -3595,6 +3595,7 @@ export default {
         dashboard_font_family: '',
         dark_mode: false,
         rtl: false,
+        sidebar_layout: 'vertical',
         debug_mode: false,
         sale_prefix: '',
         purchase_prefix: '',
@@ -3859,12 +3860,18 @@ export default {
       }
     },
 
-    // Sidebar layout (same source as the app customizer; persists via Vuex->localStorage)
+    // Shared system sidebar layout. Vuex/localStorage mirror the database value
+    // so all roles receive the administrator's selected layout on app startup.
     sidebarLayoutModel: {
       get() {
-        return this.getSidebarLayout || 'vertical';
+        const saved = this.setting && this.setting.sidebar_layout;
+        return ['horizontal', 'vertical'].includes(saved)
+          ? saved
+          : (this.getSidebarLayout || 'vertical');
       },
       set(layout) {
+        if (!['horizontal', 'vertical'].includes(layout)) return;
+        if (this.setting) this.$set(this.setting, 'sidebar_layout', layout);
         try { this.setSidebarLayout(layout); } catch (e) {}
       }
     },
@@ -4482,6 +4489,7 @@ export default {
       self.data.append("dashboard_font_family", self.setting.dashboard_font_family || "");
       self.data.append("dark_mode", self.setting.dark_mode ? 1 : 0);
       self.data.append("rtl", self.setting.rtl ? 1 : 0);
+      self.data.append("sidebar_layout", self.setting.sidebar_layout || "vertical");
       self.data.append("debug_mode", self.setting.debug_mode ? 1 : 0);
       self.data.append("allowed_ips_enabled", self.setting.allowed_ips_enabled ? 1 : 0);
       self.data.append("allowed_ips", self.setting.allowed_ips || "");
@@ -5322,6 +5330,11 @@ export default {
           // Merge to preserve default keys/reactivity for newly added settings fields
           this.setting         = { ...this.setting, ...(response.data.settings || {}) };
           this.setting.allowed_ip_role_ids = (this.setting.allowed_ip_role_ids || []).map(id => Number(id));
+          const savedSidebarLayout = ['horizontal', 'vertical'].includes(this.setting.sidebar_layout)
+            ? this.setting.sidebar_layout
+            : 'vertical';
+          this.setting.sidebar_layout = savedSidebarLayout;
+          this.setSidebarLayout(savedSidebarLayout);
           this.syncDashboardSectionOrderList();
           // Update date_format in Vuex store and localStorage cache
           try {

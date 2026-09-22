@@ -72,6 +72,28 @@
             </b-col>
 
             <b-col md="12">
+              <b-form-group :label="$t('Brand')">
+                <v-select
+                  v-model="brand_id"
+                  :reduce="brand => brand.value"
+                  :placeholder="$t('Choose_Brand')"
+                  :options="brands.map(brand => ({ label: brand.name, value: brand.id }))"
+                />
+              </b-form-group>
+            </b-col>
+
+            <b-col md="12">
+              <b-form-group :label="$t('Category')">
+                <v-select
+                  v-model="category_id"
+                  :reduce="category => category.value"
+                  :placeholder="$t('Choose_Category')"
+                  :options="categories.map(category => ({ label: category.name, value: category.id }))"
+                />
+              </b-form-group>
+            </b-col>
+
+            <b-col md="12">
               <b-form-group label="Stock Filter">
                 <v-select
                   v-model="stock_filter"
@@ -128,7 +150,11 @@ export default {
       reports: [],
       report: {},
       warehouses: [],
+      brands: [],
+      categories: [],
       warehouse_id: "",
+      brand_id: "",
+      category_id: "",
       stock_filter: "all",
       stock_filter_options: [
         { label: "All Stock", value: "all" },
@@ -419,6 +445,8 @@ export default {
     //---------------------- Apply Stock Filters ------------------------------\\
     Apply_Filter() {
       if (this.warehouse_id === null) this.warehouse_id = "";
+      if (this.brand_id === null) this.brand_id = "";
+      if (this.category_id === null) this.category_id = "";
       if (!this.stock_filter) this.stock_filter = "all";
       this.updateParams({ page: 1 });
       this.Get_Stock_Report(1);
@@ -427,6 +455,8 @@ export default {
     //---------------------- Reset Stock Filters ------------------------------\\
     Reset_Filter() {
       this.warehouse_id = "";
+      this.brand_id = "";
+      this.category_id = "";
       this.stock_filter = "all";
       this.updateParams({ page: 1 });
       this.Get_Stock_Report(1);
@@ -439,26 +469,25 @@ export default {
       NProgress.start();
       NProgress.set(0.1);
       axios
-        .get(
-          "report/stock?page=" +
-            page +
-            "&SortField=" +
-            this.serverParams.sort.field +
-            "&SortType=" +
-            this.serverParams.sort.type +
-            "&warehouse_id=" +
-            this.warehouse_id +
-            "&stock_filter=" +
-            this.stock_filter +
-            "&search=" +
-            this.search +
-            "&limit=" +
-            this.limit
-        )
+        .get("report/stock", {
+          params: {
+            page,
+            SortField: this.serverParams.sort.field,
+            SortType: this.serverParams.sort.type,
+            warehouse_id: this.warehouse_id || "",
+            brand_id: this.brand_id || "",
+            category_id: this.category_id || "",
+            stock_filter: this.stock_filter,
+            search: this.search,
+            limit: this.limit
+          }
+        })
         .then(response => {
           this.reports = response.data.report;
           this.totalRows = response.data.totalRows;
           this.warehouses = response.data.warehouses;
+          this.brands = response.data.brands || [];
+          this.categories = response.data.categories || [];
           // Complete the animation of theprogress bar.
           NProgress.done();
           this.isLoading = false;

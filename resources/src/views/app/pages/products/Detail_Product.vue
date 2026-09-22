@@ -273,6 +273,102 @@
           </div>
         </div>
 
+        <!-- Pricing update history -->
+        <div v-if="product.can_view_price_history" :style="cardStyle" class="pd-price-history-card">
+          <div :style="cardHeaderStyle" class="pd-price-history-header">
+            <div class="pd-price-history-title">
+              <lucide-icon name="history" :style="{ marginRight: '8px', color: '#0ea5e9' }" />
+              Price Update History
+            </div>
+            <span v-if="product.last_price_update_at" class="pd-price-history-last">
+              Last updated {{ formatHistoryDate(product.last_price_update_at) }}
+            </span>
+          </div>
+
+          <div class="pd-price-history-body">
+            <div v-if="!priceHistoryRows.length" class="pd-pricing-empty" :style="{ color: pdTheme.mutedColor }">
+              No recorded pricing updates yet. New pricing changes will appear here with their previous values.
+            </div>
+
+            <div v-for="revision in priceHistoryRows" :key="revision.id" class="pd-price-revision">
+              <div class="pd-price-revision-head">
+                <div>
+                  <strong>{{ revision.variant_name || 'Product pricing' }}</strong>
+                  <span v-if="revision.variant_code" class="pd-price-revision-code">{{ revision.variant_code }}</span>
+                </div>
+                <div class="pd-price-revision-meta">
+                  <span>{{ formatHistoryDate(revision.updated_at) }}</span>
+                  <span>by {{ revision.updated_by || 'N/D' }}</span>
+                  <span>{{ revision.reference }}</span>
+                </div>
+              </div>
+
+              <div class="pd-price-history-table-wrap">
+                <table class="pd-price-history-table">
+                  <thead>
+                    <tr>
+                      <th>Price</th>
+                      <th>Previous</th>
+                      <th>Updated</th>
+                      <th>Change</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="field in priceHistoryFields" :key="`${revision.id}-${field.key}`">
+                      <td>{{ field.label }}</td>
+                      <td>
+                        <span v-if="revision.previous_prices">
+                          {{ formatPriceWithSymbol(currentUser && currentUser.currency, revision.previous_prices[field.key], 2) }}
+                        </span>
+                        <span v-else :style="{ color: pdTheme.mutedColor }">Not recorded</span>
+                      </td>
+                      <td class="pd-price-history-current">
+                        {{ formatPriceWithSymbol(currentUser && currentUser.currency, revision.prices[field.key], 2) }}
+                      </td>
+                      <td>
+                        <span :class="['pd-price-delta', priceDeltaClass(revision, field.key)]">
+                          {{ formatPriceDelta(revision, field.key) }}
+                        </span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="pd-margin-history-grid">
+                <div class="pd-margin-history-panel">
+                  <div class="pd-pricing-subtitle">Previous margins</div>
+                  <div v-if="revision.previous_pricing_margins && revision.previous_pricing_margins.length" class="pd-margin-history-list">
+                    <div v-for="(margin, index) in revision.previous_pricing_margins" :key="`old-${revision.id}-${index}`" class="pd-margin-history-row">
+                      <span>{{ margin.label || `Margin ${index + 1}` }}</span>
+                      <strong>{{ formatMargin(margin) }}</strong>
+                      <small>
+                        Profit: {{ margin.profit != null ? formatPriceWithSymbol(currentUser && currentUser.currency, margin.profit, 0) : '-' }}
+                        · Applied: {{ margin.calculated_price != null ? formatPriceWithSymbol(currentUser && currentUser.currency, margin.calculated_price, 0) : '-' }}
+                      </small>
+                    </div>
+                  </div>
+                  <div v-else class="pd-pricing-empty" :style="{ color: pdTheme.mutedColor }">No previous margins recorded.</div>
+                </div>
+
+                <div class="pd-margin-history-panel">
+                  <div class="pd-pricing-subtitle">Updated margins</div>
+                  <div v-if="revision.pricing_margins && revision.pricing_margins.length" class="pd-margin-history-list">
+                    <div v-for="(margin, index) in revision.pricing_margins" :key="`new-${revision.id}-${index}`" class="pd-margin-history-row">
+                      <span>{{ margin.label || `Margin ${index + 1}` }}</span>
+                      <strong>{{ formatMargin(margin) }}</strong>
+                      <small>
+                        Profit: {{ margin.profit != null ? formatPriceWithSymbol(currentUser && currentUser.currency, margin.profit, 0) : '-' }}
+                        · Applied: {{ margin.calculated_price != null ? formatPriceWithSymbol(currentUser && currentUser.currency, margin.calculated_price, 0) : '-' }}
+                      </small>
+                    </div>
+                  </div>
+                  <div v-else class="pd-pricing-empty" :style="{ color: pdTheme.mutedColor }">No margins applied in this update.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
         <!-- Main two-column grid -->
         <div
           class="pd-main-grid"
@@ -1076,6 +1172,23 @@ export default {
       }
       return [product];
     },
+    priceHistoryRows() {
+      return Array.isArray(this.product && this.product.price_history)
+        ? this.product.price_history
+        : [];
+    },
+    priceHistoryFields() {
+      return [
+        { key: 'purchase_price', label: 'Purchase Price' },
+        { key: 'cost', label: 'Cost' },
+        { key: 'min_price', label: 'Minimum Price' },
+        { key: 'wholesale_price', label: 'Wholesale Price' },
+        { key: 'price', label: 'Al-Madina Price' },
+        { key: 'fix_price', label: 'Regular Price' },
+        { key: 'mrp_price', label: 'MRP' },
+        { key: 'company_rb_price', label: 'Company RB' },
+      ];
+    },
     batchesTotalQty() {
       if (!Array.isArray(this.batches)) return 0;
       return this.batches.reduce((sum, b) => sum + (Number(b.qty) || 0), 0);
@@ -1199,6 +1312,36 @@ export default {
       return this.formatPriceWithSymbol(this.currentUser && this.currentUser.currency, row.value, 2);
     },
 
+    formatHistoryDate(value) {
+      if (!value) return 'N/D';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      return date.toLocaleString();
+    },
+
+    priceDelta(revision, key) {
+      if (!revision || !revision.previous_prices) return null;
+      return Number(revision.prices && revision.prices[key] || 0)
+        - Number(revision.previous_prices[key] || 0);
+    },
+
+    formatPriceDelta(revision, key) {
+      const delta = this.priceDelta(revision, key);
+      if (delta === null) return 'Initial snapshot';
+      if (Math.abs(delta) < 0.005) return 'No change';
+      const formatted = this.formatPriceWithSymbol(
+        this.currentUser && this.currentUser.currency,
+        Math.abs(delta),
+        2
+      );
+      return `${delta > 0 ? '+' : '-'}${formatted}`;
+    },
+
+    priceDeltaClass(revision, key) {
+      const delta = this.priceDelta(revision, key);
+      if (delta === null || Math.abs(delta) < 0.005) return 'is-neutral';
+      return delta > 0 ? 'is-up' : 'is-down';
+    },
     print_product() {
       const el = document.getElementById('print_product');
       if (!el) return;
@@ -1367,6 +1510,124 @@ export default {
 </script>
 
 <style scoped>
+.pd-price-history-header {
+  justify-content: space-between;
+  gap: 12px;
+}
+.pd-price-history-title {
+  display: flex;
+  align-items: center;
+}
+.pd-price-history-last {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.72;
+}
+.pd-price-history-body {
+  padding: 20px;
+}
+.pd-price-revision {
+  border: 1px solid rgba(14, 165, 233, 0.18);
+  border-radius: 12px;
+  padding: 16px;
+  background: rgba(14, 165, 233, 0.035);
+}
+.pd-price-revision + .pd-price-revision {
+  margin-top: 16px;
+}
+.pd-price-revision-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.pd-price-revision-code {
+  margin-left: 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  background: rgba(124, 58, 237, 0.1);
+  color: #7c3aed;
+}
+.pd-price-revision-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px 12px;
+  font-size: 12px;
+  opacity: 0.72;
+}
+.pd-price-history-table-wrap {
+  overflow-x: auto;
+}
+.pd-price-history-table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+}
+.pd-price-history-table th,
+.pd-price-history-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  text-align: left;
+}
+.pd-price-history-table th {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+}
+.pd-price-history-current {
+  font-weight: 700;
+}
+.pd-price-delta {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.pd-price-delta.is-up {
+  color: #047857;
+  background: #d1fae5;
+}
+.pd-price-delta.is-down {
+  color: #b91c1c;
+  background: #fee2e2;
+}
+.pd-price-delta.is-neutral {
+  color: #64748b;
+  background: #e2e8f0;
+}
+.pd-margin-history-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 8px;
+}
+.pd-margin-history-panel {
+  min-width: 0;
+}
+.pd-margin-history-list {
+  display: grid;
+  gap: 6px;
+}
+.pd-margin-history-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(124, 58, 237, 0.06);
+  font-size: 12px;
+}
+.pd-margin-history-row small {
+  grid-column: 1 / -1;
+  opacity: 0.72;
+}
 .pd-pricing-body {
   padding: 20px;
 }
@@ -1492,6 +1753,29 @@ export default {
     margin-left: 0 !important;
     width: 100% !important;
     justify-content: flex-start !important;
+  }
+
+  .pd-price-history-header {
+    align-items: flex-start !important;
+    flex-direction: column !important;
+  }
+  .pd-price-history-last {
+    margin-left: 0;
+  }
+  .pd-price-history-body {
+    padding: 14px;
+  }
+  .pd-price-revision {
+    padding: 12px;
+  }
+  .pd-price-revision-head {
+    flex-direction: column;
+  }
+  .pd-price-revision-meta {
+    justify-content: flex-start;
+  }
+  .pd-margin-history-grid {
+    grid-template-columns: 1fr;
   }
 }
 

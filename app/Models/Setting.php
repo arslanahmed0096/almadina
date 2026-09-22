@@ -12,7 +12,7 @@ class Setting extends Model
         'is_invoice_footer', 'invoice_footer', 'invoice_format', 'invoice_logo_width', 'invoice_logo_height', 'app_name', 'favicon', 'page_title_suffix', 'customize_button_visible', 'hide_site_name', 'point_to_amount_rate',
         'vat_number', 'company_name_ar', 'zatca_enabled', 'default_tax', 'default_dashboard_date_range', 'dashboard_section_order', 'dashboard_grid_layout', 'dashboard_font_size', 'dashboard_font_family', 'date_format',
         'sale_return_prefix', 'purchase_return_prefix', 'product_prefix',
-        'price_format', 'dark_mode', 'rtl', 'sms_gateway',
+        'price_format', 'dark_mode', 'rtl', 'sidebar_layout', 'sms_gateway',
         // Login page appearance
         'login_hero_title', 'login_hero_subtitle', 'login_panel_title', 'login_panel_subtitle',
         'login_hero_badge', 'login_hero_feature_1', 'login_hero_feature_2', 'login_hero_feature_3',

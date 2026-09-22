@@ -14,6 +14,7 @@ use App\Models\CombinedProduct;
 use App\Models\CountStock;
 use App\Models\Product;
 use App\Models\ProductImage;
+use App\Models\PricingLevelDetail;
 use App\Models\product_warehouse;
 use App\Models\ProductVariant;
 use App\Models\Unit;
@@ -158,9 +159,18 @@ class ProductsController extends BaseController
             $perPage = $totalRows;
         }
 
-        $products = $filtered->offset($offSet)
+        // Keep product-name ordering predictable for filtered results as well as the full list.
+        // TRIM prevents accidental leading spaces from making names appear out of order, while
+        // the product ID provides a stable order when two products share the same name.
+        if ($order === 'name') {
+            $filtered->orderByRaw('LOWER(TRIM(products.name)) '.$dir);
+        } else {
+            $filtered->orderBy('products.'.$order, $dir);
+        }
+
+        $products = $filtered->orderBy('products.id')
+            ->offset($offSet)
             ->limit($perPage)
-            ->orderBy($order, $dir)
             ->get();
 
         $data = [];
@@ -1880,15 +1890,12 @@ class ProductsController extends BaseController
             ->whereNull('deleted_at')
             ->findOrFail($id);
 
-        if ($user->is_all_warehouses) {
-            $warehouses = Warehouse::whereNull('deleted_at')->orderBy('name')->get(['id', 'name']);
-        } else {
-            $warehouseIds = UserWarehouse::where('user_id', $user->id)->pluck('warehouse_id');
-            $warehouses = Warehouse::whereNull('deleted_at')
-                ->whereIn('id', $warehouseIds)
-                ->orderBy('name')
-                ->get(['id', 'name']);
-        }
+        // This read-only comparison is intentionally cross-branch. Users with
+        // product_stock_check permission need every active branch so they can
+        // verify stock with other locations, regardless of their assignments.
+        $warehouses = Warehouse::whereNull('deleted_at')
+            ->orderBy('name')
+            ->get(['id', 'name']);
 
         $stock = DB::table('product_warehouse')
             ->whereNull('deleted_at')
@@ -1952,7 +1959,8 @@ class ProductsController extends BaseController
     public function Get_Products_Details(Request $request, $id)
     {
 
-        $this->authorizeForUser($request->user('api'), 'view', Product::class);
+        $user = $request->user('api');
+        $this->authorizeForUser($user, 'view', Product::class);
         $helpers = new helpers;
 
         $Product = Product::with(['category', 'categories', 'subCategory', 'subcategories', 'images'])
@@ -1986,6 +1994,13 @@ class ProductsController extends BaseController
         $item['purchase_price'] = $purchasePricing['price'];
         $item['purchase_price_source'] = $purchasePricing['source'];
         $item['pricing_margins'] = $Product->pricing_margins ?: [];
+        $canViewPriceHistory = $user->isSuperAdmin()
+            || $user->effectivePermissionNames()->contains('pricing_level_view');
+        $item['can_view_price_history'] = $canViewPriceHistory;
+        $item['price_history'] = $canViewPriceHistory
+            ? $this->productPricingHistory($Product)
+            : [];
+        $item['last_price_update_at'] = $item['price_history'][0]['updated_at'] ?? null;
         $item['mrp_price'] = $Product->mrp_price;
         $item['fix_price'] = $Product->fix_price;
         $item['wholesale_price'] = $Product->wholesale_price;
@@ -2114,6 +2129,99 @@ class ProductsController extends BaseController
 
     }
 
+    /**
+     * Return pricing revisions in reverse chronological order. New snapshots contain
+     * their exact previous values; older rows fall back to the preceding saved snapshot.
+     */
+    private function productPricingHistory(Product $product): array
+    {
+        $details = PricingLevelDetail::query()
+            ->with([
+                'pricingLevel.user:id,username,firstname,lastname',
+                'variant:id,name,code',
+            ])
+            ->where('product_id', $product->id)
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get();
+
+        $lastSnapshotBySubject = [];
+        $history = [];
+        foreach ($details as $detail) {
+            $subjectKey = $detail->product_variant_id
+                ? 'variant:'.$detail->product_variant_id
+                : 'product';
+            $prices = [
+                'purchase_price' => (float) ($detail->purchase_price ?? 0),
+                'cost' => (float) $detail->cost,
+                'min_price' => (float) $detail->min_price,
+                'wholesale_price' => (float) $detail->wholesale_price,
+                'price' => (float) $detail->price,
+                'fix_price' => (float) $detail->fix_price,
+                'mrp_price' => (float) $detail->mrp_price,
+                'company_rb_price' => (float) $detail->company_rb_price,
+            ];
+            $margins = $detail->pricing_margins ?: [];
+            $hasStoredPrevious = collect([
+                $detail->previous_purchase_price,
+                $detail->previous_cost,
+                $detail->previous_min_price,
+                $detail->previous_wholesale_price,
+                $detail->previous_price,
+                $detail->previous_fix_price,
+                $detail->previous_mrp_price,
+                $detail->previous_company_rb_price,
+            ])->contains(fn ($value) => $value !== null)
+                || $detail->previous_pricing_margins !== null;
+
+            if ($hasStoredPrevious) {
+                $previousPrices = [
+                    'purchase_price' => (float) ($detail->previous_purchase_price ?? 0),
+                    'cost' => (float) ($detail->previous_cost ?? 0),
+                    'min_price' => (float) ($detail->previous_min_price ?? 0),
+                    'wholesale_price' => (float) ($detail->previous_wholesale_price ?? 0),
+                    'price' => (float) ($detail->previous_price ?? 0),
+                    'fix_price' => (float) ($detail->previous_fix_price ?? 0),
+                    'mrp_price' => (float) ($detail->previous_mrp_price ?? 0),
+                    'company_rb_price' => (float) ($detail->previous_company_rb_price ?? 0),
+                ];
+                $previousMargins = $detail->previous_pricing_margins ?: [];
+            } else {
+                $previous = $lastSnapshotBySubject[$subjectKey] ?? null;
+                $previousPrices = $previous['prices'] ?? null;
+                $previousMargins = $previous['margins'] ?? [];
+            }
+
+            $entry = $detail->pricingLevel;
+            $performedBy = trim(implode(' ', array_filter([
+                optional($entry?->user)->firstname,
+                optional($entry?->user)->lastname,
+            ])));
+            if ($performedBy === '') {
+                $performedBy = optional($entry?->user)->username ?: 'N/D';
+            }
+
+            $history[] = [
+                'id' => (int) $detail->id,
+                'reference' => $entry ? 'PL-'.$entry->id : 'Pricing update',
+                'updated_at' => optional($detail->created_at)->toIso8601String(),
+                'updated_by' => $performedBy,
+                'variant_id' => $detail->product_variant_id ? (int) $detail->product_variant_id : null,
+                'variant_name' => $detail->variant?->name,
+                'variant_code' => $detail->variant?->code,
+                'prices' => $prices,
+                'previous_prices' => $previousPrices,
+                'pricing_margins' => $margins,
+                'previous_pricing_margins' => $previousMargins,
+            ];
+            $lastSnapshotBySubject[$subjectKey] = [
+                'prices' => $prices,
+                'margins' => $margins,
+            ];
+        }
+
+        return collect($history)->reverse()->take(10)->values()->all();
+    }
     // ------------ Get products By Warehouse -----------------\\
 
     public function Products_by_Warehouse(request $request, $id)

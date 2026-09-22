@@ -69,7 +69,7 @@
         .nav-item-hold {
           display: block;
           width: 100%;
-          padding: 26px 0;
+          padding: 16px 4px;
           color: $foreground;
           &:focus,
           &:active {
@@ -77,14 +77,15 @@
           }
           .nav-icon,
           .feather {
-            font-size: 32px;
-            height: 32px;
-            width: 32px;
+            font-size: 24px;
+            height: 24px;
+            width: 24px;
             display: block;
-            margin: 0 auto 6px;
+            margin: 0 auto 4px;
           }
           .nav-text {
-            font-size: 13px;
+            font-size: 12px;
+            line-height: 1.25;
             display: block;
             font-weight: 400;
           }
@@ -99,7 +100,7 @@
           right: 0;
           bottom: 0;
           border-style: solid;
-          border-width: 0 0 30px 30px;
+          border-width: 0 0 24px 24px;
           border-color: transparent transparent $primary transparent;
         }
       }

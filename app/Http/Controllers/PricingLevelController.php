@@ -359,6 +359,20 @@ class PricingLevelController extends Controller
                 $attributes = $prices;
             }
 
+            $previousPrices = [
+                'company_rb_price' => (float) ($model->company_rb_price ?? 0),
+                'mrp_price' => (float) ($model->mrp_price ?? 0),
+                'cost' => (float) ($model->cost ?? 0),
+                'purchase_price' => (float) $pricingService->effectivePurchasePrice($model)['price'],
+                'fix_price' => (float) ($model->fix_price ?? 0),
+                'price' => (float) ($model->price ?? 0),
+                'wholesale_price' => (float) ($model instanceof ProductVariant
+                    ? ($model->wholesale ?? 0)
+                    : ($model->wholesale_price ?? 0)),
+                'min_price' => (float) ($model->min_price ?? 0),
+            ];
+            $previousMargins = $model->pricing_margins ?: [];
+
             $costChanged = (float) ($model->cost ?? 0) !== (float) $prices['cost'];
             $model->fill($attributes);
             if ($costChanged || $detail['cost_updated'] ||
@@ -386,6 +400,15 @@ class PricingLevelController extends Controller
                     ? $model->wholesale
                     : $model->wholesale_price,
                 'min_price' => $model->min_price,
+                'previous_company_rb_price' => $previousPrices['company_rb_price'],
+                'previous_mrp_price' => $previousPrices['mrp_price'],
+                'previous_cost' => $previousPrices['cost'],
+                'previous_purchase_price' => $previousPrices['purchase_price'],
+                'previous_pricing_margins' => $previousMargins,
+                'previous_fix_price' => $previousPrices['fix_price'],
+                'previous_price' => $previousPrices['price'],
+                'previous_wholesale_price' => $previousPrices['wholesale_price'],
+                'previous_min_price' => $previousPrices['min_price'],
             ]);
         }
     }

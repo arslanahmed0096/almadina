@@ -10,6 +10,9 @@ class PricingLevelDetail extends Model
         'pricing_level_id', 'product_id', 'product_variant_id',
         'company_rb_price', 'mrp_price', 'cost', 'purchase_price', 'pricing_margins', 'fix_price',
         'price', 'wholesale_price', 'min_price',
+        'previous_company_rb_price', 'previous_mrp_price', 'previous_cost', 'previous_purchase_price',
+        'previous_pricing_margins', 'previous_fix_price', 'previous_price',
+        'previous_wholesale_price', 'previous_min_price',
     ];
 
     protected $casts = [
@@ -25,6 +28,15 @@ class PricingLevelDetail extends Model
         'price' => 'double',
         'wholesale_price' => 'double',
         'min_price' => 'double',
+        'previous_company_rb_price' => 'double',
+        'previous_mrp_price' => 'double',
+        'previous_cost' => 'double',
+        'previous_purchase_price' => 'double',
+        'previous_pricing_margins' => 'array',
+        'previous_fix_price' => 'double',
+        'previous_price' => 'double',
+        'previous_wholesale_price' => 'double',
+        'previous_min_price' => 'double',
     ];
 
     public function pricingLevel()

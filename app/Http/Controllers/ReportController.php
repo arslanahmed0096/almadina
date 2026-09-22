@@ -4109,6 +4109,14 @@ class ReportController extends BaseController
                 });
             });
 
+        if ($request->filled('brand_id')) {
+            $products_data->where('products.brand_id', (int) $request->brand_id);
+        }
+
+        if ($request->filled('category_id')) {
+            $products_data->where('products.category_id', (int) $request->category_id);
+        }
+
         if ($stockFilter === 'available') {
             $stockWarehouseIds = $warehouses_id;
 
@@ -4167,10 +4175,19 @@ class ReportController extends BaseController
 
         }
 
+        $brands = Brand::whereNull('deleted_at')
+            ->orderBy('name')
+            ->get(['id', 'name']);
+        $categories = Category::whereNull('deleted_at')
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
         return response()->json([
             'report' => $data,
             'totalRows' => $totalRows,
             'warehouses' => $warehouses,
+            'brands' => $brands,
+            'categories' => $categories,
         ]);
 
     }

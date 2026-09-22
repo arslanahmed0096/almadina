@@ -52,7 +52,7 @@ class ProductStockCheckTest extends TestCase
         $stockChecker = User::create([
             'username' => 'stock-checker',
             'statut' => 1,
-            'is_all_warehouses' => 1,
+            'is_all_warehouses' => 0,
         ]);
         $stockChecker->roles()->attach($stockRole->id);
 
@@ -72,6 +72,10 @@ class ProductStockCheckTest extends TestCase
         DB::table('product_warehouse')->insert([
             ['product_id' => 1, 'warehouse_id' => 1, 'product_variant_id' => null, 'qte' => 12.5],
             ['product_id' => 1, 'warehouse_id' => 2, 'product_variant_id' => null, 'qte' => 7],
+        ]);
+        DB::table('user_warehouse')->insert([
+            'user_id' => $stockChecker->id,
+            'warehouse_id' => 1,
         ]);
 
         Passport::actingAs($viewer);
@@ -131,6 +135,12 @@ class ProductStockCheckTest extends TestCase
             $table->unsignedInteger('permission_id');
             $table->unsignedInteger('user_id');
             $table->string('type')->default('allow');
+            $table->timestamps();
+        });
+        Schema::create('user_warehouse', function (Blueprint $table) {
+            $table->increments('id');
+            $table->unsignedInteger('user_id');
+            $table->unsignedInteger('warehouse_id');
             $table->timestamps();
         });
         Schema::create('units', function (Blueprint $table) {

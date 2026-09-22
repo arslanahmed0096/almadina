@@ -1020,7 +1020,14 @@ export default {
 
     onSearch(value) {
       this.search = value.searchTerm;
-      this.Get_Products(this.serverParams.page);
+      this.updateParams({
+        page: 1,
+        sort: {
+          field: "name",
+          type: this.nameSort === "za" ? "desc" : "asc"
+        }
+      });
+      this.Get_Products(1);
     },
 
     async exportAllProducts() {
