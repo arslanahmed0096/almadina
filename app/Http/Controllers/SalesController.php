@@ -646,7 +646,16 @@ class SalesController extends BaseController
         request()->validate([
             'warehouse_id' => 'required',
             'client_id' => 'required',
+            'transaction_type' => 'nullable|in:sale,order',
+            'statut' => 'required|in:completed,pending,ordered',
         ]);
+
+        // The database represents an order with the existing `ordered` sale
+        // status. Normalizing here prevents a stale client-side status from
+        // accidentally completing an order and consuming stock.
+        if ($request->input('transaction_type') === 'order') {
+            $request->merge(['statut' => 'ordered']);
+        }
 
         $sale = \DB::transaction(function () use ($request, $id, $creditService) {
 

@@ -211,7 +211,7 @@
                     <div class="input-with-icon">
                       <img src="/assets_setup/scan.png" alt="Scan" class="scan-icon" @click="showModal">
                     <input 
-                     :placeholder="$t('Scan_Search_Product_by_Code_Name')"
+                     placeholder="Search Product by Model Number"
                        @input='e => search_input = e.target.value' 
                       @keyup="search(search_input)"
                       @focus="handleFocus"
@@ -2462,7 +2462,9 @@ export default {
     //------------------------- get Result Value Search Product
 
     getResultValue(result) {
-      return result.code + " " + "(" + result.name + ")";
+      // Product names are the customer-facing model numbers. Keep the
+      // generated internal code out of the picker so staff select by model.
+      return result.name || result.code;
     },
 
     //------------------------- Submit Search Product

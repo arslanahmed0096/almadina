@@ -79,7 +79,14 @@
         <thead><tr><th class="serial">S No</th><th>Branch</th><th class="amount">Gross Sales</th><th class="amount">Returns</th><th class="amount">Net Sales</th></tr></thead>
         <tbody>
           <tr v-for="(row, index) in report.sales_by_branch" :key="row.warehouse_id">
-            <td>{{ index + 1 }}</td><td>{{ row.warehouse }}</td><td class="amount">{{ money(row.gross_sales) }}</td>
+            <td>{{ index + 1 }}</td>
+            <td>
+              <button type="button" class="branch-link" @click="openBranchDetails(row)">
+                {{ row.warehouse }}
+                <lucide-icon name="external-link" />
+              </button>
+            </td>
+            <td class="amount">{{ money(row.gross_sales) }}</td>
             <td class="amount">{{ money(row.sale_returns) }}</td><td class="amount">{{ money(row.net_sales) }}</td>
           </tr>
           <tr v-if="!report.sales_by_branch.length"><td colspan="5" class="empty-row">No branches are available.</td></tr>
@@ -133,6 +140,116 @@
 
       <p class="scope-note">{{ report.balance_scope_note }}</p>
     </div>
+
+    <b-modal
+      id="branch-details-modal"
+      size="xl"
+      scrollable
+      hide-footer
+      :title="branchDetailsTitle"
+      dialog-class="branch-details-dialog"
+    >
+      <div v-if="branchDetailsLoading" class="text-center py-5">
+        <b-spinner variant="primary" />
+        <div class="mt-2">Loading branch transactions and receipts...</div>
+      </div>
+
+      <div v-else-if="branchDetails">
+        <div class="branch-summary mb-3">
+          <div><small>Transactions</small><strong>{{ branchDetails.totals.transaction_count }}</strong></div>
+          <div><small>Items Quantity</small><strong>{{ money(branchDetails.totals.quantity) }}</strong></div>
+          <div><small>Payments Received</small><strong>{{ currency }} {{ money(branchDetails.totals.payments_received) }}</strong></div>
+          <div><small>Advance Payments</small><strong class="text-success">{{ currency }} {{ money(branchDetails.totals.advance_received) }}</strong></div>
+          <div><small>Previous Balance Received</small><strong class="text-warning">{{ currency }} {{ money(branchDetails.totals.previous_balance_received) }}</strong></div>
+          <div><small>Current Outstanding</small><strong :class="branchDetails.totals.current_outstanding > 0 ? 'text-danger' : 'text-success'">{{ currency }} {{ money(branchDetails.totals.current_outstanding) }}</strong></div>
+        </div>
+
+        <div class="branch-period-bar mb-3">
+          <lucide-icon name="calendar" />
+          <span>Report period:</span>
+          <strong>{{ formatDisplayDate(branchDetails.start_date) }} to {{ formatDisplayDate(branchDetails.end_date) }}</strong>
+        </div>
+
+        <div class="branch-section mb-3">
+          <div class="branch-section-heading">
+            <div>
+              <h5>Sales and Orders Created in This Period</h5>
+              <small>Items, quantities, customers, sales staff, payments, and balances.</small>
+            </div>
+            <b-badge variant="primary">{{ branchDetails.transactions.length }} records</b-badge>
+          </div>
+          <div class="table-responsive">
+          <table class="table table-hover mb-0 branch-detail-table">
+            <thead>
+              <tr>
+                <th>Date / Time</th><th>Type / Order No.</th><th>Customer</th><th>Items Sold</th><th>Sold By</th>
+                <th class="amount">Total</th><th class="amount">Paid to Date</th><th class="amount">Received in Period</th><th class="amount">Remaining</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in branchDetails.transactions" :key="row.id">
+                <td class="nowrap">{{ formatDisplayDate(row.date) }}<br><small>{{ row.time }}</small></td>
+                <td><b-badge :variant="row.transaction_type === 'Order' ? 'success' : 'primary'">{{ row.transaction_type }}</b-badge><br><strong>{{ row.order_number }}</strong><br><small>{{ row.status }} / {{ row.payment_status }}</small></td>
+                <td><strong>{{ row.customer_name }}</strong><br><small>{{ row.customer_phone || '-' }}</small><br><small>{{ row.customer_address || '' }}</small></td>
+                <td>
+                  <div v-for="(item, itemIndex) in row.items" :key="row.id + '-item-' + itemIndex" class="item-line">
+                    <span>{{ item.model }}</span><strong>x {{ money(item.quantity) }}</strong>
+                  </div>
+                  <small v-if="!row.items.length">No item details</small>
+                  <div class="item-total">Total Qty: {{ money(row.quantity) }}</div>
+                </td>
+                <td>{{ row.sold_by }}</td>
+                <td class="amount">{{ money(row.total) }}</td>
+                <td class="amount">{{ money(row.paid_to_date) }}</td>
+                <td class="amount">{{ money(row.received_in_period) }}</td>
+                <td class="amount balance-cell">{{ money(row.remaining_balance) }}</td>
+              </tr>
+              <tr v-if="!branchDetails.transactions.length"><td colspan="9" class="empty-row">No sales or orders were created at this branch in the selected period.</td></tr>
+            </tbody>
+          </table>
+          </div>
+        </div>
+
+        <div class="branch-section mb-0">
+          <div class="branch-section-heading">
+            <div>
+              <h5>Customer Payments Received in This Period</h5>
+              <small>Includes payments against older invoices, even when the original sale was made in a previous week or month.</small>
+            </div>
+            <b-badge variant="success">{{ branchDetails.receipts.length }} receipts</b-badge>
+          </div>
+          <div class="table-responsive">
+          <table class="table table-hover mb-0 branch-detail-table">
+            <thead>
+              <tr>
+                <th>Receipt Date / Time</th><th>Payment Type</th><th>Receipt / Order No.</th><th>Customer</th><th>Related Items</th>
+                <th>Received By / Method</th><th class="amount">Received</th><th class="amount">Remaining After Receipt</th><th class="amount">Current Remaining</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in branchDetails.receipts" :key="row.id">
+                <td class="nowrap">{{ formatDisplayDate(row.receipt_date) }}<br><small>{{ row.receipt_time }}</small></td>
+                <td><b-badge :variant="receiptBadgeVariant(row.receipt_type_key)">{{ row.receipt_type }}</b-badge></td>
+                <td><small>{{ row.receipt_reference || '-' }}</small><br><strong>{{ row.order_number }}</strong><br><small>Sale date: {{ formatDisplayDate(row.sale_date) }}</small></td>
+                <td><strong>{{ row.customer_name }}</strong><br><small>{{ row.customer_phone || '-' }}</small><br><small>{{ row.customer_address || '' }}</small></td>
+                <td>
+                  <div v-for="(item, itemIndex) in row.items" :key="row.id + '-receipt-item-' + itemIndex" class="item-line">
+                    <span>{{ item.model }}</span><strong>x {{ money(item.quantity) }}</strong>
+                  </div>
+                  <small v-if="!row.items.length">No item details</small>
+                </td>
+                <td>{{ row.received_by }}<br><small>{{ row.payment_method }}</small></td>
+                <td class="amount received-cell">{{ money(row.amount) }}</td>
+                <td class="amount balance-cell">{{ money(row.remaining_after_receipt) }}</td>
+                <td class="amount balance-cell">{{ money(row.current_remaining) }}</td>
+              </tr>
+              <tr v-if="!branchDetails.receipts.length"><td colspan="9" class="empty-row">No customer payments were received at this branch in the selected period.</td></tr>
+            </tbody>
+          </table>
+          </div>
+        </div>
+      </div>
+    </b-modal>
   </div>
 </template>
 
@@ -151,7 +268,10 @@ export default {
       suppliers: [],
       report: null,
       currency: "",
-      canExport: false
+      canExport: false,
+      branchDetailsLoading: false,
+      branchDetails: null,
+      selectedBranch: null
     };
   },
   computed: {
@@ -169,6 +289,11 @@ export default {
       const start = this.formatDisplayDate(this.report.start_date || this.report.date);
       const end = this.formatDisplayDate(this.report.end_date || this.report.date);
       return start === end ? start : `${start} to ${end}`;
+    },
+    branchDetailsTitle() {
+      return this.selectedBranch
+        ? `${this.selectedBranch.warehouse} - Sales, Orders and Customer Receipts`
+        : "Branch Sales, Orders and Customer Receipts";
     }
   },
   created() {
@@ -236,6 +361,38 @@ export default {
     },
     amountClass(value) {
       return Number(value || 0) < 0 ? "text-danger" : Number(value || 0) > 0 ? "text-success" : "";
+    },
+    receiptBadgeVariant(type) {
+      if (type === "advance") return "success";
+      if (type === "previous_balance") return "warning";
+      return "primary";
+    },
+    openBranchDetails(branch) {
+      this.selectedBranch = branch;
+      this.branchDetails = null;
+      this.branchDetailsLoading = true;
+      this.$bvModal.show("branch-details-modal");
+
+      axios.get("report/daily/branch-details", {
+        params: {
+          start_date: this.filters.start_date,
+          end_date: this.filters.end_date,
+          warehouse_id: branch.warehouse_id
+        }
+      })
+        .then(response => {
+          this.branchDetails = response.data.details;
+        })
+        .catch(error => {
+          const message = error.response && error.response.status === 403
+            ? "You do not have permission to view this branch."
+            : "The branch transaction details could not be loaded.";
+          if (this.$bvToast) this.$bvToast.toast(message, { title: "Daily Reports", variant: "danger", solid: true });
+          this.$bvModal.hide("branch-details-modal");
+        })
+        .finally(() => {
+          this.branchDetailsLoading = false;
+        });
     },
     printReport() {
       window.print();
@@ -309,11 +466,35 @@ export default {
 .strong-amount { font-size: 17px; font-weight: 800; }
 .empty-row { text-align: center; color: #788896; padding: 15px !important; }
 .scope-note { margin: 12px 0 0; color: #667785; font-size: 12px; }
+.branch-link { display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; background: transparent; color: #126b78; font-weight: 700; text-align: left; cursor: pointer; }
+.branch-link:hover { color: #0b4e58; text-decoration: underline; }
+.branch-link svg { width: 14px; height: 14px; }
+.branch-summary { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; padding: 12px; border: 1px solid #e5e7eb; border-radius: 8px; background: #f8fafc; }
+.branch-summary > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.branch-summary small { color: #6b7280; }
+.branch-summary strong { color: #111827; font-size: 15px; }
+.branch-period-bar { display: flex; align-items: center; gap: 7px; padding: 9px 12px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; color: #374151; }
+.branch-period-bar svg { width: 16px; height: 16px; color: #663399; }
+.branch-section { overflow: hidden; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; }
+.branch-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 1px solid #e5e7eb; }
+.branch-section-heading h5 { margin: 0; color: #111827; font-size: 15px; font-weight: 700; }
+.branch-section-heading small { color: #6b7280; }
+.branch-detail-table { min-width: 1280px; color: #374151; font-size: 12px; }
+.branch-detail-table thead th { background: #f3f4f6; color: #374151; vertical-align: middle; white-space: nowrap; border-top: 0; }
+.branch-detail-table td { vertical-align: middle; }
+.branch-detail-table .nowrap { white-space: nowrap; }
+.item-line { display: flex; justify-content: space-between; gap: 12px; min-width: 220px; padding: 2px 0; border-bottom: 1px dashed #dce4e9; }
+.item-line:last-of-type { border-bottom: 0; }
+.item-total { margin-top: 4px; color: #111827; font-weight: 700; }
+.received-cell { color: #137447; font-weight: 800; }
+.balance-cell { color: #9a3412; font-weight: 800; }
 @media (max-width: 767px) {
   .daily-report-page { padding: 8px; }
   .report-actions { justify-content: flex-start; flex-wrap: wrap; }
   .report-sheet { padding: 8px; overflow-x: auto; }
   .report-table { min-width: 680px; }
+  .branch-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .branch-section-heading { align-items: flex-start; }
 }
 @media print {
   .filter-card, .breadcrumb, .breadcumb, nav, header, aside { display: none !important; }
@@ -326,6 +507,16 @@ export default {
 </style>
 
 <style>
+.branch-details-dialog {
+  width: 96vw !important;
+  max-width: 1600px !important;
+}
+.branch-details-dialog .modal-content {
+  border-radius: 8px;
+}
+.branch-details-dialog .modal-body {
+  padding: 16px;
+}
 @media print {
   body * { visibility: hidden !important; }
   #daily-report-sheet, #daily-report-sheet * { visibility: visible !important; }

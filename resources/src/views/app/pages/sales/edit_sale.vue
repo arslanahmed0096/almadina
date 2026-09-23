@@ -93,6 +93,27 @@
                   </validation-provider>
                 </b-col>
 
+                <!-- Transaction Type -->
+                <b-col lg="4" md="4" sm="12" class="mb-3">
+                  <validation-provider name="Transaction Type" :rules="{ required: true }">
+                    <b-form-group slot-scope="{ valid, errors }" label="Transaction Type *">
+                      <v-select
+                        :class="{'is-invalid': !!errors.length}"
+                        :state="errors[0] ? false : (valid ? true : null)"
+                        v-model="sale.transaction_type"
+                        :reduce="option => option.value"
+                        :options="[
+                          { label: 'Sale', value: 'sale' },
+                          { label: 'Order', value: 'order' }
+                        ]"
+                        :clearable="false"
+                        @input="Selected_Transaction_Type"
+                      />
+                      <b-form-invalid-feedback>{{ errors[0] }}</b-form-invalid-feedback>
+                    </b-form-group>
+                  </validation-provider>
+                </b-col>
+
                   <!-- Product -->
                 <b-col md="12" class="mb-5">
                   <h6>{{$t('ProductName')}}</h6>
@@ -101,7 +122,7 @@
                     <div class="input-with-icon">
                       <img src="/assets_setup/scan.png" alt="Scan" class="scan-icon" @click="showModal">
                     <input 
-                     :placeholder="$t('Scan_Search_Product_by_Code_Name')"
+                     placeholder="Search Product by Model Number"
                        @input='e => search_input = e.target.value' 
                       @keyup="search(search_input)"
                       @focus="handleFocus"
@@ -178,7 +199,7 @@
                                   class="form-control"
                                   @keyup="Verified_Qty(detail,detail.detail_id)"
                                   :min="0.00"
-                                  :max="detail.stock"
+                                  :max="sale.transaction_type === 'order' ? null : detail.stock"
                                   v-model.number="detail.quantity"
                                   :disabled="detail.del === 1 || (detail.no_unit === 0 && detail.product_type != 'is_service')"
                                 >
@@ -527,6 +548,7 @@
                         :class="{'is-invalid': !!errors.length}"
                         :state="errors[0] ? false : (valid ? true : null)"
                         v-model="sale.statut"
+                        :disabled="sale.transaction_type === 'order'"
                         :reduce="label => label.value"
                         :placeholder="$t('Choose_Status')"
                         :options="
@@ -750,6 +772,7 @@ export default {
         id: "",
         date: "",
         statut: "",
+        transaction_type: "sale",
         notes: "",
         client_id: "",
         warehouse_id: "",
@@ -1101,7 +1124,9 @@ export default {
     //-------------- get Result Value Search Product
 
     getResultValue(result) {
-      return result.code + " " + "(" + result.name + ")";
+      // Product names are the customer-facing model numbers. Keep the
+      // generated internal code out of the picker so staff select by model.
+      return result.name || result.code;
     },
 
 
@@ -1131,7 +1156,9 @@ export default {
               if (weight !== null) {
                 this.product.quantity = weight; // Assign extracted weight
               } else {
-                this.product.quantity = result.qte_sale < 1 ? result.qte_sale : 1;
+                this.product.quantity = this.sale.transaction_type === 'order'
+                  ? 1
+                  : (result.qte_sale < 1 ? result.qte_sale : 1);
               }
 
            
@@ -1161,14 +1188,36 @@ export default {
       }
     },
 
+    //---------------------- Event Select Transaction Type ------------------------------\\
+    Selected_Transaction_Type(value) {
+      const transactionType = value === 'order' ? 'order' : 'sale';
+      this.sale.transaction_type = transactionType;
+      this.search_input = '';
+      this.product_filter = [];
+
+      if (transactionType === 'order') {
+        this.sale.statut = 'ordered';
+      } else if (this.sale.statut === 'ordered') {
+        this.sale.statut = 'completed';
+      }
+
+      if (this.sale.warehouse_id) {
+        this.Get_Products_By_Warehouse(this.sale.warehouse_id);
+      }
+    },
+
      //------------------------------------ Get Products By Warehouse -------------------------\\
 
     Get_Products_By_Warehouse(id) {
       // Start the progress bar.
         NProgress.start();
         NProgress.set(0.1);
+      const isOrder = this.sale.transaction_type === 'order';
+      const query = "?stock=" + (isOrder ? 0 : 1)
+        + "&include_out_of_stock=" + (isOrder ? 1 : 0)
+        + "&is_sale=1&product_service=1&product_combo=1";
       axios
-        .get("get_Products_by_warehouse/" + id + "?stock=" + 1 + "&is_sale=" + 1 + "&product_service=" + 1 + "&product_combo=" + 1)
+        .get("get_Products_by_warehouse/" + id + query)
          .then(response => {
             this.products = response.data;
              NProgress.done();
@@ -1397,10 +1446,11 @@ export default {
             this.details[i].quantity = detail.qte_copy;
           }
 
-          if (detail.etat == "new" && detail.quantity > detail.stock) {
+          if (this.sale.transaction_type !== 'order' && detail.etat == "new" && detail.quantity > detail.stock) {
             this.makeToast("warning", this.$t("LowStock"), this.$t("Warning"));
             this.details[i].quantity = detail.stock;
           } else if (
+            this.sale.transaction_type !== 'order' &&
             detail.etat == "current" &&
             detail.quantity > detail.stock + detail.qte_copy
           ) {
@@ -1421,9 +1471,10 @@ export default {
     increment(detail, id) {
       for (var i = 0; i < this.details.length; i++) {
         if (this.details[i].detail_id == id) {
-          if (detail.etat == "new" && detail.quantity + 1 > detail.stock) {
+          if (this.sale.transaction_type !== 'order' && detail.etat == "new" && detail.quantity + 1 > detail.stock) {
             this.makeToast("warning", this.$t("LowStock"), this.$t("Warning"));
           } else if (
+            this.sale.transaction_type !== 'order' &&
             detail.etat == "current" &&
             detail.quantity + 1 > detail.stock + detail.qte_copy
           ) {
@@ -1443,13 +1494,14 @@ export default {
       for (var i = 0; i < this.details.length; i++) {
         if (this.details[i].detail_id == id) {
           if (detail.quantity - 1 > 0) {
-            if (detail.etat == "new" && detail.quantity - 1 > detail.stock) {
+            if (this.sale.transaction_type !== 'order' && detail.etat == "new" && detail.quantity - 1 > detail.stock) {
               this.makeToast(
                 "warning",
                 this.$t("LowStock"),
                 this.$t("Warning")
               );
             } else if (
+              this.sale.transaction_type !== 'order' &&
               detail.etat == "current" &&
               detail.quantity - 1 > detail.stock + detail.qte_copy
             ) {
@@ -1785,6 +1837,7 @@ export default {
             GrandTotal: this.GrandTotal,
             warehouse_id: this.sale.warehouse_id,
             sales_agent_id: this.sale.sales_agent_id || null,
+            transaction_type: this.sale.transaction_type,
             statut: this.sale.statut,
             notes: this.sale.notes,
             tax_rate: this.sale.tax_rate?this.sale.tax_rate:0,
@@ -1908,6 +1961,7 @@ export default {
 
           this.sale = {
             ...rawSale,
+            transaction_type: rawSale.statut === 'ordered' ? 'order' : 'sale',
             discount_Method: normalizedMethod,
           };
 

@@ -212,10 +212,14 @@ class PaymentSalesController extends BaseController
                 $validated['account_id'] ?? null
             );
             $paymentAccountId = $paymentAccount?->id;
+            $paymentReference = $this->getNumberOrder();
+            $allocationType = $sale->statut === 'ordered'
+                ? 'advance'
+                : ((string) $validated['date'] > (string) $sale->date ? 'previous' : 'current');
 
             PaymentSale::create([
                 'sale_id' => $sale->id,
-                'Ref' => app('App\Http\Controllers\PaymentSalesController')->getNumberOrder(),
+                'Ref' => $paymentReference,
                 'date' => $validated['date'],
                 'account_id' => $paymentAccountId,
                 'payment_method_id' => $validated['payment_method_id'],
@@ -223,6 +227,11 @@ class PaymentSalesController extends BaseController
                 'change' => $validated['change'] ?? 0,
                 'notes' => $validated['notes'] ?? null,
                 'user_id' => Auth::user()->id,
+                'allocation_reference' => $paymentReference,
+                'source_sale_id' => $sale->id,
+                'source_sale_ref' => $sale->Ref,
+                'allocation_type' => $allocationType,
+                'allocation_sequence' => 1,
             ]);
 
             if ($paymentAccountId) {
@@ -328,6 +337,9 @@ class PaymentSalesController extends BaseController
                 'montant' => $amount,
                 'change' => $validated['change'] ?? 0,
                 'notes' => $validated['notes'] ?? null,
+                'allocation_type' => $sale->statut === 'ordered'
+                    ? 'advance'
+                    : ((string) $validated['date'] > (string) $sale->date ? 'previous' : 'current'),
             ]);
 
             if ($newAccountId && $accounts->has($newAccountId)) {

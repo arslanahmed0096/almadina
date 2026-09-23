@@ -347,6 +347,229 @@ class DailyReportService
         ];
     }
 
+    public function branchDetails(Carbon $startDate, Carbon $endDate, int $warehouseId): array
+    {
+        $startDate = $startDate->copy()->startOfDay();
+        $endDate = $endDate->copy()->endOfDay();
+        $startDay = $startDate->toDateString();
+        $endDay = $endDate->toDateString();
+
+        $warehouse = DB::table('warehouses')->where('id', $warehouseId)->whereNull('deleted_at')->first();
+        abort_unless($warehouse, 404);
+
+        $transactionRows = DB::table('sales')
+            ->leftJoin('clients', 'clients.id', '=', 'sales.client_id')
+            ->leftJoin('users', 'users.id', '=', 'sales.user_id')
+            ->leftJoin('sales_agents', 'sales_agents.id', '=', 'sales.sales_agent_id')
+            ->whereNull('sales.deleted_at')
+            ->where('sales.warehouse_id', $warehouseId)
+            ->whereBetween('sales.date', [$startDay, $endDay])
+            ->orderBy('sales.date')
+            ->orderBy('sales.time')
+            ->orderBy('sales.id')
+            ->get([
+                'sales.id', 'sales.Ref as reference', 'sales.date', 'sales.time', 'sales.created_at',
+                'sales.statut', 'sales.payment_statut', 'sales.GrandTotal as total',
+                'sales.paid_amount', 'clients.name as customer_name', 'clients.phone as customer_phone',
+                'clients.adresse as customer_address', 'users.username as created_by',
+                'sales_agents.name as sales_agent',
+            ]);
+
+        // Payments are selected by receipt date, not by invoice date. This is
+        // what makes a payment collected today against last month's invoice
+        // visible in today's branch report.
+        $paymentsInRange = DB::table('payment_sales')
+            ->join('sales', 'sales.id', '=', 'payment_sales.sale_id')
+            ->leftJoin('clients', 'clients.id', '=', 'sales.client_id')
+            ->leftJoin('users as payment_users', 'payment_users.id', '=', 'payment_sales.user_id')
+            ->leftJoin('payment_methods', 'payment_methods.id', '=', 'payment_sales.payment_method_id')
+            ->whereNull('payment_sales.deleted_at')
+            ->whereNull('sales.deleted_at')
+            ->where('sales.warehouse_id', $warehouseId)
+            ->whereBetween('payment_sales.date', [$startDay, $endDay])
+            ->orderBy('payment_sales.date')
+            ->orderBy('payment_sales.created_at')
+            ->orderBy('payment_sales.id')
+            ->get([
+                'payment_sales.id', 'payment_sales.sale_id', 'payment_sales.Ref as receipt_reference',
+                'payment_sales.date as receipt_date', 'payment_sales.created_at as receipt_created_at',
+                'payment_sales.montant as amount', 'payment_sales.allocation_type',
+                'payment_sales.source_sale_ref', 'sales.Ref as sale_reference', 'sales.date as sale_date',
+                'sales.statut', 'sales.GrandTotal as sale_total', 'sales.paid_amount',
+                'clients.name as customer_name', 'clients.phone as customer_phone',
+                'clients.adresse as customer_address', 'payment_users.username as received_by',
+                'payment_methods.name as payment_method',
+            ]);
+
+        $relevantSaleIds = $transactionRows->pluck('id')
+            ->merge($paymentsInRange->pluck('sale_id'))
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        $itemsBySale = collect();
+        if ($relevantSaleIds->isNotEmpty()) {
+            $itemsBySale = DB::table('sale_details')
+                ->join('products', 'products.id', '=', 'sale_details.product_id')
+                ->leftJoin('product_variants', 'product_variants.id', '=', 'sale_details.product_variant_id')
+                ->whereIn('sale_details.sale_id', $relevantSaleIds)
+                ->orderBy('sale_details.id')
+                ->get([
+                    'sale_details.sale_id', 'sale_details.product_id', 'sale_details.product_variant_id',
+                    'sale_details.quantity', 'sale_details.price', 'sale_details.total',
+                    'products.name as product_name', 'products.code as product_code',
+                    'product_variants.name as variant_name',
+                ])
+                ->map(function ($row) {
+                    $model = $row->variant_name
+                        ? '['.$row->variant_name.'] '.$row->product_name
+                        : $row->product_name;
+
+                    return [
+                        'sale_id' => (int) $row->sale_id,
+                        'product_id' => (int) $row->product_id,
+                        'product_variant_id' => $row->product_variant_id ? (int) $row->product_variant_id : null,
+                        'model' => $model,
+                        'code' => $row->product_code,
+                        'quantity' => (float) $row->quantity,
+                        'unit_price' => $this->money($row->price),
+                        'line_total' => $this->money($row->total),
+                    ];
+                })
+                ->groupBy('sale_id');
+        }
+
+        $saleTotals = collect();
+        foreach ($transactionRows as $sale) {
+            $saleTotals->put((int) $sale->id, (float) $sale->total);
+        }
+        foreach ($paymentsInRange as $payment) {
+            $saleTotals->put((int) $payment->sale_id, (float) $payment->sale_total);
+        }
+
+        $remainingAfterPayment = [];
+        if ($relevantSaleIds->isNotEmpty()) {
+            $runningPaid = [];
+            $paymentHistory = DB::table('payment_sales')
+                ->whereNull('deleted_at')
+                ->whereIn('sale_id', $relevantSaleIds)
+                ->orderBy('date')
+                ->orderBy('created_at')
+                ->orderBy('id')
+                ->get(['id', 'sale_id', 'montant']);
+
+            foreach ($paymentHistory as $payment) {
+                $saleId = (int) $payment->sale_id;
+                $runningPaid[$saleId] = ($runningPaid[$saleId] ?? 0) + (float) $payment->montant;
+                $remainingAfterPayment[(int) $payment->id] = $this->money(max(
+                    0,
+                    (float) $saleTotals->get($saleId, 0) - $runningPaid[$saleId]
+                ));
+            }
+        }
+
+        $classifyReceipt = function ($payment): array {
+            $allocationType = strtolower((string) ($payment->allocation_type ?? ''));
+            if ($allocationType === 'previous') {
+                return ['key' => 'previous_balance', 'label' => 'Previous balance payment'];
+            }
+            if ($allocationType === 'advance' || $payment->statut === 'ordered') {
+                return ['key' => 'advance', 'label' => 'Advance payment'];
+            }
+            if ((string) $payment->receipt_date > (string) $payment->sale_date) {
+                return ['key' => 'previous_balance', 'label' => 'Previous balance payment'];
+            }
+
+            return ['key' => 'sale_payment', 'label' => 'Sale payment'];
+        };
+
+        $receipts = $paymentsInRange->map(function ($payment) use ($classifyReceipt, $itemsBySale, $remainingAfterPayment) {
+            $type = $classifyReceipt($payment);
+            $items = collect($itemsBySale->get((int) $payment->sale_id, []))->values();
+
+            return [
+                'id' => (int) $payment->id,
+                'sale_id' => (int) $payment->sale_id,
+                'receipt_reference' => $payment->receipt_reference,
+                'order_number' => $payment->sale_reference,
+                'receipt_date' => $payment->receipt_date,
+                'receipt_time' => $payment->receipt_created_at ? Carbon::parse($payment->receipt_created_at)->format('h:i A') : '-',
+                'sale_date' => $payment->sale_date,
+                'transaction_type' => $payment->statut === 'ordered' ? 'Order' : 'Sale',
+                'customer_name' => $payment->customer_name ?: 'Walk-in customer',
+                'customer_phone' => $payment->customer_phone,
+                'customer_address' => $payment->customer_address,
+                'received_by' => $payment->received_by ?: 'Unassigned',
+                'payment_method' => $payment->payment_method ?: 'Unspecified',
+                'receipt_type' => $type['label'],
+                'receipt_type_key' => $type['key'],
+                'amount' => $this->money($payment->amount),
+                'remaining_after_receipt' => $remainingAfterPayment[(int) $payment->id]
+                    ?? $this->money(max(0, (float) $payment->sale_total - (float) $payment->paid_amount)),
+                'current_remaining' => $this->money(max(0, (float) $payment->sale_total - (float) $payment->paid_amount)),
+                'items' => $items,
+                'quantity' => $this->money($items->sum('quantity')),
+            ];
+        })->values();
+
+        $receiptsBySale = $receipts->groupBy('sale_id');
+        $transactions = $transactionRows->map(function ($sale) use ($itemsBySale, $receiptsBySale) {
+            $items = collect($itemsBySale->get((int) $sale->id, []))->values();
+            $saleReceipts = collect($receiptsBySale->get((int) $sale->id, []));
+
+            return [
+                'id' => (int) $sale->id,
+                'order_number' => $sale->reference,
+                'date' => $sale->date,
+                'time' => $sale->time
+                    ? Carbon::parse($sale->time)->format('h:i A')
+                    : ($sale->created_at ? Carbon::parse($sale->created_at)->format('h:i A') : '-'),
+                'transaction_type' => $sale->statut === 'ordered' ? 'Order' : 'Sale',
+                'status' => $sale->statut,
+                'payment_status' => $sale->payment_statut,
+                'customer_name' => $sale->customer_name ?: 'Walk-in customer',
+                'customer_phone' => $sale->customer_phone,
+                'customer_address' => $sale->customer_address,
+                'sold_by' => $sale->sales_agent ?: ($sale->created_by ?: 'Unassigned'),
+                'items' => $items,
+                'quantity' => $this->money($items->sum('quantity')),
+                'total' => $this->money($sale->total),
+                'paid_to_date' => $this->money($sale->paid_amount),
+                'received_in_period' => $this->money($saleReceipts->sum('amount')),
+                'advance_received' => $this->money($saleReceipts->where('receipt_type_key', 'advance')->sum('amount')),
+                'previous_balance_received' => $this->money($saleReceipts->where('receipt_type_key', 'previous_balance')->sum('amount')),
+                'remaining_balance' => $this->money(max(0, (float) $sale->total - (float) $sale->paid_amount)),
+            ];
+        })->values();
+
+        $shownSaleIds = $relevantSaleIds->all();
+        $currentOutstanding = (float) DB::table('sales')
+            ->whereNull('deleted_at')
+            ->whereIn('id', $shownSaleIds ?: [0])
+            ->selectRaw('COALESCE(SUM(CASE WHEN GrandTotal > paid_amount THEN GrandTotal - paid_amount ELSE 0 END), 0) AS amount')
+            ->value('amount');
+
+        return [
+            'warehouse_id' => $warehouseId,
+            'warehouse' => $warehouse->name,
+            'start_date' => $startDay,
+            'end_date' => $endDay,
+            'transactions' => $transactions,
+            'receipts' => $receipts,
+            'totals' => [
+                'transaction_count' => $transactions->count(),
+                'quantity' => $this->money($transactions->sum('quantity')),
+                'sales_value' => $this->money($transactions->where('transaction_type', 'Sale')->sum('total')),
+                'orders_value' => $this->money($transactions->where('transaction_type', 'Order')->sum('total')),
+                'payments_received' => $this->money($receipts->sum('amount')),
+                'advance_received' => $this->money($receipts->where('receipt_type_key', 'advance')->sum('amount')),
+                'previous_balance_received' => $this->money($receipts->where('receipt_type_key', 'previous_balance')->sum('amount')),
+                'sale_payments_received' => $this->money($receipts->where('receipt_type_key', 'sale_payment')->sum('amount')),
+                'current_outstanding' => $this->money($currentOutstanding),
+            ],
+        ];
+    }
+
     private function paymentTotals($query, string $table, string $amountColumn = 'montant'): Collection
     {
         return $query

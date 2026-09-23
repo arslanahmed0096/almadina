@@ -53,4 +53,31 @@ class DailyReportController extends Controller
             'can_export' => $user->isSuperAdmin() || $user->effectivePermissionNames()->contains('daily_reports_export'),
         ]);
     }
+
+    public function branchDetails(Request $request, DailyReportService $service)
+    {
+        $data = $request->validate([
+            'start_date' => ['required', 'date_format:Y-m-d'],
+            'end_date' => ['required', 'date_format:Y-m-d', 'after_or_equal:start_date'],
+            'warehouse_id' => ['required', 'integer', 'exists:warehouses,id'],
+        ]);
+        $user = $request->user('api');
+        abort_unless($user && ($user->isSuperAdmin() || $user->effectivePermissionNames()->contains('daily_reports_view')), 403);
+
+        $warehouseId = (int) $data['warehouse_id'];
+        if (! $user->is_all_warehouses) {
+            $hasAccess = UserWarehouse::where('user_id', $user->id)
+                ->where('warehouse_id', $warehouseId)
+                ->exists();
+            abort_unless($hasAccess, 403);
+        }
+
+        return response()->json([
+            'details' => $service->branchDetails(
+                Carbon::createFromFormat('Y-m-d', $data['start_date']),
+                Carbon::createFromFormat('Y-m-d', $data['end_date']),
+                $warehouseId
+            ),
+        ]);
+    }
 }
