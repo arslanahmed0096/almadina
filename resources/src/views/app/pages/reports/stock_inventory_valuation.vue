@@ -6,8 +6,8 @@
 
     <template v-else>
       <b-card class="mb-3 filter-card">
-        <b-row>
-          <b-col lg="2" md="4" sm="6">
+        <b-row class="filter-row">
+          <b-col lg="4" md="4" sm="12">
             <b-form-group label="Branch / Warehouse">
               <v-select
                 v-model="warehouse_id"
@@ -18,7 +18,7 @@
               />
             </b-form-group>
           </b-col>
-          <b-col lg="2" md="4" sm="6">
+          <b-col lg="4" md="4" sm="12">
             <b-form-group label="Category">
               <v-select
                 v-model="category_id"
@@ -29,7 +29,7 @@
               />
             </b-form-group>
           </b-col>
-          <b-col lg="2" md="4" sm="6">
+          <b-col lg="4" md="4" sm="12">
             <b-form-group label="Brand">
               <v-select
                 v-model="brand_id"
@@ -40,7 +40,9 @@
               />
             </b-form-group>
           </b-col>
-          <b-col lg="2" md="4" sm="6">
+        </b-row>
+        <b-row class="filter-row">
+          <b-col lg="4" md="4" sm="12">
             <b-form-group label="Stock Status">
               <v-select
                 v-model="stock_status"
@@ -51,7 +53,7 @@
               />
             </b-form-group>
           </b-col>
-          <b-col lg="2" md="4" sm="6">
+          <b-col lg="4" md="4" sm="12">
             <b-form-group label="Valuation Price">
               <v-select
                 v-model="price_basis"
@@ -61,7 +63,7 @@
               />
             </b-form-group>
           </b-col>
-          <b-col lg="2" md="4" sm="6">
+          <b-col lg="4" md="4" sm="12">
             <b-form-group label="Sales Period">
               <date-range-picker
                 v-model="dateRange"
@@ -627,6 +629,9 @@ export default {
 
 <style scoped>
 .filter-card .form-group { margin-bottom: 0.75rem; }
+.filter-row > [class*="col-"] { min-width: 0; }
+.filter-card .vue-daterange-picker { display: block; width: 100%; }
+.filter-card .vue-daterange-picker ::v-deep .reportrange-text { min-height: 38px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; }
 .summary-card { border: 0; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06); }
 .summary-card span { display: block; color: #6b7280; font-size: 12px; margin-bottom: 8px; }
 .summary-card strong { display: block; color: #222; font-size: 19px; line-height: 1.2; }
