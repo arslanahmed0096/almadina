@@ -121,8 +121,8 @@
                         v-model="sale.transaction_type"
                         :reduce="option => option.value"
                         :options="[
-                          { label: 'Sale', value: 'sale' },
-                          { label: 'Order', value: 'order' }
+                          { label: 'Order', value: 'order' },
+                          { label: 'Sale', value: 'sale' }
                         ]"
                         :clearable="false"
                         @input="Selected_Transaction_Type"
@@ -1245,12 +1245,12 @@ export default {
       sale: {
         id: "",
         date: new Date().toISOString().slice(0, 10),
-        statut: "completed",
+        statut: "ordered",
         notes: "",
         client_id: "",
         warehouse_id: "",
         sales_agent_id: null,
-        transaction_type: "sale",
+        transaction_type: "order",
         credit_days: 30,
         tax_rate: 0,
         TaxNet: 0,
