@@ -6330,7 +6330,6 @@ class ReportController extends BaseController
             'brand_id' => ['nullable', 'integer'],
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date'],
-            'stock_status' => ['nullable', 'in:all,in_stock,zero,negative'],
         ]);
 
         $user = $request->user('api');
@@ -6393,6 +6392,7 @@ class ReportController extends BaseController
             ->whereNull('p.deleted_at')
             ->whereNull('w.deleted_at')
             ->where('p.type', '<>', 'is_service')
+            ->where('stock.qty', '>', 0)
             ->when($request->integer('category_id'), fn ($query, $id) => $query->where('p.category_id', $id))
             ->when($request->integer('brand_id'), fn ($query, $id) => $query->where('p.brand_id', $id))
             ->when($request->filled('search'), function ($query) use ($request) {
@@ -6404,15 +6404,6 @@ class ReportController extends BaseController
                         ->orWhere('pv.code', 'LIKE', "%{$search}%");
                 });
             });
-
-        $stockStatus = $request->input('stock_status', 'all');
-        if ($stockStatus === 'in_stock') {
-            $stockQuery->where('stock.qty', '>', 0);
-        } elseif ($stockStatus === 'zero') {
-            $stockQuery->where('stock.qty', '=', 0);
-        } elseif ($stockStatus === 'negative') {
-            $stockQuery->where('stock.qty', '<', 0);
-        }
 
         $totalRows = (clone $stockQuery)->count();
         $summarySelect = [

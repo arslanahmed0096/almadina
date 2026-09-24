@@ -42,18 +42,7 @@
           </b-col>
         </b-row>
         <b-row class="filter-row">
-          <b-col lg="4" md="4" sm="12">
-            <b-form-group label="Stock Status">
-              <v-select
-                v-model="stock_status"
-                :reduce="option => option.value"
-                :options="stockStatusOptions"
-                :clearable="false"
-                @input="applyFilters"
-              />
-            </b-form-group>
-          </b-col>
-          <b-col lg="4" md="4" sm="12">
+          <b-col lg="6" md="6" sm="12">
             <b-form-group label="Valuation Price">
               <v-select
                 v-model="price_basis"
@@ -63,7 +52,7 @@
               />
             </b-form-group>
           </b-col>
-          <b-col lg="4" md="4" sm="12">
+          <b-col lg="6" md="6" sm="12">
             <b-form-group label="Sales Period">
               <date-range-picker
                 v-model="dateRange"
@@ -303,7 +292,6 @@ export default {
       warehouse_id: 0,
       category_id: 0,
       brand_id: 0,
-      stock_status: "all",
       price_basis: "cost",
       search: "",
       limit: 10,
@@ -334,12 +322,6 @@ export default {
         { key: "unit_price", label: "Unit Price", class: "text-right" },
         { key: "price_type", label: "Price Type" },
         { key: "amount", label: "Amount", class: "text-right" }
-      ],
-      stockStatusOptions: [
-        { label: "All Stock", value: "all" },
-        { label: "In Stock", value: "in_stock" },
-        { label: "Zero Stock", value: "zero" },
-        { label: "Negative Stock", value: "negative" }
       ]
     };
   },
@@ -435,7 +417,6 @@ export default {
         warehouse_id: this.warehouse_id || 0,
         category_id: this.category_id || 0,
         brand_id: this.brand_id || 0,
-        stock_status: this.stock_status,
         search: this.search || "",
         date_from: this.startDate,
         date_to: this.endDate
