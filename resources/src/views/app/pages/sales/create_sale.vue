@@ -1171,12 +1171,6 @@ export default {
       Submit_Processing_detail:false,
       SubmitProcessing: false,
       isLoading: true,
-      // POS settings — only `allow_overselling` is consumed here, but we keep
-      // the same shape as elsewhere for future-proofing. Default OFF preserves
-      // the historical strict stock-check behavior for upgraded installs.
-      pos_settings: {
-        allow_overselling: false,
-      },
       warehouses: [],
       clients: [],
       selectedClientId: "",
@@ -1535,16 +1529,10 @@ export default {
       return "";
     },
 
-    // Warehouse stock is mandatory for completed sales. Historical settings
-    // cannot bypass the server-side no-negative-stock policy.
-    isOversellingAllowed() {
-      return false;
-    },
-
     // Orders may contain unavailable products because inventory is only
     // consumed when the order is later completed as a sale.
     isStockCheckRequired() {
-      return this.sale.transaction_type !== 'order' && !this.isOversellingAllowed;
+      return this.sale.transaction_type !== 'order';
     },
 
     // Disable modal submit if the edited detail would violate min price
@@ -2258,12 +2246,8 @@ export default {
               }
             }
 
-            // When overselling is allowed, do not cap quantity to the
-            // recalculated stock after a unit change — preserve user intent.
             if (this.isStockCheckRequired && this.details[i].stock < this.details[i].quantity) {
               this.details[i].quantity = this.details[i].stock;
-            } else if (this.details[i].stock < this.details[i].quantity) {
-              // overselling allowed: keep user quantity as-is
             } else {
               this.details[i].quantity =1;
             }
@@ -2991,7 +2975,6 @@ export default {
             this.details[i].quantity = detail.stock;
           }
 
-          // Stock cap skipped when overselling is allowed.
           if (this.isStockCheckRequired && detail.quantity > detail.stock) {
             this.makeToast("warning", this.$t("LowStock"), this.$t("Warning"));
             this.details[i].quantity = detail.stock;
@@ -3009,7 +2992,6 @@ export default {
     increment(detail, id) {
       for (var i = 0; i < this.details.length; i++) {
         if (this.details[i].detail_id == id) {
-          // Stock guard skipped when overselling is allowed.
           if (this.isStockCheckRequired && detail.quantity + 1 > detail.stock) {
             this.makeToast("warning", this.$t("LowStock"), this.$t("Warning"));
           } else {
@@ -3027,7 +3009,6 @@ export default {
       for (var i = 0; i < this.details.length; i++) {
         if (this.details[i].detail_id == id) {
           if (detail.quantity - 1 > 0) {
-            // Stock guard skipped when overselling is allowed.
             if (this.isStockCheckRequired && detail.quantity - 1 > detail.stock) {
               this.makeToast(
                 "warning",
@@ -3136,8 +3117,6 @@ export default {
       } else {
         var count = 0;
         for (var i = 0; i < this.details.length; i++) {
-          // Empty/zero quantity is always invalid; the stock-exceeded branch
-          // is skipped when overselling is allowed.
           const overStock = this.isStockCheckRequired && this.details[i].quantity > this.details[i].stock;
           if (
             this.details[i].quantity == "" ||
@@ -3524,18 +3503,6 @@ export default {
           }, 500);
         });
 
-      // Load POS settings to read the `allow_overselling` flag. Runs in parallel
-      // with the main GetElements call. Failures are silent — page works as
-      // before (strict stock checks) when the setting cannot be retrieved.
-      axios
-        .get("get_pos_Settings")
-        .then(response => {
-          const ps = response && response.data && response.data.pos_settings;
-          if (ps) {
-            this.pos_settings = { ...this.pos_settings, ...ps };
-          }
-        })
-        .catch(() => { /* ignore — fall back to default OFF */ });
     }
   },
 

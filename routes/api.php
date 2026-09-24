@@ -287,6 +287,7 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
 
     Route::get('report/inventory_valuation_summary', 'ReportController@inventory_valuation_summary');
     Route::get('report/stock_inventory_valuation', 'ReportController@stock_inventory_valuation');
+    Route::get('report/stock_inventory_valuation/sales', 'ReportController@stock_inventory_valuation_sales');
     Route::get('report/expenses_report', 'ReportController@expenses_report');
     Route::get('report/deposits_report', 'ReportController@deposits_report');
     Route::get('report/daily', DailyReportController::class);

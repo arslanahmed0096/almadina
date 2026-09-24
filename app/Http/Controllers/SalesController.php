@@ -471,6 +471,7 @@ class SalesController extends BaseController
                         $product_warehouse = product_warehouse::where('deleted_at', '=', null)
                             ->where('warehouse_id', $order->warehouse_id)
                             ->where('product_id', $value['product_id'])
+                            ->whereNull('product_variant_id')
                             ->first();
 
                         if ($unit && $product_warehouse) {
@@ -483,6 +484,12 @@ class SalesController extends BaseController
                         }
                     }
                 }
+            }
+            if ($order->statut == 'completed') {
+                app(WarehouseStockGuard::class)->assertSaleStockNonNegative(
+                    (int) $order->warehouse_id,
+                    $data
+                );
             }
             SaleDetail::insert($orderDetails);
 
@@ -811,6 +818,7 @@ class SalesController extends BaseController
                             $product_warehouse = product_warehouse::where('deleted_at', '=', null)
                                 ->where('warehouse_id', $current_Sale->warehouse_id)
                                 ->where('product_id', $value['product_id'])
+                                ->whereNull('product_variant_id')
                                 ->first();
                             if ($product_warehouse && $old_unit) {
                                 if ($old_unit->operator == '/') {
@@ -873,6 +881,7 @@ class SalesController extends BaseController
                                 $product_warehouse = product_warehouse::where('deleted_at', '=', null)
                                     ->where('warehouse_id', $request->warehouse_id)
                                     ->where('product_id', $prod_detail['product_id'])
+                                    ->whereNull('product_variant_id')
                                     ->first();
 
                                 if ($product_warehouse && $unit_prod) {
@@ -918,6 +927,13 @@ class SalesController extends BaseController
                     } else {
                         $newPersistedDetails[$prd] = null;
                     }
+                }
+
+                if ($request['statut'] == 'completed') {
+                    app(WarehouseStockGuard::class)->assertSaleStockNonNegative(
+                        (int) $request->warehouse_id,
+                        $new_sale_details
+                    );
                 }
 
                 // Apply batch consumption for the new (completed) state. If the request
@@ -2116,6 +2132,13 @@ class SalesController extends BaseController
                         $product_warehouse->save();
                     }
                 }
+            }
+
+            if ($order->statut === 'completed') {
+                app(WarehouseStockGuard::class)->assertSaleStockNonNegative(
+                    (int) $order->warehouse_id,
+                    $data
+                );
             }
 
             SaleDetail::insert($orderDetails);

@@ -30,6 +30,7 @@ use App\Models\product_warehouse;
 use App\Models\ProductWarehouseLocation;
 use App\Models\WarehouseLocation;
 use App\Models\ProductVariant;
+use App\Models\TaxPriceType;
 use App\Models\Provider;
 use App\Models\ProviderPaymentOpeningBalance;
 use App\Models\Purchase;
@@ -6323,328 +6324,410 @@ class ReportController extends BaseController
     {
         $this->authorizeForUser($request->user('api'), 'Stock_Inventory_Valuation', Product::class);
 
-        // pagination
-        $perPage = (int) ($request->limit ?? 10);
-        $pageStart = (int) ($request->get('page', 1));
-        $offSet = ($pageStart * max($perPage, 1)) - max($perPage, 1);
-        $order = $request->get('SortField', 'id');
-        $dir = $request->get('SortType', 'desc');
+        $request->validate([
+            'warehouse_id' => ['nullable', 'integer'],
+            'category_id' => ['nullable', 'integer'],
+            'brand_id' => ['nullable', 'integer'],
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date'],
+            'stock_status' => ['nullable', 'in:all,in_stock,zero,negative'],
+        ]);
 
-        // warehouses
-        $user_auth = auth()->user();
-        if ($user_auth->is_all_warehouses) {
-            $warehouses = Warehouse::whereNull('deleted_at')->get(['id', 'name']);
-            $allWarehouseIds = $warehouses->pluck('id')->toArray();
-        } else {
-            $allWarehouseIds = UserWarehouse::where('user_id', $user_auth->id)->pluck('warehouse_id')->toArray();
-            $warehouses = Warehouse::whereNull('deleted_at')->whereIn('id', $allWarehouseIds)->get(['id', 'name']);
+        $user = $request->user('api');
+        $warehouses = $user->is_all_warehouses
+            ? Warehouse::whereNull('deleted_at')->orderBy('name')->get(['id', 'name'])
+            : Warehouse::whereNull('deleted_at')
+                ->whereIn('id', UserWarehouse::where('user_id', $user->id)->pluck('warehouse_id'))
+                ->orderBy('name')
+                ->get(['id', 'name']);
+
+        $allowedWarehouseIds = $warehouses->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $warehouseId = (int) $request->input('warehouse_id', 0);
+        abort_if($warehouseId !== 0 && ! in_array($warehouseId, $allowedWarehouseIds, true), 403, 'Warehouse access denied.');
+        $selectedWarehouseIds = $warehouseId !== 0 ? [$warehouseId] : $allowedWarehouseIds;
+
+        $categories = Category::whereNull('deleted_at')->orderBy('name')->get(['id', 'name']);
+        $brands = Brand::whereNull('deleted_at')->orderBy('name')->get(['id', 'name']);
+        $priceTypes = $this->stockValuationPriceTypes();
+        $priceExpressions = $priceTypes->mapWithKeys(fn ($type) => [
+            $type['code'] => $this->stockValuationPriceExpression($type['code']),
+        ]);
+
+        $today = Carbon::today();
+        $dateFrom = $request->filled('date_from')
+            ? Carbon::parse($request->date_from)->toDateString()
+            : $today->copy()->subDays(29)->toDateString();
+        $dateTo = $request->filled('date_to')
+            ? Carbon::parse($request->date_to)->toDateString()
+            : $today->toDateString();
+        if ($dateFrom > $dateTo) {
+            [$dateFrom, $dateTo] = [$dateTo, $dateFrom];
         }
 
-        $warehouse_id = (int) ($request->warehouse_id ?? 0);
-        $selectedWarehouseIds = $warehouse_id !== 0 ? [$warehouse_id] : $allWarehouseIds;
+        $stockAggregate = DB::table('product_warehouse as pw')
+            ->select([
+                'pw.product_id',
+                'pw.product_variant_id',
+                'pw.warehouse_id',
+                DB::raw('SUM(pw.qte) as qty'),
+            ])
+            ->whereNull('pw.deleted_at')
+            ->when(
+                ! empty($selectedWarehouseIds),
+                fn ($query) => $query->whereIn('pw.warehouse_id', $selectedWarehouseIds),
+                fn ($query) => $query->whereRaw('1 = 0')
+            )
+            ->groupBy('pw.product_id', 'pw.product_variant_id', 'pw.warehouse_id');
 
-        // base query + search
-        $productsQuery = Product::with('unit', 'category')
-            ->whereNull('deleted_at')
-            ->when($request->filled('search'), function ($q) use ($request) {
-                $s = $request->search;
-                $q->where(function ($qq) use ($s) {
-                    $qq->where('products.name', 'LIKE', "%{$s}%")
-                        ->orWhere('products.code', 'LIKE', "%{$s}%");
+        $stockQuery = DB::query()
+            ->fromSub($stockAggregate, 'stock')
+            ->join('products as p', 'p.id', '=', 'stock.product_id')
+            ->join('warehouses as w', 'w.id', '=', 'stock.warehouse_id')
+            ->leftJoin('product_variants as pv', function ($join) {
+                $join->on('pv.id', '=', 'stock.product_variant_id')
+                    ->whereNull('pv.deleted_at');
+            })
+            ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->leftJoin('brands as b', 'b.id', '=', 'p.brand_id')
+            ->leftJoin('units as u', 'u.id', '=', 'p.unit_id')
+            ->whereNull('p.deleted_at')
+            ->whereNull('w.deleted_at')
+            ->where('p.type', '<>', 'is_service')
+            ->when($request->integer('category_id'), fn ($query, $id) => $query->where('p.category_id', $id))
+            ->when($request->integer('brand_id'), fn ($query, $id) => $query->where('p.brand_id', $id))
+            ->when($request->filled('search'), function ($query) use ($request) {
+                $search = trim((string) $request->search);
+                $query->where(function ($nested) use ($search) {
+                    $nested->where('p.name', 'LIKE', "%{$search}%")
+                        ->orWhere('p.code', 'LIKE', "%{$search}%")
+                        ->orWhere('pv.name', 'LIKE', "%{$search}%")
+                        ->orWhere('pv.code', 'LIKE', "%{$search}%");
                 });
             });
 
-        $totalRows = (clone $productsQuery)->count();
-        if ($perPage === -1) {
-            $perPage = $totalRows;
+        $stockStatus = $request->input('stock_status', 'all');
+        if ($stockStatus === 'in_stock') {
+            $stockQuery->where('stock.qty', '>', 0);
+        } elseif ($stockStatus === 'zero') {
+            $stockQuery->where('stock.qty', '=', 0);
+        } elseif ($stockStatus === 'negative') {
+            $stockQuery->where('stock.qty', '<', 0);
         }
 
-        $products = $productsQuery
-            ->orderBy($order ?: 'id', $dir ?: 'desc')
-            ->offset($offSet)
-            ->limit($perPage)
-            ->get();
-
-        // prefetch variants
-        $productIds = $products->pluck('id')->all();
-        $variantsByProduct = ProductVariant::whereIn('product_id', $productIds)
-            ->whereNull('deleted_at')
-            ->get()
-            ->groupBy('product_id');
-
-        // Get stock data per warehouse
-        $stockRows = product_warehouse::select(
-            'product_id',
-            'product_variant_id',
-            'warehouse_id',
-            DB::raw('SUM(qte) as qty')
-        )
-            ->whereIn('product_id', $productIds)
-            ->whereNull('deleted_at')
-            ->whereIn('warehouse_id', $selectedWarehouseIds)
-            ->groupBy('product_id', 'product_variant_id', 'warehouse_id')
-            ->get();
-
-        // Date range filter — normalize to Y-m-d and default to last 30 days if missing
-        $today = Carbon::today();
-        $dateFromStr = $request->filled('date_from')
-            ? Carbon::parse($request->date_from)->toDateString()
-            : $today->copy()->subDays(29)->toDateString();
-        $dateToStr = $request->filled('date_to')
-            ? Carbon::parse($request->date_to)->toDateString()
-            : $today->toDateString();
-        if ($dateFromStr > $dateToStr) {
-            $dateFromStr = $dateToStr;
+        $totalRows = (clone $stockQuery)->count();
+        $summarySelect = [
+            DB::raw('COUNT(*) as line_count'),
+            DB::raw('COUNT(DISTINCT stock.product_id) as product_count'),
+            DB::raw('COALESCE(SUM(stock.qty), 0) as current_quantity'),
+        ];
+        foreach ($priceExpressions as $code => $expression) {
+            $summarySelect[] = DB::raw("COALESCE(SUM(stock.qty * ({$expression})), 0) as {$code}_stock_value");
         }
-        $dateFrom = Carbon::parse($dateFromStr)->startOfDay();
-        $dateTo = Carbon::parse($dateToStr)->endOfDay();
+        $stockSummary = (clone $stockQuery)->select($summarySelect)->first();
 
-        // Get totals for sold, transferred, adjusted per warehouse
-        $soldQuery = SaleDetail::select(
-            'sale_details.product_id',
-            'sale_details.product_variant_id',
-            'sales.warehouse_id',
-            DB::raw('SUM(sale_details.quantity) as total')
-        )
-            ->join('sales', 'sales.id', '=', 'sale_details.sale_id')
-            ->whereIn('sale_details.product_id', $productIds)
-            ->whereIn('sales.warehouse_id', $selectedWarehouseIds)
-            ->whereNull('sales.deleted_at');
-
-        if ($dateFrom && $dateTo) {
-            $soldQuery->whereBetween('sales.date', [$dateFrom->toDateString(), $dateTo->toDateString()]);
+        $limit = (int) $request->input('limit', 10);
+        $page = max(1, (int) $request->input('page', 1));
+        if ($limit !== -1) {
+            $limit = max(1, min($limit, 100));
         }
 
-        $soldTotals = $soldQuery
-            ->groupBy('sale_details.product_id', 'sale_details.product_variant_id', 'sales.warehouse_id')
-            ->get()
-            ->keyBy(function($item) {
-                return $item->product_id . '_' . ($item->product_variant_id ?? 0) . '_' . $item->warehouse_id;
-            });
+        $sortColumns = [
+            'model_no' => DB::raw("COALESCE(NULLIF(pv.code, ''), p.code)"),
+            'product_name' => 'p.name',
+            'variant' => 'pv.name',
+            'category' => 'c.name',
+            'brand' => 'b.name',
+            'warehouse' => 'w.name',
+            'current_quantity' => 'stock.qty',
+        ];
+        $sortField = array_key_exists((string) $request->SortField, $sortColumns)
+            ? (string) $request->SortField
+            : 'product_name';
+        $sortDirection = strtolower((string) $request->input('SortType', 'asc')) === 'desc' ? 'desc' : 'asc';
 
-        // Get most common sale_unit_id per product/variant/warehouse
-        $soldUnitsQuery = SaleDetail::select(
-            'sale_details.product_id',
-            'sale_details.product_variant_id',
-            'sales.warehouse_id',
-            'sale_details.sale_unit_id',
-            DB::raw('COUNT(*) as count')
-        )
-            ->join('sales', 'sales.id', '=', 'sale_details.sale_id')
-            ->whereIn('sale_details.product_id', $productIds)
-            ->whereIn('sales.warehouse_id', $selectedWarehouseIds)
-            ->whereNotNull('sale_details.sale_unit_id')
-            ->whereNull('sales.deleted_at');
-
-        if ($dateFrom && $dateTo) {
-            $soldUnitsQuery->whereBetween('sales.date', [$dateFrom->toDateString(), $dateTo->toDateString()]);
+        $rowSelect = [
+            'stock.product_id',
+            'stock.product_variant_id',
+            'stock.warehouse_id',
+            DB::raw("COALESCE(NULLIF(pv.code, ''), p.code) as model_no"),
+            'p.code as sku',
+            'p.name as product_name',
+            DB::raw("COALESCE(pv.name, '---') as variant"),
+            DB::raw("COALESCE(c.name, 'Uncategorized') as category"),
+            DB::raw("COALESCE(b.name, 'No Brand') as brand"),
+            'w.name as warehouse',
+            DB::raw("COALESCE(u.ShortName, 'Pcs') as unit"),
+            'stock.qty as current_quantity',
+        ];
+        foreach ($priceExpressions as $code => $expression) {
+            $rowSelect[] = DB::raw("({$expression}) as {$code}");
+            $rowSelect[] = DB::raw("stock.qty * ({$expression}) as {$code}_stock_value");
         }
 
-        $soldUnits = $soldUnitsQuery
-            ->groupBy('sale_details.product_id', 'sale_details.product_variant_id', 'sales.warehouse_id', 'sale_details.sale_unit_id')
-            ->get()
-            ->groupBy(function($item) {
-                return $item->product_id . '_' . ($item->product_variant_id ?? 0) . '_' . $item->warehouse_id;
-            })
-            ->map(function($group) {
-                return $group->sortByDesc('count')->first()->sale_unit_id;
-            });
+        $pageQuery = (clone $stockQuery)->select($rowSelect)->orderBy($sortColumns[$sortField], $sortDirection);
+        if ($limit !== -1) {
+            $pageQuery->offset(($page - 1) * $limit)->limit($limit);
+        }
+        $pageRows = $pageQuery->get();
+        $pageProductIds = $pageRows->pluck('product_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $movementKey = fn ($row) => (int) $row->product_id.'_'.(int) ($row->product_variant_id ?? 0).'_'.(int) $row->warehouse_id;
 
-        $transferredQuery = TransferDetail::select(
-            'transfer_details.product_id',
-            'transfer_details.product_variant_id',
-            'transfers.from_warehouse_id as warehouse_id',
-            DB::raw('SUM(transfer_details.quantity) as total')
-        )
-            ->join('transfers', 'transfers.id', '=', 'transfer_details.transfer_id')
-            ->whereIn('transfer_details.product_id', $productIds)
-            ->whereIn('transfers.from_warehouse_id', $selectedWarehouseIds)
-            ->whereNull('transfers.deleted_at');
+        $soldTotals = collect();
+        $transferredTotals = collect();
+        $adjustedTotals = collect();
+        if (! empty($pageProductIds)) {
+            $soldTotals = SaleDetail::query()
+                ->select(
+                    'sale_details.product_id',
+                    'sale_details.product_variant_id',
+                    'sales.warehouse_id',
+                    DB::raw("SUM(CASE WHEN sale_units.id IS NULL THEN sale_details.quantity WHEN sale_units.operator = '/' AND sale_units.operator_value <> 0 THEN sale_details.quantity / sale_units.operator_value ELSE sale_details.quantity * COALESCE(sale_units.operator_value, 1) END) as total_quantity"),
+                    DB::raw('SUM(sale_details.total) as total_amount'),
+                    DB::raw('COUNT(DISTINCT sales.id) as sale_count'),
+                    DB::raw('MAX(sales.date) as last_sale_date')
+                )
+                ->join('sales', 'sales.id', '=', 'sale_details.sale_id')
+                ->leftJoin('units as sale_units', 'sale_units.id', '=', 'sale_details.sale_unit_id')
+                ->whereIn('sale_details.product_id', $pageProductIds)
+                ->whereIn('sales.warehouse_id', $selectedWarehouseIds)
+                ->whereNull('sales.deleted_at')
+                ->where('sales.statut', 'completed')
+                ->whereBetween('sales.date', [$dateFrom, $dateTo])
+                ->groupBy('sale_details.product_id', 'sale_details.product_variant_id', 'sales.warehouse_id')
+                ->get()
+                ->keyBy($movementKey);
 
-        if ($dateFrom && $dateTo) {
-            $transferredQuery->whereBetween('transfers.date', [$dateFrom->toDateString(), $dateTo->toDateString()]);
+            $transferredTotals = TransferDetail::query()
+                ->select(
+                    'transfer_details.product_id',
+                    'transfer_details.product_variant_id',
+                    'transfers.from_warehouse_id as warehouse_id',
+                    DB::raw('SUM(transfer_details.quantity) as total_quantity')
+                )
+                ->join('transfers', 'transfers.id', '=', 'transfer_details.transfer_id')
+                ->whereIn('transfer_details.product_id', $pageProductIds)
+                ->whereIn('transfers.from_warehouse_id', $selectedWarehouseIds)
+                ->whereNull('transfers.deleted_at')
+                ->whereBetween('transfers.date', [$dateFrom, $dateTo])
+                ->groupBy('transfer_details.product_id', 'transfer_details.product_variant_id', 'transfers.from_warehouse_id')
+                ->get()
+                ->keyBy($movementKey);
+
+            $adjustedTotals = AdjustmentDetail::query()
+                ->select(
+                    'adjustment_details.product_id',
+                    'adjustment_details.product_variant_id',
+                    'adjustments.warehouse_id',
+                    DB::raw('SUM(CASE WHEN adjustment_details.type = "add" THEN adjustment_details.quantity ELSE -adjustment_details.quantity END) as total_quantity')
+                )
+                ->join('adjustments', 'adjustments.id', '=', 'adjustment_details.adjustment_id')
+                ->whereIn('adjustment_details.product_id', $pageProductIds)
+                ->whereIn('adjustments.warehouse_id', $selectedWarehouseIds)
+                ->whereNull('adjustments.deleted_at')
+                ->whereBetween('adjustments.date', [$dateFrom, $dateTo])
+                ->groupBy('adjustment_details.product_id', 'adjustment_details.product_variant_id', 'adjustments.warehouse_id')
+                ->get()
+                ->keyBy($movementKey);
         }
 
-        $transferredTotals = $transferredQuery
-            ->groupBy('transfer_details.product_id', 'transfer_details.product_variant_id', 'transfers.from_warehouse_id')
-            ->get()
-            ->keyBy(function($item) {
-                return $item->product_id . '_' . ($item->product_variant_id ?? 0) . '_' . $item->warehouse_id;
-            });
+        $filteredStockKeys = (clone $stockQuery)->select([
+            'stock.product_id',
+            'stock.product_variant_id',
+            'stock.warehouse_id',
+        ]);
+        $soldSummary = $totalRows > 0
+            ? SaleDetail::query()
+                ->join('sales', 'sales.id', '=', 'sale_details.sale_id')
+                ->leftJoin('units as sale_units', 'sale_units.id', '=', 'sale_details.sale_unit_id')
+                ->joinSub($filteredStockKeys, 'filtered_stock', function ($join) {
+                    $join->on('filtered_stock.product_id', '=', 'sale_details.product_id')
+                        ->on('filtered_stock.warehouse_id', '=', 'sales.warehouse_id')
+                        ->on(
+                            DB::raw('COALESCE(filtered_stock.product_variant_id, 0)'),
+                            '=',
+                            DB::raw('COALESCE(sale_details.product_variant_id, 0)')
+                        );
+                })
+                ->whereNull('sales.deleted_at')
+                ->where('sales.statut', 'completed')
+                ->whereBetween('sales.date', [$dateFrom, $dateTo])
+                ->selectRaw("COALESCE(SUM(CASE WHEN sale_units.id IS NULL THEN sale_details.quantity WHEN sale_units.operator = '/' AND sale_units.operator_value <> 0 THEN sale_details.quantity / sale_units.operator_value ELSE sale_details.quantity * COALESCE(sale_units.operator_value, 1) END), 0) as quantity, COALESCE(SUM(sale_details.total), 0) as amount, COUNT(DISTINCT sales.id) as sale_count")
+                ->first()
+            : null;
 
-        // Get most common purchase_unit_id per product/variant/warehouse
-        $transferredUnitsQuery = TransferDetail::select(
-            'transfer_details.product_id',
-            'transfer_details.product_variant_id',
-            'transfers.from_warehouse_id as warehouse_id',
-            'transfer_details.purchase_unit_id',
-            DB::raw('COUNT(*) as count')
-        )
-            ->join('transfers', 'transfers.id', '=', 'transfer_details.transfer_id')
-            ->whereIn('transfer_details.product_id', $productIds)
-            ->whereIn('transfers.from_warehouse_id', $selectedWarehouseIds)
-            ->whereNotNull('transfer_details.purchase_unit_id')
-            ->whereNull('transfers.deleted_at');
-
-        if ($dateFrom && $dateTo) {
-            $transferredUnitsQuery->whereBetween('transfers.date', [$dateFrom->toDateString(), $dateTo->toDateString()]);
-        }
-
-        $transferredUnits = $transferredUnitsQuery
-            ->groupBy('transfer_details.product_id', 'transfer_details.product_variant_id', 'transfers.from_warehouse_id', 'transfer_details.purchase_unit_id')
-            ->get()
-            ->groupBy(function($item) {
-                return $item->product_id . '_' . ($item->product_variant_id ?? 0) . '_' . $item->warehouse_id;
-            })
-            ->map(function($group) {
-                return $group->sortByDesc('count')->first()->purchase_unit_id;
-            });
-
-        $adjustedQuery = AdjustmentDetail::select(
-            'adjustment_details.product_id',
-            'adjustment_details.product_variant_id',
-            'adjustments.warehouse_id',
-            DB::raw('SUM(CASE WHEN adjustment_details.type = "add" THEN adjustment_details.quantity ELSE -adjustment_details.quantity END) as total')
-        )
-            ->join('adjustments', 'adjustments.id', '=', 'adjustment_details.adjustment_id')
-            ->whereIn('adjustment_details.product_id', $productIds)
-            ->whereIn('adjustments.warehouse_id', $selectedWarehouseIds)
-            ->whereNull('adjustments.deleted_at');
-
-        if ($dateFrom && $dateTo) {
-            $adjustedQuery->whereBetween('adjustments.date', [$dateFrom->toDateString(), $dateTo->toDateString()]);
-        }
-
-        $adjustedTotals = $adjustedQuery
-            ->groupBy('adjustment_details.product_id', 'adjustment_details.product_variant_id', 'adjustments.warehouse_id')
-            ->get()
-            ->keyBy(function($item) {
-                return $item->product_id . '_' . ($item->product_variant_id ?? 0) . '_' . $item->warehouse_id;
-            });
-
-        $data = [];
-
-        foreach ($products as $product) {
-            // Handle variant products
-            if ($product->type === 'is_variant') {
-                $variants = $variantsByProduct->get($product->id, collect());
-
-                foreach ($variants as $variant) {
-                    $vid = (int) $variant->id;
-                    
-                    // Get stock per warehouse
-                    $warehouseStocks = $stockRows->where('product_id', $product->id)
-                        ->where('product_variant_id', $vid)
-                        ->groupBy('warehouse_id');
-
-                    foreach ($warehouseStocks as $whId => $whStocks) {
-                        $warehouse = $warehouses->firstWhere('id', $whId);
-                        if (!$warehouse) continue;
-
-                        $currentQty = (float) $whStocks->sum('qty');
-                        $costPrice = (float) $variant->cost;
-                        $sellingPrice = (float) $variant->price;
-                        
-                        $stockValueCost = $currentQty * $costPrice;
-                        $stockValueSelling = $currentQty * $sellingPrice;
-                        $potentialProfit = $stockValueSelling - $stockValueCost;
-
-                        $key = $product->id . '_' . $vid . '_' . $whId;
-                        $soldTotal = $soldTotals->get($key);
-                        $transferredTotal = $transferredTotals->get($key);
-                        $totalSold = (float) ($soldTotal->total ?? 0);
-                        $totalTransferred = (float) ($transferredTotal->total ?? 0);
-                        $totalAdjusted = (float) ($adjustedTotals->get($key)->total ?? 0);
-
-                        // Get units
-                        $currentQtyUnit = optional($product->unit)->ShortName ?? 'Pcs';
-                        $soldUnitId = $soldUnits->get($key) ?? $product->unit_sale_id ?? $product->unit_id;
-                        $soldUnit = $soldUnitId ? optional(Unit::find($soldUnitId))->ShortName ?? 'Pcs' : 'Pcs';
-                        $transferredUnitId = $transferredUnits->get($key) ?? $product->unit_purchase_id ?? $product->unit_id;
-                        $transferredUnit = $transferredUnitId ? optional(Unit::find($transferredUnitId))->ShortName ?? 'Pcs' : 'Pcs';
-                        $adjustedUnit = $currentQtyUnit; // Adjusted uses product unit_id
-
-                        $data[] = [
-                            'sku' => $product->code,
-                            'product_name' => $product->name,
-                            'variant' => $variant->name,
-                            'category' => optional($product->category)->name ?? '',
-                            'warehouse' => $warehouse->name,
-                            'selling_price' => $sellingPrice,
-                            'current_quantity' => $currentQty,
-                            'current_quantity_unit' => $currentQtyUnit,
-                            'stock_value_cost' => $stockValueCost,
-                            'stock_value_selling' => $stockValueSelling,
-                            'potential_profit' => $potentialProfit,
-                            'total_units_sold' => $totalSold,
-                            'total_units_sold_unit' => $soldUnit,
-                            'total_units_transferred' => $totalTransferred,
-                            'total_units_transferred_unit' => $transferredUnit,
-                            'total_units_adjusted' => abs($totalAdjusted),
-                            'total_units_adjusted_unit' => $adjustedUnit,
-                        ];
-                    }
-                }
-            } else {
-                // Non-variant products
-                $warehouseStocks = $stockRows->where('product_id', $product->id)
-                    ->whereNull('product_variant_id')
-                    ->groupBy('warehouse_id');
-
-                foreach ($warehouseStocks as $whId => $whStocks) {
-                    $warehouse = $warehouses->firstWhere('id', $whId);
-                    if (!$warehouse) continue;
-
-                    $currentQty = (float) $whStocks->sum('qty');
-                    $costPrice = (float) $product->cost;
-                    $sellingPrice = (float) $product->price;
-                    
-                    $stockValueCost = $currentQty * $costPrice;
-                    $stockValueSelling = $currentQty * $sellingPrice;
-                    $potentialProfit = $stockValueSelling - $stockValueCost;
-
-                    $key = $product->id . '_0_' . $whId;
-                    $soldTotal = $soldTotals->get($key);
-                    $transferredTotal = $transferredTotals->get($key);
-                    $totalSold = (float) ($soldTotal->total ?? 0);
-                    $totalTransferred = (float) ($transferredTotal->total ?? 0);
-                    $totalAdjusted = (float) ($adjustedTotals->get($key)->total ?? 0);
-
-                    // Get units
-                    $currentQtyUnit = optional($product->unit)->ShortName ?? 'Pcs';
-                    $soldUnitId = $soldUnits->get($key) ?? $product->unit_sale_id ?? $product->unit_id;
-                    $soldUnit = $soldUnitId ? optional(Unit::find($soldUnitId))->ShortName ?? 'Pcs' : 'Pcs';
-                    $transferredUnitId = $transferredUnits->get($key) ?? $product->unit_purchase_id ?? $product->unit_id;
-                    $transferredUnit = $transferredUnitId ? optional(Unit::find($transferredUnitId))->ShortName ?? 'Pcs' : 'Pcs';
-                    $adjustedUnit = $currentQtyUnit; // Adjusted uses product unit_id
-
-                    $data[] = [
-                        'sku' => $product->code,
-                        'product_name' => $product->name,
-                        'variant' => '---',
-                        'category' => optional($product->category)->name ?? '',
-                        'warehouse' => $warehouse->name,
-                        'selling_price' => $sellingPrice,
-                        'current_quantity' => $currentQty,
-                        'current_quantity_unit' => $currentQtyUnit,
-                        'stock_value_cost' => $stockValueCost,
-                        'stock_value_selling' => $stockValueSelling,
-                        'potential_profit' => $potentialProfit,
-                        'total_units_sold' => $totalSold,
-                        'total_units_sold_unit' => $soldUnit,
-                        'total_units_transferred' => $totalTransferred,
-                        'total_units_transferred_unit' => $transferredUnit,
-                        'total_units_adjusted' => abs($totalAdjusted),
-                        'total_units_adjusted_unit' => $adjustedUnit,
-                    ];
-                }
+        $reports = $pageRows->map(function ($row) use ($soldTotals, $transferredTotals, $adjustedTotals, $movementKey, $priceTypes) {
+            $key = $movementKey($row);
+            $sold = $soldTotals->get($key);
+            $transferred = $transferredTotals->get($key);
+            $adjusted = $adjustedTotals->get($key);
+            $data = (array) $row;
+            $data['product_id'] = (int) $data['product_id'];
+            $data['product_variant_id'] = $data['product_variant_id'] !== null ? (int) $data['product_variant_id'] : null;
+            $data['warehouse_id'] = (int) $data['warehouse_id'];
+            $data['current_quantity'] = (float) $data['current_quantity'];
+            foreach ($priceTypes as $type) {
+                $code = $type['code'];
+                $data[$code] = (float) ($data[$code] ?? 0);
+                $data[$code.'_stock_value'] = (float) ($data[$code.'_stock_value'] ?? 0);
             }
+            $data['total_units_sold'] = (float) ($sold->total_quantity ?? 0);
+            $data['sold_amount'] = (float) ($sold->total_amount ?? 0);
+            $data['sale_count'] = (int) ($sold->sale_count ?? 0);
+            $data['last_sale_date'] = $sold->last_sale_date ?? null;
+            $data['total_units_transferred'] = (float) ($transferred->total_quantity ?? 0);
+            $data['total_units_adjusted'] = (float) ($adjusted->total_quantity ?? 0);
+
+            return $data;
+        })->values();
+
+        $priceValues = [];
+        foreach ($priceTypes as $type) {
+            $code = $type['code'];
+            $priceValues[$code] = (float) ($stockSummary->{$code.'_stock_value'} ?? 0);
         }
+        $summary = [
+            'line_count' => (int) ($stockSummary->line_count ?? 0),
+            'product_count' => (int) ($stockSummary->product_count ?? 0),
+            'current_quantity' => (float) ($stockSummary->current_quantity ?? 0),
+            'sold_quantity' => (float) ($soldSummary->quantity ?? 0),
+            'sold_amount' => (float) ($soldSummary->amount ?? 0),
+            'sale_count' => (int) ($soldSummary->sale_count ?? 0),
+            'price_values' => $priceValues,
+            'cost_value' => (float) ($priceValues['cost'] ?? 0),
+        ];
 
         return response()->json([
-            'reports' => $data,
-            'totalRows' => count($data),
+            'reports' => $reports,
+            'totalRows' => $totalRows,
+            'summary' => $summary,
             'warehouses' => $warehouses,
+            'categories' => $categories,
+            'brands' => $brands,
+            'price_types' => $priceTypes->values(),
+            'period' => ['date_from' => $dateFrom, 'date_to' => $dateTo],
+        ]);
+    }
+
+    public function stock_inventory_valuation_sales(Request $request)
+    {
+        $this->authorizeForUser($request->user('api'), 'Stock_Inventory_Valuation', Product::class);
+
+        $validated = $request->validate([
+            'product_id' => ['required', 'integer', 'exists:products,id'],
+            'product_variant_id' => ['nullable', 'integer'],
+            'warehouse_id' => ['required', 'integer', 'exists:warehouses,id'],
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date'],
+        ]);
+
+        $user = $request->user('api');
+        if (! $user->is_all_warehouses) {
+            $allowed = UserWarehouse::where('user_id', $user->id)
+                ->where('warehouse_id', $validated['warehouse_id'])
+                ->exists();
+            abort_unless($allowed, 403, 'Warehouse access denied.');
+        }
+
+        $dateFrom = $request->filled('date_from')
+            ? Carbon::parse($request->date_from)->toDateString()
+            : Carbon::today()->subDays(29)->toDateString();
+        $dateTo = $request->filled('date_to')
+            ? Carbon::parse($request->date_to)->toDateString()
+            : Carbon::today()->toDateString();
+        if ($dateFrom > $dateTo) {
+            [$dateFrom, $dateTo] = [$dateTo, $dateFrom];
+        }
+
+        $query = SaleDetail::query()
+            ->join('sales', 'sales.id', '=', 'sale_details.sale_id')
+            ->leftJoin('clients', 'clients.id', '=', 'sales.client_id')
+            ->leftJoin('units', 'units.id', '=', 'sale_details.sale_unit_id')
+            ->where('sale_details.product_id', $validated['product_id'])
+            ->where('sales.warehouse_id', $validated['warehouse_id'])
+            ->whereNull('sales.deleted_at')
+            ->where('sales.statut', 'completed')
+            ->whereBetween('sales.date', [$dateFrom, $dateTo])
+            ->when(
+                ! empty($validated['product_variant_id']),
+                fn ($builder) => $builder->where('sale_details.product_variant_id', $validated['product_variant_id']),
+                fn ($builder) => $builder->whereNull('sale_details.product_variant_id')
+            );
+
+        $history = (clone $query)
+            ->select([
+                'sales.id as sale_id',
+                'sales.Ref as reference',
+                'sales.date',
+                DB::raw("COALESCE(clients.name, 'Walk-in Customer') as customer"),
+                'sale_details.quantity',
+                'units.ShortName as unit',
+                'sale_details.price as unit_price',
+                'sale_details.total as amount',
+                'sale_details.price_type',
+            ])
+            ->orderByDesc('sales.date')
+            ->orderByDesc('sales.id')
+            ->limit(250)
+            ->get();
+
+        $totals = (clone $query)
+            ->selectRaw('COUNT(DISTINCT sales.id) as sale_count, SUM(sale_details.quantity) as quantity, SUM(sale_details.total) as amount')
+            ->first();
+
+        return response()->json([
+            'sales' => $history,
+            'totalRows' => $history->count(),
+            'is_truncated' => (int) ($totals->sale_count ?? 0) > 250,
+            'summary' => [
+                'sale_count' => (int) ($totals->sale_count ?? 0),
+                'quantity' => (float) ($totals->quantity ?? 0),
+                'amount' => (float) ($totals->amount ?? 0),
+            ],
+        ]);
+    }
+
+    private function stockValuationPriceExpression(string $code): string
+    {
+        return match ($code) {
+            'company_rb_price' => "CASE WHEN stock.product_variant_id IS NOT NULL THEN COALESCE(NULLIF(pv.company_rb_price, 0), pv.cost, 0) ELSE COALESCE(NULLIF(p.company_rb_price, 0), p.cost, 0) END",
+            'mrp_price' => "CASE WHEN stock.product_variant_id IS NOT NULL THEN COALESCE(NULLIF(pv.mrp_price, 0), pv.price, 0) ELSE COALESCE(NULLIF(p.mrp_price, 0), p.price, 0) END",
+            'cost' => "CASE WHEN stock.product_variant_id IS NOT NULL THEN COALESCE(pv.cost, 0) ELSE COALESCE(p.cost, 0) END",
+            'fix_price' => "CASE WHEN stock.product_variant_id IS NOT NULL THEN COALESCE(NULLIF(pv.fix_price, 0), pv.price, 0) ELSE COALESCE(NULLIF(p.fix_price, 0), p.price, 0) END",
+            'price' => "CASE WHEN stock.product_variant_id IS NOT NULL THEN COALESCE(pv.price, 0) ELSE COALESCE(p.price, 0) END",
+            'wholesale_price' => "CASE WHEN stock.product_variant_id IS NOT NULL THEN COALESCE(NULLIF(pv.wholesale, 0), pv.price, 0) ELSE COALESCE(NULLIF(p.wholesale_price, 0), p.price, 0) END",
+            'min_price' => "CASE WHEN stock.product_variant_id IS NOT NULL THEN COALESCE(pv.min_price, 0) ELSE COALESCE(p.min_price, 0) END",
+            default => '0',
+        };
+    }
+
+    private function stockValuationPriceTypes()
+    {
+        $allowedFields = ['company_rb_price', 'mrp_price', 'cost', 'fix_price', 'price', 'wholesale_price', 'min_price'];
+
+        $types = Schema::hasTable('tax_price_types')
+            ? TaxPriceType::where('is_active', true)
+                ->whereIn('product_field', $allowedFields)
+                ->orderBy('sort_order')
+                ->get(['code', 'name', 'product_field'])
+                ->map(fn ($type) => [
+                    'code' => $type->code,
+                    'name' => $type->name,
+                    'product_field' => $type->product_field,
+                ])
+            : collect();
+
+        if ($types->isNotEmpty()) {
+            return $types;
+        }
+
+        return collect([
+            ['code' => 'company_rb_price', 'name' => 'Company/RB Price', 'product_field' => 'company_rb_price'],
+            ['code' => 'mrp_price', 'name' => 'MRP Price', 'product_field' => 'mrp_price'],
+            ['code' => 'cost', 'name' => 'Cost Price', 'product_field' => 'cost'],
+            ['code' => 'fix_price', 'name' => 'Fixed Price', 'product_field' => 'fix_price'],
+            ['code' => 'price', 'name' => 'Sale Price', 'product_field' => 'price'],
+            ['code' => 'wholesale_price', 'name' => 'Wholesale Price', 'product_field' => 'wholesale_price'],
+            ['code' => 'min_price', 'name' => 'Minimum Price', 'product_field' => 'min_price'],
         ]);
     }
 

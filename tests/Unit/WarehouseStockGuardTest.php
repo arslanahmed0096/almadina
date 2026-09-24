@@ -130,4 +130,58 @@ class WarehouseStockGuardTest extends TestCase
 
         $this->assertTrue(true);
     }
+
+    public function test_sale_is_rejected_when_selected_warehouse_row_is_missing(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        app(WarehouseStockGuard::class)->assertSaleAvailable(1, [[
+            'product_id' => 1,
+            'sale_unit_id' => 1,
+            'quantity' => 1,
+        ]]);
+    }
+
+    public function test_post_sale_invariant_rejects_negative_stock(): void
+    {
+        DB::table('product_warehouse')->insert([
+            'product_id' => 1,
+            'product_variant_id' => null,
+            'warehouse_id' => 1,
+            'qte' => -1,
+        ]);
+
+        $this->expectException(ValidationException::class);
+        app(WarehouseStockGuard::class)->assertSaleStockNonNegative(1, [[
+            'product_id' => 1,
+            'quantity' => 1,
+        ]]);
+    }
+
+    public function test_post_sale_invariant_rejects_a_missing_stock_row(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        app(WarehouseStockGuard::class)->assertSaleStockNonNegative(1, [[
+            'product_id' => 1,
+            'quantity' => 1,
+        ]]);
+    }
+
+    public function test_post_sale_invariant_allows_exact_depletion_to_zero(): void
+    {
+        DB::table('product_warehouse')->insert([
+            'product_id' => 1,
+            'product_variant_id' => null,
+            'warehouse_id' => 1,
+            'qte' => 0,
+        ]);
+
+        app(WarehouseStockGuard::class)->assertSaleStockNonNegative(1, [[
+            'product_id' => 1,
+            'quantity' => 1,
+        ]]);
+
+        $this->assertTrue(true);
+    }
 }

@@ -18,6 +18,65 @@ class WarehouseStockGuard
         $this->assertAvailable($warehouseId, $details, 'sale');
     }
 
+    /**
+     * Final invariant checked after a completed sale has adjusted stock.
+     * Every sale workflow must roll back if a missing row or legacy path
+     * would leave the selected warehouse with negative stock.
+     */
+    public function assertSaleStockNonNegative(int $warehouseId, array $details): void
+    {
+        $productIds = collect($details)->pluck('product_id')->filter()->map(fn ($id) => (int) $id)->unique()->values();
+        $products = Product::whereNull('deleted_at')
+            ->whereIn('id', $productIds)
+            ->get(['id', 'name', 'code', 'type'])
+            ->keyBy('id');
+        $checked = [];
+
+        foreach ($details as $index => $detail) {
+            $productId = (int) ($detail['product_id'] ?? 0);
+            $quantity = (float) ($detail['quantity'] ?? $detail['qty'] ?? 0);
+            $product = $products->get($productId);
+
+            if (! $product || $quantity <= 0 || $product->type === 'is_service') {
+                continue;
+            }
+
+            $variantValue = $detail['product_variant_id'] ?? null;
+            $variantId = $variantValue === null || $variantValue === '' ? null : (int) $variantValue;
+            $key = $productId.':'.($variantId ?? 'base');
+            if (isset($checked[$key])) {
+                continue;
+            }
+            $checked[$key] = true;
+
+            $query = product_warehouse::whereNull('deleted_at')
+                ->where('warehouse_id', $warehouseId)
+                ->where('product_id', $productId);
+            $variantId === null
+                ? $query->whereNull('product_variant_id')
+                : $query->where('product_variant_id', $variantId);
+
+            $stock = $query->lockForUpdate()->first();
+            if ($stock && (float) $stock->qte >= -0.000001) {
+                continue;
+            }
+
+            $productLabel = $this->productLabel($product);
+            $message = $stock
+                ? sprintf(
+                    'Sale not allowed: stock for %s in the selected warehouse would become negative (remaining %s).',
+                    $productLabel,
+                    $this->formatQuantity((float) $stock->qte)
+                )
+                : sprintf(
+                    'Sale not allowed: %s is not available in the selected warehouse.',
+                    $productLabel
+                );
+
+            $this->throwStockValidationException((int) $index, $message);
+        }
+    }
+
     /** Assert that a source warehouse can fulfil every transfer line. */
     public function assertTransferAvailable(int $warehouseId, array $details): void
     {
@@ -98,10 +157,7 @@ class WarehouseStockGuard
                 continue;
             }
 
-            $productLabel = trim((string) $item['product']->name);
-            if ($item['product']->code) {
-                $productLabel .= ' ('.$item['product']->code.')';
-            }
+            $productLabel = $this->productLabel($item['product']);
 
             $action = $operation === 'sale' ? 'Sale' : 'Transfer';
             $message = sprintf(
@@ -112,17 +168,32 @@ class WarehouseStockGuard
                 $this->formatQuantity($available)
             );
 
-            $exception = ValidationException::withMessages([
-                'details.'.$item['first_index'].'.quantity' => [$message],
-                'stock' => [$message],
-            ]);
-            $exception->response = response()->json([
-                'message' => $message,
-                'errors' => $exception->errors(),
-            ], 422);
-
-            throw $exception;
+            $this->throwStockValidationException((int) $item['first_index'], $message);
         }
+    }
+
+    private function productLabel(Product $product): string
+    {
+        $label = trim((string) $product->name);
+        if ($product->code) {
+            $label .= ' ('.$product->code.')';
+        }
+
+        return $label;
+    }
+
+    private function throwStockValidationException(int $detailIndex, string $message): void
+    {
+        $exception = ValidationException::withMessages([
+            'details.'.$detailIndex.'.quantity' => [$message],
+            'stock' => [$message],
+        ]);
+        $exception->response = response()->json([
+            'message' => $message,
+            'errors' => $exception->errors(),
+        ], 422);
+
+        throw $exception;
     }
 
     private function toBaseQuantity(float $quantity, ?Unit $unit): float

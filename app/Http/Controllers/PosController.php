@@ -200,6 +200,7 @@ class PosController extends BaseController
                         } else {
                             $product_warehouse = product_warehouse::where('warehouse_id', $order->warehouse_id)
                                 ->where('product_id', $value['product_id'])
+                                ->whereNull('product_variant_id')
                                 ->first();
                         }
 
@@ -213,6 +214,11 @@ class PosController extends BaseController
                         }
                     }
                 }
+
+                app(WarehouseStockGuard::class)->assertSaleStockNonNegative(
+                    (int) $order->warehouse_id,
+                    $data
+                );
 
                 SaleDetail::insert($orderDetails);
 
@@ -1093,6 +1099,7 @@ class PosController extends BaseController
                     } else {
                         $product_warehouse = product_warehouse::where('warehouse_id', $order->warehouse_id)
                             ->where('product_id', $value['product_id'])
+                            ->whereNull('product_variant_id')
                             ->first();
                         if ($unit && $product_warehouse) {
                             if ($unit->operator == '/') {
@@ -1104,6 +1111,11 @@ class PosController extends BaseController
                         }
                     }
                 }
+
+                app(WarehouseStockGuard::class)->assertSaleStockNonNegative(
+                    (int) $order->warehouse_id,
+                    $data
+                );
 
                 SaleDetail::insert($orderDetails);
 
