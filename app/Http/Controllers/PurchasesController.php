@@ -449,7 +449,7 @@ class PurchasesController extends BaseController
                 // Gate Pass-linked invoices are ledger entries; physical stock is posted from accepted Gate Passes only.
                 $stockQuantity = $order->inventory_already_received ? 0 : (float) $value['quantity'];
                 if ($order->statut == 'received' && $stockQuantity > 0) {
-                    $this->increasePurchaseStock($order, $value, $unit, $stockQuantity);
+                    $this->increasePurchaseStock((int) $order->warehouse_id, $value, $unit, $stockQuantity);
                 }
             }
             PurchaseDetail::insert($orderDetails);
@@ -671,17 +671,24 @@ class PurchasesController extends BaseController
         }
     }
 
-    private function increasePurchaseStock(Purchase $purchase, array $detail, ?Unit $unit, float $quantity): void
+    private function increasePurchaseStock(int $warehouseId, array $detail, ?Unit $unit, float $quantity): void
     {
         if (! $unit || (float) $unit->operator_value <= 0) {
-            return;
+            throw ValidationException::withMessages([
+                'details' => ['Received purchase stock could not be posted because a purchase unit is missing or invalid.'],
+            ]);
+        }
+        if ($quantity <= 0) {
+            throw ValidationException::withMessages([
+                'details' => ['Received purchase quantity must be greater than zero.'],
+            ]);
         }
 
         $baseQuantity = $unit->operator === '/'
             ? $quantity / (float) $unit->operator_value
             : $quantity * (float) $unit->operator_value;
         $query = product_warehouse::whereNull('deleted_at')
-            ->where('warehouse_id', $purchase->warehouse_id)
+            ->where('warehouse_id', $warehouseId)
             ->where('product_id', $detail['product_id']);
         ! empty($detail['product_variant_id'] ?? null)
             ? $query->where('product_variant_id', $detail['product_variant_id'])
@@ -689,7 +696,7 @@ class PurchasesController extends BaseController
         $stock = $query->lockForUpdate()->first();
         if (! $stock) {
             $stock = product_warehouse::create([
-                'warehouse_id' => $purchase->warehouse_id,
+                'warehouse_id' => $warehouseId,
                 'product_id' => $detail['product_id'],
                 'product_variant_id' => ($detail['product_variant_id'] ?? null) ?: null,
                 'qte' => 0,
@@ -814,6 +821,7 @@ class PurchasesController extends BaseController
                                 $product_warehouse = product_warehouse::where('deleted_at', '=', null)
                                     ->where('warehouse_id', $current_Purchase->warehouse_id)
                                     ->where('product_id', $value['product_id'])
+                                    ->whereNull('product_variant_id')
                                     ->first();
 
                                 if ($unit && $product_warehouse) {
@@ -844,41 +852,12 @@ class PurchasesController extends BaseController
                         $unit_prod = Unit::where('id', $prod_detail['purchase_unit_id'])->first();
 
                         if ($request['statut'] == 'received') {
-
-                            if ($prod_detail['product_variant_id'] !== null) {
-                                $product_warehouse = product_warehouse::where('deleted_at', '=', null)
-                                    ->where('warehouse_id', $request->warehouse_id)
-                                    ->where('product_id', $prod_detail['product_id'])
-                                    ->where('product_variant_id', $prod_detail['product_variant_id'])
-                                    ->first();
-
-                                if ($unit_prod && $product_warehouse) {
-                                    if ($unit_prod->operator == '/') {
-                                        $product_warehouse->qte += $prod_detail['quantity'] / $unit_prod->operator_value;
-                                    } else {
-                                        $product_warehouse->qte += $prod_detail['quantity'] * $unit_prod->operator_value;
-                                    }
-
-                                    $product_warehouse->save();
-                                }
-
-                            } else {
-                                $product_warehouse = product_warehouse::where('deleted_at', '=', null)
-                                    ->where('warehouse_id', $request->warehouse_id)
-                                    ->where('product_id', $prod_detail['product_id'])
-                                    ->first();
-
-                                if ($unit_prod && $product_warehouse) {
-                                    if ($unit_prod->operator == '/') {
-                                        $product_warehouse->qte += $prod_detail['quantity'] / $unit_prod->operator_value;
-                                    } else {
-                                        $product_warehouse->qte += $prod_detail['quantity'] * $unit_prod->operator_value;
-                                    }
-
-                                    $product_warehouse->save();
-                                }
-                            }
-
+                            $this->increasePurchaseStock(
+                                (int) $request->warehouse_id,
+                                $prod_detail,
+                                $unit_prod,
+                                (float) $prod_detail['quantity']
+                            );
                         }
 
                         $orderDetails['purchase_id'] = $id;
@@ -1130,6 +1109,7 @@ class PurchasesController extends BaseController
                             $product_warehouse = product_warehouse::where('deleted_at', '=', null)
                                 ->where('warehouse_id', $current_Purchase->warehouse_id)
                                 ->where('product_id', $value['product_id'])
+                                ->whereNull('product_variant_id')
                                 ->first();
 
                             if ($unit && $product_warehouse) {
@@ -2710,20 +2690,12 @@ class PurchasesController extends BaseController
                 ];
 
                 if ($order->statut == 'received') {
-
-                    $product_warehouse = product_warehouse::where('deleted_at', '=', null)
-                        ->where('warehouse_id', $order->warehouse_id)
-                        ->where('product_id', $product->id)
-                        ->first();
-
-                    if ($unit && $product_warehouse) {
-                        if ($unit->operator == '/') {
-                            $product_warehouse->qte += $value['qty'] / $unit->operator_value;
-                        } else {
-                            $product_warehouse->qte += $value['qty'] * $unit->operator_value;
-                        }
-                        $product_warehouse->save();
-                    }
+                    $this->increasePurchaseStock(
+                        (int) $order->warehouse_id,
+                        ['product_id' => $product->id, 'product_variant_id' => null],
+                        $unit,
+                        (float) $value['qty']
+                    );
                 }
             }
             PurchaseDetail::insert($orderDetails);
