@@ -14,6 +14,7 @@ use Illuminate\Validation\ValidationException;
 class PricingLevelController extends Controller
 {
     private const PRICE_FIELDS = [
+        'invoice_print_price',
         'company_rb_price',
         'mrp_price',
         'cost',
@@ -257,6 +258,7 @@ class PricingLevelController extends Controller
             'details.*.pricing_margins.*.type' => ['required', 'in:percentage,fixed'],
             'details.*.pricing_margins.*.value' => ['required', 'numeric', 'min:0'],
             'details.*.pricing_margins.*.label' => ['nullable', 'string', 'max:100'],
+            'details.*.pricing_margins.*.round_to' => ['nullable', 'integer', 'in:1,10,50,100,500,1000'],
             'details.*.cost_updated' => ['sometimes', 'boolean'],
         ];
         foreach (self::PRICE_FIELDS as $field) {
@@ -327,6 +329,7 @@ class PricingLevelController extends Controller
                     'type' => $margin['type'],
                     'value' => (float) $margin['value'],
                     'label' => trim((string) ($margin['label'] ?? '')),
+                    'round_to' => (int) ($margin['round_to'] ?? 1),
                 ])->values()->all()
                 : null;
             $prepared[] = $row;
@@ -346,6 +349,7 @@ class PricingLevelController extends Controller
                     ->whereNull('deleted_at')
                     ->findOrFail($detail['product_variant_id']);
                 $attributes = [
+                    'invoice_print_price' => $prices['invoice_print_price'],
                     'company_rb_price' => $prices['company_rb_price'],
                     'mrp_price' => $prices['mrp_price'],
                     'cost' => $prices['cost'],
@@ -395,6 +399,7 @@ class PricingLevelController extends Controller
                 'purchase_price' => $model->purchase_price,
                 'pricing_margins' => $model->pricing_margins,
                 'fix_price' => $model->fix_price,
+                'invoice_print_price' => $model->invoice_print_price,
                 'price' => $model->price,
                 'wholesale_price' => $model instanceof ProductVariant
                     ? $model->wholesale

@@ -72,4 +72,32 @@ class ProductMarginPricingServiceTest extends TestCase
         $this->assertSame('VIP Price', $product->pricing_margins[4]['label']);
         $this->assertCount(5, $product->pricing_margins);
     }
+
+    public function test_each_margin_can_round_up_to_a_different_increment(): void
+    {
+        $product = new Product(['purchase_price' => 21475]);
+        (new ProductMarginPricingService)->apply($product, [
+            ['type' => 'percentage', 'value' => 5, 'round_to' => 100],
+            ['type' => 'percentage', 'value' => 6, 'round_to' => 100],
+            ['type' => 'percentage', 'value' => 8, 'round_to' => 500],
+            ['type' => 'percentage', 'value' => 18, 'round_to' => 500],
+        ]);
+
+        $this->assertSame(22600.0, (float) $product->min_price);
+        $this->assertSame(22800.0, (float) $product->wholesale_price);
+        $this->assertSame(23500.0, (float) $product->price);
+        $this->assertSame(25500.0, (float) $product->fix_price);
+        $this->assertSame(500, $product->pricing_margins[2]['round_to']);
+        $this->assertSame(2025.0, (float) $product->pricing_margins[2]['profit']);
+    }
+
+    public function test_unknown_rounding_increment_is_rejected(): void
+    {
+        $product = new Product(['purchase_price' => 1000]);
+        $this->expectException(ValidationException::class);
+
+        (new ProductMarginPricingService)->apply($product, [
+            ['type' => 'percentage', 'value' => 10, 'round_to' => 25],
+        ]);
+    }
 }

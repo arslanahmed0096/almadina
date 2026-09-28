@@ -791,7 +791,7 @@
                       <br v-show="detail_invoice.is_imei && detail_invoice.imei_number !==null">
                       <span v-show="detail_invoice.is_imei && detail_invoice.imei_number !==null ">{{$t('IMEI_SN')}} : {{detail_invoice.imei_number}}</span>
                       <br>
-                      <span>{{formatNumber(detail_invoice.quantity,2)}} {{detail_invoice.unit_sale}} x {{ formatPriceDisplay(detail_invoice.total/detail_invoice.quantity,2) }}</span>
+                      <span>{{formatNumber(detail_invoice.quantity,2)}} {{detail_invoice.unit_sale}} x {{ formatPriceDisplay(detail_invoice.print_unit_price || detail_invoice.total/detail_invoice.quantity,2) }}</span>
                     </td>
                     <td style="text-align:right;vertical-align:bottom">
                       {{ formatPriceDisplay(detail_invoice.total,2) }}
@@ -960,7 +960,7 @@
                       {{formatNumber(detail_invoice.quantity,2)}} {{detail_invoice.unit_sale}}
                     </td>
                     <td style="text-align:right">
-                      {{formatNumber(detail_invoice.total/detail_invoice.quantity,2)}}
+                      {{formatNumber(detail_invoice.print_unit_price || detail_invoice.total/detail_invoice.quantity,2)}}
                     </td>
                     <td style="text-align:right">
                       {{formatNumber(detail_invoice.total,2)}}
@@ -1113,7 +1113,7 @@
                       <br v-show="detail_invoice.is_imei && detail_invoice.imei_number !==null">
                       <span v-show="detail_invoice.is_imei && detail_invoice.imei_number !==null ">{{$t('IMEI_SN')}} : {{detail_invoice.imei_number}}</span>
                       <br>
-                      <small>{{formatNumber(detail_invoice.quantity,2)}} {{detail_invoice.unit_sale}} x {{ formatPriceDisplay(detail_invoice.total/detail_invoice.quantity,2) }}</small>
+                      <small>{{formatNumber(detail_invoice.quantity,2)}} {{detail_invoice.unit_sale}} x {{ formatPriceDisplay(detail_invoice.print_unit_price || detail_invoice.total/detail_invoice.quantity,2) }}</small>
                     </td>
                     <td style="text-align:right;vertical-align:bottom">
                       {{ formatPriceWithSymbol(invoice_pos.symbol, detail_invoice.total, 2) }}
@@ -1293,7 +1293,7 @@
                       <span v-show="detail_invoice.is_imei && detail_invoice.imei_number !==null ">IMEI/SN الرقم التسلسلي : {{detail_invoice.imei_number}}</span>
                     </td>
                     <td style="text-align:center">{{formatNumber(detail_invoice.quantity,2)}} {{detail_invoice.unit_sale}}</td>
-                    <td style="text-align:center">{{ formatPriceDisplay(detail_invoice.total/detail_invoice.quantity,2) }}</td>
+                    <td style="text-align:center">{{ formatPriceDisplay(detail_invoice.print_unit_price || detail_invoice.total/detail_invoice.quantity,2) }}</td>
                     <td style="text-align:right">{{ formatPriceDisplay(detail_invoice.total,2) }}</td>
                   </tr>
                 </tbody>
@@ -5722,6 +5722,7 @@ export default {
         this.invoice_pos.details = response.data.details;
         this.invoice_pos.setting = response.data.setting;
         this.invoice_pos.symbol = response.data.symbol;
+        this.invoice_pos.taxes = response.data.taxes || [];
         this.invoice_pos.zatca_qr = response.data.zatca_qr;
         this.public_invoice_url = response.data.public_invoice_url || '';
         this.payments = response.data.payments;

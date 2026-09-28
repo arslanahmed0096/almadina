@@ -97,10 +97,11 @@
               <th rowspan="2">Brand</th>
               <th rowspan="2">Category</th>
               <th rowspan="2">Purchase Price</th>
-              <th colspan="7" class="pricing-group-heading">Pricing Level</th>
+              <th colspan="8" class="pricing-group-heading">Pricing Level</th>
               <th rowspan="2" class="margin-icon-heading"><lucide-icon name="percent" /></th>
             </tr>
             <tr>
+              <th>Fixed Price</th>
               <th>Company RB</th>
               <th>MRP</th>
               <th>Product Cost</th>
@@ -172,7 +173,8 @@
 
     <b-modal
       id="pricing-margin-modal"
-      size="lg"
+      size="xl"
+      dialog-class="pricing-margin-dialog"
       centered
       hide-footer
       title="Purchase Price Margins"
@@ -198,7 +200,7 @@
         <div class="margin-modal-heading">
           <div>
             <h5>Margins</h5>
-            <p>The first four rows update Minimum, Wholesale, Al-Madina, and Regular prices.</p>
+            <p>The first four rows update Minimum, Wholesale, Al-Madina, and Regular prices. Choose a separate round-up value for each price.</p>
           </div>
           <b-button
             size="sm"
@@ -244,6 +246,11 @@
             </b-form-group>
           </b-col>
           <b-col lg="2" md="4">
+            <b-form-group label="Round Up To">
+              <b-form-select v-model.number="margin.round_to" :options="roundingOptions" />
+            </b-form-group>
+          </b-col>
+          <b-col lg="1" md="4">
             <b-form-group label="Profit">
               <b-form-input :value="marginProfit(activeMarginRow, margin)" readonly />
             </b-form-group>
@@ -253,7 +260,7 @@
               <b-form-input :value="marginPrice(activeMarginRow, margin)" readonly />
             </b-form-group>
           </b-col>
-          <b-col lg="2" md="4" class="mb-3 text-center">
+          <b-col lg="1" md="4" class="mb-3 text-center">
             <b-button v-if="index >= 4" block variant="outline-danger" @click="removeMargin(index)">Remove</b-button>
           </b-col>
         </b-row>
@@ -297,7 +304,16 @@ export default {
         { text: "%", value: "percentage" },
         { text: "Fixed amount", value: "fixed" }
       ],
+      roundingOptions: [
+        { text: "Exact (1)", value: 1 },
+        { text: "Next 10", value: 10 },
+        { text: "Next 50", value: 50 },
+        { text: "Next 100", value: 100 },
+        { text: "Next 500", value: 500 },
+        { text: "Next 1,000", value: 1000 }
+      ],
       priceFields: [
+        "invoice_print_price",
         "company_rb_price",
         "mrp_price",
         "cost",
@@ -362,6 +378,7 @@ export default {
       return (Array.isArray(margins) ? margins : []).map((margin, index) => ({
         type: margin && margin.type === "fixed" ? "fixed" : "percentage",
         value: margin && margin.value !== undefined && margin.value !== null ? margin.value : "",
+        round_to: this.roundingIncrement(margin),
         label: index < 4
           ? ["Minimum Price", "Wholesale Price", "Al-Madina Price", "Regular Price"][index]
           : (margin && String(margin.label || "").trim()) || `Custom Price ${index + 1}`
@@ -374,6 +391,7 @@ export default {
         normalized.push({
           type: "percentage",
           value: "",
+          round_to: 1,
           label: ["Minimum Price", "Wholesale Price", "Al-Madina Price", "Regular Price"][index]
         });
       }
@@ -381,6 +399,10 @@ export default {
     },
     wholeNumber(value) {
       return Math.round(this.numericValue(value));
+    },
+    roundingIncrement(margin) {
+      const increment = Number(margin && margin.round_to);
+      return [1, 10, 50, 100, 500, 1000].includes(increment) ? increment : 1;
     },
     marginTierName(index, margin = null) {
       return ["Minimum Price", "Wholesale Price", "Al-Madina Price", "Regular Price"][index]
@@ -401,13 +423,14 @@ export default {
       this.marginDraft.push({
         type: "percentage",
         value: "",
+        round_to: 1,
         label: `Custom Price ${this.marginDraft.length + 1}`
       });
     },
     removeMargin(index) {
       this.marginDraft.splice(index, 1);
     },
-    marginProfit(row, margin) {
+    rawMarginProfit(row, margin) {
       const base = Number(this.activePurchasePrice(row));
       const amount = Number(margin.value);
       if (!Number.isFinite(base) || !Number.isFinite(amount) || margin.value === "") return "";
@@ -415,9 +438,17 @@ export default {
     },
     marginPrice(row, margin) {
       const base = Number(this.activePurchasePrice(row));
-      const profit = Number(this.marginProfit(row, margin));
+      const profit = Number(this.rawMarginProfit(row, margin));
       if (!Number.isFinite(base) || !Number.isFinite(profit) || margin.value === "") return "";
-      return Math.round(base + profit);
+      const rawPrice = Math.round(base + profit);
+      const increment = this.roundingIncrement(margin);
+      return Math.ceil(rawPrice / increment) * increment;
+    },
+    marginProfit(row, margin) {
+      const base = Number(this.activePurchasePrice(row));
+      const price = Number(this.marginPrice(row, margin));
+      if (!Number.isFinite(base) || !Number.isFinite(price) || margin.value === "") return "";
+      return Math.round(price - base);
     },
     isMarginAppliedField(row, field) {
       const index = { min_price: 0, wholesale_price: 1, price: 2, fix_price: 3 }[field];
@@ -706,7 +737,8 @@ export default {
           pricing_margins: (row.pricing_margins || []).map(margin => ({
             type: margin.type,
             value: this.numericValue(margin.value),
-            label: margin.label
+            label: margin.label,
+            round_to: this.roundingIncrement(margin)
           }))
         };
         this.priceFields.forEach(field => { detail[field] = this.numericValue(row[field]); });
@@ -815,7 +847,7 @@ export default {
 }
 
 .pricing-table {
-  min-width: 1450px;
+  min-width: 1550px;
 }
 
 .pricing-table thead th {
@@ -1075,5 +1107,12 @@ export default {
   .margin-modal-product__price {
     text-align: left;
   }
+}
+</style>
+
+<style>
+.pricing-margin-dialog {
+  width: calc(100vw - 32px);
+  max-width: 1180px;
 }
 </style>

@@ -87,6 +87,7 @@ class DailyReportBranchDetailsTest extends TestCase
         $this->assertSame('Order', $details['transactions'][0]['transaction_type']);
         $this->assertSame('Sales Person', $details['transactions'][0]['sold_by']);
         $this->assertSame(2.0, $details['transactions'][0]['quantity']);
+        $this->assertSame(30000.0, $details['transactions'][0]['items'][0]['unit_price']);
 
         $this->assertCount(2, $details['receipts']);
         $laterPayment = $details['receipts']->firstWhere('receipt_reference', 'PAY-LATER');
@@ -94,6 +95,7 @@ class DailyReportBranchDetailsTest extends TestCase
         $this->assertSame(50000.0, $laterPayment['amount']);
         $this->assertSame(40000.0, $laterPayment['remaining_after_receipt']);
         $this->assertSame('Refrigerator Model RF-120', $laterPayment['items'][0]['model']);
+        $this->assertSame(120000.0, $laterPayment['items'][0]['unit_price']);
 
         $advance = $details['receipts']->firstWhere('receipt_reference', 'PAY-ADVANCE');
         $this->assertSame('Advance payment', $advance['receipt_type']);

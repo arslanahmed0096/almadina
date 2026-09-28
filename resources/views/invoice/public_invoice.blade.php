@@ -157,6 +157,7 @@
                     <th>Product / المنتج</th>
                     <th style="text-align:center">Qty / كمية</th>
                     <th style="text-align:center">Rate / معدل</th>
+                    <th style="text-align:center">Discount / خصم</th>
                     <th style="text-align:right">Amount / مجموع</th>
                 </tr>
             </thead>
@@ -165,7 +166,8 @@
                 <tr>
                     <td>{{ $d['name'] }}</td>
                     <td>{{ number_format($d['quantity'], 2) }} {{ $d['unit_sale'] }}</td>
-                    <td>{{ number_format($d['total'] / max($d['quantity'], 1), 2) }}</td>
+                    <td>{{ number_format($d['print_unit_price'], 2) }}</td>
+                    <td>{{ number_format($d['print_discount'], 2) }}</td>
                     <td>{{ number_format($d['total'], 2) }}</td>
                 </tr>
                 @endforeach
@@ -175,13 +177,13 @@
         {{-- Totals --}}
         @php
             $subtotal = collect($details)->sum('total');
-            $taxNet = (float) $sale->TaxNet;
-            $discount = (float) $sale->discount;
-            $discountMethod = $sale->discount_Method ?? '2';
-            $shipping = (float) $sale->shipping;
-            $grandTotal = (float) $sale->GrandTotal;
-            $paidAmount = (float) $sale->paid_amount;
-            $due = $grandTotal - $paidAmount;
+            $taxNet = (float) $printSummary['tax'];
+            $discount = (float) $printSummary['discount'];
+            $discountMethod = $printSummary['discount_method'];
+            $shipping = (float) $printSummary['shipping'];
+            $grandTotal = (float) $printSummary['grand_total'];
+            $paidAmount = (float) $printSummary['paid_amount'];
+            $due = (float) $printSummary['due'];
 
             if ($discountMethod === '1') {
                 $discountAmount = ($subtotal + $taxNet + $shipping) * $discount / (100 + $discount);

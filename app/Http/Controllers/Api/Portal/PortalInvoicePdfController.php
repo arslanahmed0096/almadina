@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Sale;
+use App\Models\SaleDetail;
 use App\Models\Setting;
 use App\Models\Unit;
 use App\utils\helpers;
@@ -36,23 +37,24 @@ class PortalInvoicePdfController extends Controller
         $symbol = $helpers->Get_Currency_Code();
 
         $sale_data = $sale;
+        $printSummary = SaleDetail::printableSaleSummary($sale_data);
         $sale = [];
         $sale['client_name'] = $sale_data->client->name ?? '';
         $sale['client_phone'] = $sale_data->client->phone ?? '';
         $sale['client_adr'] = $sale_data->client->adresse ?? '';
         $sale['client_email'] = $sale_data->client->email ?? '';
         $sale['client_tax'] = $sale_data->client->tax_number ?? '';
-        $sale['TaxNet'] = number_format($sale_data->TaxNet ?? 0, 2, '.', '');
-        $sale['discount'] = number_format($sale_data->discount ?? 0, 2, '.', '');
-        $sale['discount_Method'] = $sale_data->discount_Method ?? '2';
-        $sale['discount_from_points'] = number_format($sale_data->discount_from_points ?? 0, 2, '.', '');
-        $sale['shipping'] = number_format($sale_data->shipping ?? 0, 2, '.', '');
+        $sale['TaxNet'] = number_format($printSummary['tax'], 2, '.', '');
+        $sale['discount'] = number_format($printSummary['discount'], 2, '.', '');
+        $sale['discount_Method'] = $printSummary['discount_method'];
+        $sale['discount_from_points'] = number_format($printSummary['points_discount'], 2, '.', '');
+        $sale['shipping'] = number_format($printSummary['shipping'], 2, '.', '');
         $sale['statut'] = $sale_data->statut;
         $sale['Ref'] = $sale_data->Ref;
         $sale['date'] = $sale_data->date . ' ' . ($sale_data->time ?? '');
-        $sale['GrandTotal'] = number_format($sale_data->GrandTotal, 2, '.', '');
-        $sale['paid_amount'] = number_format($sale_data->paid_amount ?? 0, 2, '.', '');
-        $sale['due'] = number_format((float) $sale_data->GrandTotal - (float) ($sale_data->paid_amount ?? 0), 2, '.', '');
+        $sale['GrandTotal'] = number_format($printSummary['grand_total'], 2, '.', '');
+        $sale['paid_amount'] = number_format($printSummary['paid_amount'], 2, '.', '');
+        $sale['due'] = number_format($printSummary['due'], 2, '.', '');
         $sale['payment_status'] = $sale_data->payment_statut;
         $sale['sales_agent_name'] = $sale_data->salesAgent
             ? Str::title(Str::lower(trim((string) $sale_data->salesAgent->name)))
@@ -87,26 +89,28 @@ class PortalInvoicePdfController extends Controller
 
             $data['detail_id'] = ++$detail_id;
             $data['quantity'] = number_format($detail->quantity, 2, '.', '');
-            $data['total'] = number_format($detail->total, 2, '.', '');
+            $data['total'] = number_format($detail->printableLineTotal(), 2, '.', '');
             $data['unitSale'] = $unit ? $unit->ShortName : '';
-            $data['price'] = number_format($detail->price, 2, '.', '');
+            $printUnitPrice = $detail->printableUnitPrice();
+            $actualDiscountNet = ($detail->discount_method ?? '2') == '2'
+                ? (float) ($detail->discount ?? 0)
+                : (float) $detail->price * (float) ($detail->discount ?? 0) / 100;
+            $data['price'] = number_format($printUnitPrice, 2, '.', '');
+            $data['DiscountNet'] = number_format($detail->printableDiscountNet(), 2, '.', '');
 
-            if (($detail->discount_method ?? '2') == '2') {
-                $data['DiscountNet'] = number_format($detail->discount ?? 0, 2, '.', '');
-            } else {
-                $data['DiscountNet'] = number_format(($detail->price * ($detail->discount ?? 0) / 100), 2, '.', '');
-            }
+            $tax_price = ($detail->TaxNet ?? 0) * (($detail->price - $actualDiscountNet) / 100);
+            $data['Unit_price'] = number_format($printUnitPrice, 2, '.', '');
+            $data['discount'] = number_format($detail->usesInvoicePrintPrice() ? 0 : ($detail->discount ?? 0), 2, '.', '');
 
-            $tax_price = ($detail->TaxNet ?? 0) * (($detail->price - ($data['DiscountNet'] ?? 0)) / 100);
-            $data['Unit_price'] = number_format($detail->price, 2, '.', '');
-            $data['discount'] = number_format($detail->discount ?? 0, 2, '.', '');
-
-            if (($detail->tax_method ?? '1') == '1') {
-                $data['Net_price'] = $detail->price - ($data['DiscountNet'] ?? 0);
+            if ($detail->usesInvoicePrintPrice()) {
+                $data['Net_price'] = $printUnitPrice;
+                $data['taxe'] = number_format(0, 2, '.', '');
+            } elseif (($detail->tax_method ?? '1') == '1') {
+                $data['Net_price'] = $detail->price - $actualDiscountNet;
                 $data['taxe'] = number_format($tax_price, 2, '.', '');
             } else {
-                $data['Net_price'] = $detail->price - ($data['DiscountNet'] ?? 0) - $tax_price;
-                $data['taxe'] = number_format($detail->price - $data['Net_price'] - ($data['DiscountNet'] ?? 0), 2, '.', '');
+                $data['Net_price'] = $detail->price - $actualDiscountNet - $tax_price;
+                $data['taxe'] = number_format($detail->price - $data['Net_price'] - $actualDiscountNet, 2, '.', '');
             }
             $data['is_imei'] = optional($detail->product)->is_imei ?? 0;
             $data['imei_number'] = $detail->imei_number ?? '';
@@ -119,6 +123,10 @@ class PortalInvoicePdfController extends Controller
             'setting' => $settings,
             'sale' => $sale,
             'details' => $details,
+            'taxes' => \App\Models\TransactionTaxSnapshot::where(
+                'transaction_type',
+                $sale_data->is_pos ? 'pos' : 'sale_invoice'
+            )->where('transaction_id', $sale_data->id)->orderBy('priority')->get(),
         ])->render();
 
         $arabic = new Arabic;

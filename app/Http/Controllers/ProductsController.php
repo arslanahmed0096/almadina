@@ -189,6 +189,7 @@ class ProductsController extends BaseController
             $item['brand'] = $product->brand ? $product->brand->name : 'N/D';
             $item['product_type'] = $product->type;
             if ($isPricingRequest && $canViewPricing) {
+                $item['invoice_print_price'] = (float) $product->invoice_print_price;
                 $item['company_rb_price'] = (float) $product->company_rb_price;
                 $item['mrp_price'] = (float) $product->mrp_price;
                 $item['fix_price'] = (float) $product->fix_price;
@@ -278,6 +279,7 @@ class ProductsController extends BaseController
                             'id' => $variant->id,
                             'name' => $variant->name,
                             'code' => $variant->code,
+                            'invoice_print_price' => (float) $variant->invoice_print_price,
                             'company_rb_price' => (float) $variant->company_rb_price,
                             'mrp_price' => (float) $variant->mrp_price,
                             'cost' => (float) $variant->cost,
@@ -469,6 +471,7 @@ class ProductsController extends BaseController
 
         $product = Product::visibleTo($request->user('api'))->whereNull('deleted_at')->findOrFail($id);
         $priceRules = [
+            'invoice_print_price' => ['required', 'numeric', 'min:0'],
             'company_rb_price' => ['required', 'numeric', 'min:0'],
             'mrp_price' => ['required', 'numeric', 'min:0'],
             'cost' => ['required', 'numeric', 'min:0'],
@@ -482,6 +485,7 @@ class ProductsController extends BaseController
             $request->validate([
                 'variants' => ['required', 'array', 'min:1'],
                 'variants.*.id' => ['required', 'integer', 'distinct'],
+                'variants.*.invoice_print_price' => $priceRules['invoice_print_price'],
                 'variants.*.company_rb_price' => $priceRules['company_rb_price'],
                 'variants.*.mrp_price' => $priceRules['mrp_price'],
                 'variants.*.cost' => $priceRules['cost'],
@@ -498,6 +502,7 @@ class ProductsController extends BaseController
                         ->findOrFail($variantData['id']);
                     $costChanged = (float) $variant->cost !== (float) $variantData['cost'];
                     $variant->fill([
+                        'invoice_print_price' => $variantData['invoice_print_price'],
                         'company_rb_price' => $variantData['company_rb_price'],
                         'mrp_price' => $variantData['mrp_price'],
                         'cost' => $variantData['cost'],
@@ -555,6 +560,7 @@ class ProductsController extends BaseController
             'categories_display' => $product->categories->isNotEmpty()
                 ? $product->categories->pluck('name')->filter()->unique()->values()->implode("\n")
                 : optional($product->category)->name,
+            'invoice_print_price' => (float) $product->invoice_print_price,
             'company_rb_price' => (float) $product->company_rb_price,
             'mrp_price' => (float) $product->mrp_price,
             'cost' => (float) $product->cost,
@@ -583,6 +589,7 @@ class ProductsController extends BaseController
                     'id' => $variant->id,
                     'name' => $variant->name,
                     'code' => $variant->code,
+                    'invoice_print_price' => (float) $variant->invoice_print_price,
                     'company_rb_price' => (float) $variant->company_rb_price,
                     'mrp_price' => (float) $variant->mrp_price,
                     'cost' => (float) $variant->cost,

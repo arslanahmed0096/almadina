@@ -6682,7 +6682,7 @@ class ReportController extends BaseController
         return match ($code) {
             'company_rb_price' => "CASE WHEN stock.product_variant_id IS NOT NULL THEN COALESCE(NULLIF(pv.company_rb_price, 0), pv.cost, 0) ELSE COALESCE(NULLIF(p.company_rb_price, 0), p.cost, 0) END",
             'mrp_price' => "CASE WHEN stock.product_variant_id IS NOT NULL THEN COALESCE(NULLIF(pv.mrp_price, 0), pv.price, 0) ELSE COALESCE(NULLIF(p.mrp_price, 0), p.price, 0) END",
-            'cost' => "CASE WHEN stock.product_variant_id IS NOT NULL THEN COALESCE(pv.cost, 0) ELSE COALESCE(p.cost, 0) END",
+            'cost' => "CASE WHEN stock.product_variant_id IS NOT NULL THEN COALESCE(NULLIF(pv.purchase_price, 0), pv.cost, 0) ELSE COALESCE(NULLIF(p.purchase_price, 0), p.cost, 0) END",
             'fix_price' => "CASE WHEN stock.product_variant_id IS NOT NULL THEN COALESCE(NULLIF(pv.fix_price, 0), pv.price, 0) ELSE COALESCE(NULLIF(p.fix_price, 0), p.price, 0) END",
             'price' => "CASE WHEN stock.product_variant_id IS NOT NULL THEN COALESCE(pv.price, 0) ELSE COALESCE(p.price, 0) END",
             'wholesale_price' => "CASE WHEN stock.product_variant_id IS NOT NULL THEN COALESCE(NULLIF(pv.wholesale, 0), pv.price, 0) ELSE COALESCE(NULLIF(p.wholesale_price, 0), p.price, 0) END",

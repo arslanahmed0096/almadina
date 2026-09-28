@@ -439,6 +439,7 @@ class SalesController extends BaseController
                     'sale_unit_id' => $value['sale_unit_id'] ? $value['sale_unit_id'] : null,
                     'quantity' => $value['quantity'],
                     'price' => $value['Unit_price'],
+                    'invoice_print_price' => SaleDetail::snapshotInvoicePrintPrice($product, $value['product_variant_id'] ?? null),
                     'TaxNet' => $value['tax_percent'],
                     'tax_method' => $value['tax_method'],
                     'discount' => $value['discount'],
@@ -899,6 +900,7 @@ class SalesController extends BaseController
                         $orderDetails['sale_id'] = $id;
                         $orderDetails['date'] = $request['date'];
                         $orderDetails['price'] = $prod_detail['Unit_price'];
+                        $orderDetails['invoice_print_price'] = SaleDetail::snapshotInvoicePrintPrice($product, $prod_detail['product_variant_id'] ?? null);
                         $orderDetails['sale_unit_id'] = $prod_detail['sale_unit_id'];
                         $orderDetails['TaxNet'] = $prod_detail['tax_percent'];
                         $orderDetails['tax_method'] = $prod_detail['tax_method'];
@@ -1654,21 +1656,22 @@ class SalesController extends BaseController
         $sale = Sale::with('details.product.unitSale')
             ->where('deleted_at', '=', null)
             ->findOrFail($id);
+        $printSummary = SaleDetail::printableSaleSummary($sale);
 
         $item['id'] = $sale->id;
         $item['Ref'] = $sale->Ref;
         $item['date'] = $sale->date.' '.$sale->time;
-        $item['discount'] = number_format($sale->discount, 2, '.', '');
-        $item['discount_Method'] = $sale->discount_Method ?? '2'; // '1' for percentage, '2' for fixed
-        $item['discount_from_points'] = number_format($sale->discount_from_points ?? 0, 2, '.', ''); // Include points discount for receipt display
-        $item['shipping'] = number_format($sale->shipping, 2, '.', '');
-        $item['taxe'] = number_format($sale->TaxNet, 2, '.', '');
-        $item['tax_rate'] = $sale->tax_rate;
+        $item['discount'] = number_format($printSummary['discount'], 2, '.', '');
+        $item['discount_Method'] = $printSummary['discount_method'];
+        $item['discount_from_points'] = number_format($printSummary['points_discount'], 2, '.', '');
+        $item['shipping'] = number_format($printSummary['shipping'], 2, '.', '');
+        $item['taxe'] = number_format($printSummary['tax'], 2, '.', '');
+        $item['tax_rate'] = $printSummary['has_fixed_print_price'] ? 0 : $sale->tax_rate;
         $item['client_name'] = $sale['client']->name;
         $item['warehouse_name'] = $sale['warehouse']->name;
         $item['seller_name'] = $sale['user']->username;
-        $item['GrandTotal'] = number_format($sale->GrandTotal, 2, '.', '');
-        $item['paid_amount'] = number_format($sale->paid_amount, 2, '.', '');
+        $item['GrandTotal'] = number_format($printSummary['grand_total'], 2, '.', '');
+        $item['paid_amount'] = number_format($printSummary['paid_amount'], 2, '.', '');
         $item['notes'] = $sale->notes;
 
         foreach ($sale['details'] as $detail) {
@@ -1701,7 +1704,9 @@ class SalesController extends BaseController
             }
 
             $data['quantity'] = number_format($detail->quantity, 2, '.', '');
-            $data['total'] = number_format($detail->total, 2, '.', '');
+            $data['total'] = number_format($detail->printableLineTotal(), 2, '.', '');
+            $data['print_unit_price'] = number_format($detail->printableUnitPrice(), 2, '.', '');
+            $data['print_discount'] = number_format($detail->printableDiscountNet(), 2, '.', '');
             $data['unit_sale'] = $unit ? $unit->ShortName : '';
 
             $data['is_imei'] = $detail['product']['is_imei'];
@@ -1754,6 +1759,7 @@ class SalesController extends BaseController
             'details' => $details,
             'zatca_qr' => $zatcaQr,
             'public_invoice_url' => $publicInvoiceUrl,
+            'taxes' => $taxes,
         ]);
 
     }
@@ -1786,6 +1792,7 @@ class SalesController extends BaseController
         $sale = Sale::with('details.product.unitSale', 'client', 'warehouse', 'user')
             ->where('deleted_at', '=', null)
             ->findOrFail($id);
+        $printSummary = SaleDetail::printableSaleSummary($sale);
 
         $settings = Setting::where('deleted_at', '=', null)->first();
         $helpers = new helpers;
@@ -1847,25 +1854,30 @@ class SalesController extends BaseController
                 $name = $detail->product->name ?? '';
             }
             $qty = rtrim(rtrim(number_format((float) $detail->quantity, 2, '.', ''), '0'), '.');
-            $total = number_format((float) $detail->total, 2, '.', '');
+            $total = number_format($detail->printableLineTotal(), 2, '.', '');
+            $printUnitPrice = number_format($detail->printableUnitPrice(), 2, '.', '');
+            $printDiscount = round($detail->printableDiscountNet() * (float) $detail->quantity, 2);
             $out .= mb_substr($name, 0, $width) . $LF;
-            $out .= $pad('  ' . $qty . ' x', $symbol . ' ' . $total);
+            $out .= $pad('  ' . $qty . ' x ' . $printUnitPrice, $symbol . ' ' . $total);
+            if (abs($printDiscount) > 0.009) {
+                $out .= $pad('  Discount:', '-' . $symbol . ' ' . number_format($printDiscount, 2, '.', ''));
+            }
         }
 
         $out .= $line;
-        $out .= $pad('Subtotal:', $symbol . ' ' . number_format((float) ($sale->GrandTotal - $sale->TaxNet + $sale->discount - $sale->shipping), 2, '.', ''));
-        if ((float) $sale->discount > 0) {
-            $out .= $pad('Discount:', '-' . $symbol . ' ' . number_format((float) $sale->discount, 2, '.', ''));
+        $out .= $pad('Subtotal:', $symbol . ' ' . number_format($printSummary['subtotal'], 2, '.', ''));
+        if ($printSummary['discount'] > 0) {
+            $out .= $pad('Discount:', '-' . $symbol . ' ' . number_format($printSummary['discount'], 2, '.', ''));
         }
-        if ((float) $sale->TaxNet > 0) {
-            $out .= $pad('Tax:', $symbol . ' ' . number_format((float) $sale->TaxNet, 2, '.', ''));
+        if ($printSummary['tax'] > 0) {
+            $out .= $pad('Tax:', $symbol . ' ' . number_format($printSummary['tax'], 2, '.', ''));
         }
-        if ((float) $sale->shipping > 0) {
-            $out .= $pad('Shipping:', $symbol . ' ' . number_format((float) $sale->shipping, 2, '.', ''));
+        if ($printSummary['shipping'] > 0) {
+            $out .= $pad('Shipping:', $symbol . ' ' . number_format($printSummary['shipping'], 2, '.', ''));
         }
-        $out .= $boldOn . $pad('TOTAL:', $symbol . ' ' . number_format((float) $sale->GrandTotal, 2, '.', '')) . $boldOff;
-        $out .= $pad('Paid:', $symbol . ' ' . number_format((float) $sale->paid_amount, 2, '.', ''));
-        $due = (float) $sale->GrandTotal - (float) $sale->paid_amount;
+        $out .= $boldOn . $pad('TOTAL:', $symbol . ' ' . number_format($printSummary['grand_total'], 2, '.', '')) . $boldOff;
+        $out .= $pad('Paid:', $symbol . ' ' . number_format($printSummary['paid_amount'], 2, '.', ''));
+        $due = $printSummary['due'];
         if ($due > 0) {
             $out .= $pad('Due:', $symbol . ' ' . number_format($due, 2, '.', ''));
         }
@@ -2102,6 +2114,7 @@ class SalesController extends BaseController
                     'sale_unit_id' => $unitSaleId,
                     'quantity' => $qty,
                     'price' => $price,
+                    'invoice_print_price' => SaleDetail::snapshotInvoicePrintPrice($product, $productVariantId),
                     'TaxNet' => 0,
                     'tax_method' => 1,
                     'discount' => 0,
@@ -2521,23 +2534,24 @@ class SalesController extends BaseController
         $sale_data = Sale::with(['details.product.unitSale', 'warehouse', 'salesAgent:id,name,phone'])
             ->where('deleted_at', '=', null)
             ->findOrFail($id);
+        $printSummary = SaleDetail::printableSaleSummary($sale_data);
 
         $sale['client_name'] = $sale_data['client']->name;
         $sale['client_phone'] = $sale_data['client']->phone;
         $sale['client_adr'] = $sale_data['client']->adresse;
         $sale['client_email'] = $sale_data['client']->email;
         $sale['client_tax'] = $sale_data['client']->tax_number;
-        $sale['TaxNet'] = number_format($sale_data->TaxNet, 2, '.', '');
-        $sale['discount'] = number_format($sale_data->discount, 2, '.', '');
-        $sale['discount_Method'] = $sale_data->discount_Method ?? '2'; // '1' = percent, '2' = fixed
-        $sale['discount_from_points'] = number_format($sale_data->discount_from_points ?? 0, 2, '.', '');
-        $sale['shipping'] = number_format($sale_data->shipping, 2, '.', '');
+        $sale['TaxNet'] = number_format($printSummary['tax'], 2, '.', '');
+        $sale['discount'] = number_format($printSummary['discount'], 2, '.', '');
+        $sale['discount_Method'] = $printSummary['discount_method'];
+        $sale['discount_from_points'] = number_format($printSummary['points_discount'], 2, '.', '');
+        $sale['shipping'] = number_format($printSummary['shipping'], 2, '.', '');
         $sale['statut'] = $sale_data->statut;
         $sale['Ref'] = $sale_data->Ref;
         $sale['date'] = $sale_data->date.' '.$sale_data->time;
-        $sale['GrandTotal'] = number_format($sale_data->GrandTotal, 2, '.', '');
-        $sale['paid_amount'] = number_format($sale_data->paid_amount, 2, '.', '');
-        $sale['due'] = number_format($sale['GrandTotal'] - $sale['paid_amount'], 2, '.', '');
+        $sale['GrandTotal'] = number_format($printSummary['grand_total'], 2, '.', '');
+        $sale['paid_amount'] = number_format($printSummary['paid_amount'], 2, '.', '');
+        $sale['due'] = number_format($printSummary['due'], 2, '.', '');
         $sale['payment_status'] = $sale_data->payment_statut;
         $sale['sales_agent_name'] = $sale_data->salesAgent
             ? Str::title(Str::lower(trim((string) $sale_data->salesAgent->name)))
@@ -2578,26 +2592,28 @@ class SalesController extends BaseController
 
             $data['detail_id'] = $detail_id += 1;
             $data['quantity'] = number_format($detail->quantity, 2, '.', '');
-            $data['total'] = number_format($detail->total, 2, '.', '');
+            $data['total'] = number_format($detail->printableLineTotal(), 2, '.', '');
             $data['unitSale'] = $unit ? $unit->ShortName : '';
-            $data['price'] = number_format($detail->price, 2, '.', '');
+            $printUnitPrice = $detail->printableUnitPrice();
+            $actualDiscountNet = $detail->discount_method == '2'
+                ? (float) $detail->discount
+                : (float) $detail->price * (float) $detail->discount / 100;
+            $data['price'] = number_format($printUnitPrice, 2, '.', '');
+            $data['DiscountNet'] = number_format($detail->printableDiscountNet(), 2, '.', '');
 
-            if ($detail->discount_method == '2') {
-                $data['DiscountNet'] = number_format($detail->discount, 2, '.', '');
-            } else {
-                $data['DiscountNet'] = number_format($detail->price * $detail->discount / 100, 2, '.', '');
-            }
+            $tax_price = $detail->TaxNet * (($detail->price - $actualDiscountNet) / 100);
+            $data['Unit_price'] = number_format($printUnitPrice, 2, '.', '');
+            $data['discount'] = number_format($detail->usesInvoicePrintPrice() ? 0 : $detail->discount, 2, '.', '');
 
-            $tax_price = $detail->TaxNet * (($detail->price - $data['DiscountNet']) / 100);
-            $data['Unit_price'] = number_format($detail->price, 2, '.', '');
-            $data['discount'] = number_format($detail->discount, 2, '.', '');
-
-            if ($detail->tax_method == '1') {
-                $data['Net_price'] = $detail->price - $data['DiscountNet'];
+            if ($detail->usesInvoicePrintPrice()) {
+                $data['Net_price'] = $printUnitPrice;
+                $data['taxe'] = number_format(0, 2, '.', '');
+            } elseif ($detail->tax_method == '1') {
+                $data['Net_price'] = $detail->price - $actualDiscountNet;
                 $data['taxe'] = number_format($tax_price, 2, '.', '');
             } else {
-                $data['Net_price'] = ($detail->price - $data['DiscountNet'] - $tax_price);
-                $data['taxe'] = number_format($detail->price - $data['Net_price'] - $data['DiscountNet'], 2, '.', '');
+                $data['Net_price'] = ($detail->price - $actualDiscountNet - $tax_price);
+                $data['taxe'] = number_format($detail->price - $data['Net_price'] - $actualDiscountNet, 2, '.', '');
             }
 
             $data['is_imei'] = $detail['product']['is_imei'];
@@ -2646,23 +2662,24 @@ class SalesController extends BaseController
         $sale_data = Sale::with(['details.product.unitSale', 'warehouse', 'salesAgent:id,name,phone'])
             ->where('deleted_at', '=', null)
             ->findOrFail($id);
+        $printSummary = SaleDetail::printableSaleSummary($sale_data);
 
         $sale['client_name'] = $sale_data['client']->name;
         $sale['client_phone'] = $sale_data['client']->phone;
         $sale['client_adr'] = $sale_data['client']->adresse;
         $sale['client_email'] = $sale_data['client']->email;
         $sale['client_tax'] = $sale_data['client']->tax_number;
-        $sale['TaxNet'] = number_format($sale_data->TaxNet, 2, '.', '');
-        $sale['discount'] = number_format($sale_data->discount, 2, '.', '');
-        $sale['discount_Method'] = $sale_data->discount_Method ?? '2'; // '1' = percent, '2' = fixed
-        $sale['discount_from_points'] = number_format($sale_data->discount_from_points ?? 0, 2, '.', '');
-        $sale['shipping'] = number_format($sale_data->shipping, 2, '.', '');
+        $sale['TaxNet'] = number_format($printSummary['tax'], 2, '.', '');
+        $sale['discount'] = number_format($printSummary['discount'], 2, '.', '');
+        $sale['discount_Method'] = $printSummary['discount_method'];
+        $sale['discount_from_points'] = number_format($printSummary['points_discount'], 2, '.', '');
+        $sale['shipping'] = number_format($printSummary['shipping'], 2, '.', '');
         $sale['statut'] = $sale_data->statut;
         $sale['Ref'] = $sale_data->Ref;
         $sale['date'] = $sale_data->date.' '.$sale_data->time;
-        $sale['GrandTotal'] = number_format($sale_data->GrandTotal, 2, '.', '');
-        $sale['paid_amount'] = number_format($sale_data->paid_amount, 2, '.', '');
-        $sale['due'] = number_format($sale['GrandTotal'] - $sale['paid_amount'], 2, '.', '');
+        $sale['GrandTotal'] = number_format($printSummary['grand_total'], 2, '.', '');
+        $sale['paid_amount'] = number_format($printSummary['paid_amount'], 2, '.', '');
+        $sale['due'] = number_format($printSummary['due'], 2, '.', '');
         $sale['payment_status'] = $sale_data->payment_statut;
         $sale['sales_agent_name'] = $sale_data->salesAgent
             ? Str::title(Str::lower(trim((string) $sale_data->salesAgent->name)))
@@ -2701,26 +2718,28 @@ class SalesController extends BaseController
 
             $data['detail_id'] = $detail_id += 1;
             $data['quantity'] = number_format($detail->quantity, 2, '.', '');
-            $data['total'] = number_format($detail->total, 2, '.', '');
+            $data['total'] = number_format($detail->printableLineTotal(), 2, '.', '');
             $data['unitSale'] = $unit ? $unit->ShortName : '';
-            $data['price'] = number_format($detail->price, 2, '.', '');
+            $printUnitPrice = $detail->printableUnitPrice();
+            $actualDiscountNet = $detail->discount_method == '2'
+                ? (float) $detail->discount
+                : (float) $detail->price * (float) $detail->discount / 100;
+            $data['price'] = number_format($printUnitPrice, 2, '.', '');
+            $data['DiscountNet'] = number_format($detail->printableDiscountNet(), 2, '.', '');
 
-            if ($detail->discount_method == '2') {
-                $data['DiscountNet'] = number_format($detail->discount, 2, '.', '');
-            } else {
-                $data['DiscountNet'] = number_format($detail->price * $detail->discount / 100, 2, '.', '');
-            }
+            $tax_price = $detail->TaxNet * (($detail->price - $actualDiscountNet) / 100);
+            $data['Unit_price'] = number_format($printUnitPrice, 2, '.', '');
+            $data['discount'] = number_format($detail->usesInvoicePrintPrice() ? 0 : $detail->discount, 2, '.', '');
 
-            $tax_price = $detail->TaxNet * (($detail->price - $data['DiscountNet']) / 100);
-            $data['Unit_price'] = number_format($detail->price, 2, '.', '');
-            $data['discount'] = number_format($detail->discount, 2, '.', '');
-
-            if ($detail->tax_method == '1') {
-                $data['Net_price'] = $detail->price - $data['DiscountNet'];
+            if ($detail->usesInvoicePrintPrice()) {
+                $data['Net_price'] = $printUnitPrice;
+                $data['taxe'] = number_format(0, 2, '.', '');
+            } elseif ($detail->tax_method == '1') {
+                $data['Net_price'] = $detail->price - $actualDiscountNet;
                 $data['taxe'] = number_format($tax_price, 2, '.', '');
             } else {
-                $data['Net_price'] = ($detail->price - $data['DiscountNet'] - $tax_price);
-                $data['taxe'] = number_format($detail->price - $data['Net_price'] - $data['DiscountNet'], 2, '.', '');
+                $data['Net_price'] = ($detail->price - $actualDiscountNet - $tax_price);
+                $data['taxe'] = number_format($detail->price - $data['Net_price'] - $actualDiscountNet, 2, '.', '');
             }
 
             $data['is_imei'] = $detail['product']['is_imei'];
@@ -4102,6 +4121,7 @@ class SalesController extends BaseController
         $sale = Sale::with('details.product.unitSale', 'client', 'warehouse', 'user')
             ->where('deleted_at', '=', null)
             ->findOrFail($id);
+        $printSummary = SaleDetail::printableSaleSummary($sale);
 
         $details = [];
         foreach ($sale->details as $detail) {
@@ -4126,7 +4146,9 @@ class SalesController extends BaseController
             $details[] = [
                 'name' => $name,
                 'quantity' => $detail->quantity,
-                'total' => $detail->total,
+                'total' => $detail->printableLineTotal(),
+                'print_unit_price' => $detail->printableUnitPrice(),
+                'print_discount' => $detail->printableDiscountNet(),
                 'unit_sale' => $unit ? $unit->ShortName : '',
             ];
         }
@@ -4145,6 +4167,11 @@ class SalesController extends BaseController
             'payments' => $payments,
             'setting' => $settings,
             'symbol' => $symbol,
+            'printSummary' => $printSummary,
+            'taxes' => \App\Models\TransactionTaxSnapshot::where(
+                'transaction_type',
+                $sale->is_pos ? 'pos' : 'sale_invoice'
+            )->where('transaction_id', $sale->id)->orderBy('priority')->get(),
         ]);
     }
 }

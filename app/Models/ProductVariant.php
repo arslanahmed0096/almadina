@@ -9,7 +9,7 @@ class ProductVariant extends Model
     protected $table = 'product_variants';
 
     protected $fillable = [
-        'product_id', 'name', 'qty', 'cost', 'purchase_price', 'pricing_margins', 'company_rb_price', 'mrp_price', 'price', 'fix_price',
+        'product_id', 'name', 'qty', 'cost', 'purchase_price', 'pricing_margins', 'company_rb_price', 'mrp_price', 'price', 'fix_price', 'invoice_print_price',
         'wholesale', 'min_price', 'code', 'image',
         'woocommerce_variation_id',
     ];
@@ -24,6 +24,7 @@ class ProductVariant extends Model
         'mrp_price' => 'double',
         'price' => 'double',
         'fix_price' => 'double',
+        'invoice_print_price' => 'double',
         'wholesale' => 'double',
         'min_price' => 'double',
         'woocommerce_variation_id' => 'integer',

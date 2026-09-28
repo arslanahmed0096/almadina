@@ -37,4 +37,15 @@ class StockValuationReportTest extends TestCase
             'min_price',
         ], $types->pluck('code')->all());
     }
+
+    public function test_cost_valuation_prefers_latest_purchase_price_with_legacy_cost_fallback(): void
+    {
+        $method = new ReflectionMethod(ReportController::class, 'stockValuationPriceExpression');
+        $expression = $method->invoke(new ReportController, 'cost');
+
+        $this->assertStringContainsString('NULLIF(p.purchase_price, 0)', $expression);
+        $this->assertStringContainsString('NULLIF(pv.purchase_price, 0)', $expression);
+        $this->assertStringContainsString('p.cost', $expression);
+        $this->assertStringContainsString('pv.cost', $expression);
+    }
 }

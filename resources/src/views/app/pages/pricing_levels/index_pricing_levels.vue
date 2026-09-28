@@ -132,7 +132,7 @@
                 <table class="table table-hover pricing-view-table mb-0">
                   <thead>
                     <tr>
-                      <th>Product</th><th>Code</th><th>Purchase Price</th><th>Product Cost</th>
+                      <th>Product</th><th>Code</th><th>Purchase Price</th><th>Fixed Price</th><th>Product Cost</th>
                       <th>Regular Price</th><th>Al-Madina Price</th><th>Wholesale</th><th>Minimum</th><th>Margins</th>
                     </tr>
                   </thead>
@@ -141,6 +141,7 @@
                       <td class="pricing-view-product"><strong>{{ row.name }}</strong><small v-if="row.variant"><span>VARIANT</span>{{ row.variant }}</small></td>
                       <td class="pricing-view-code">{{ row.code }}</td>
                       <td>{{ priceDisplay(row.purchase_price) }}</td>
+                      <td>{{ priceDisplay(row.invoice_print_price) }}</td>
                       <td>{{ priceDisplay(row.cost) }}</td>
                       <td>{{ priceDisplay(row.fix_price) }}</td>
                       <td>{{ priceDisplay(row.price) }}</td>
@@ -150,12 +151,13 @@
                         <template v-if="row.pricing_margins && row.pricing_margins.length">
                           <span v-for="(margin, index) in row.pricing_margins" :key="`${row.key}-margin-${index}`" class="pricing-margin-chip">
                             {{ margin.label || "Margin" }}: {{ margin.value }}{{ margin.type === "percentage" ? "%" : "" }}
+                            <template v-if="Number(margin.round_to) > 1"> | round up {{ priceDisplay(margin.round_to) }}</template>
                           </span>
                         </template>
                         <span v-else class="pricing-no-margin">No margins</span>
                       </td>
                     </tr>
-                    <tr v-if="!viewRows.length"><td colspan="9" class="text-center text-muted py-5">No active product pricing details.</td></tr>
+                    <tr v-if="!viewRows.length"><td colspan="10" class="text-center text-muted py-5">No active product pricing details.</td></tr>
                   </tbody>
                 </table>
               </div>

@@ -17,6 +17,8 @@ class ProductMarginPricingService
 
     private const LABELS = ['Minimum Price', 'Wholesale Price', 'Al-Madina Price', 'Regular Price'];
 
+    private const ROUNDING_INCREMENTS = [1, 10, 50, 100, 500, 1000];
+
     public function apply(Model $product, array $rows): void
     {
         $base = (float) ($product->purchase_price ?? 0);
@@ -32,9 +34,17 @@ class ProductMarginPricingService
             if (! in_array($type, ['percentage', 'fixed'], true) || ! is_numeric($value) || (float) $value < 0) {
                 throw ValidationException::withMessages(['pricing_margins' => 'Each margin must be a non-negative percentage or fixed amount.']);
             }
+            $roundTo = isset($row['round_to']) && is_numeric($row['round_to'])
+                ? (int) $row['round_to']
+                : 1;
+            if (! in_array($roundTo, self::ROUNDING_INCREMENTS, true)) {
+                throw ValidationException::withMessages(['pricing_margins' => 'Each rounding increment must be 1, 10, 50, 100, 500, or 1000.']);
+            }
             $value = (float) $value;
-            $profit = round($type === 'percentage' ? $base * $value / 100 : $value);
-            $price = round($base + $profit);
+            $marginProfit = round($type === 'percentage' ? $base * $value / 100 : $value);
+            $rawPrice = round($base + $marginProfit);
+            $price = (float) (ceil($rawPrice / $roundTo) * $roundTo);
+            $profit = round($price - $base);
             if ($previous !== null && $price <= $previous) {
                 throw ValidationException::withMessages(['pricing_margins' => 'Each next margin price must be higher than the preceding price.']);
             }
@@ -53,6 +63,7 @@ class ProductMarginPricingService
                 'type' => $type,
                 'value' => $value,
                 'label' => $label,
+                'round_to' => $roundTo,
                 'profit' => $profit,
                 'calculated_price' => $price,
             ];

@@ -1,4 +1,6 @@
-@if(isset($taxes) && count($taxes))
+@php
+    $invoiceTaxes = collect($taxes ?? []);
+@endphp
 <div style="margin: 10px 0 12px; page-break-inside: avoid;">
     <div style="font-size: 9pt; font-weight: bold; color: #374151; margin-bottom: 4px;">Tax breakdown</div>
     <table style="width: 100%; border-collapse: collapse; font-size: 7.5pt;" cellpadding="4" cellspacing="0">
@@ -11,7 +13,7 @@
             <th style="border: 1px solid #e5e7eb; text-align: right;">Amount</th>
         </tr></thead>
         <tbody>
-        @foreach($taxes->groupBy(fn($tax) => $tax->tax_code.'|'.$tax->price_type_code.'|'.$tax->behavior.'|'.$tax->rate) as $group)
+        @forelse($invoiceTaxes->groupBy(fn($tax) => $tax->tax_code.'|'.$tax->price_type_code.'|'.$tax->behavior.'|'.$tax->rate) as $group)
             @php $tax = $group->first(); @endphp
             <tr>
                 <td style="border: 1px solid #e5e7eb;">{{ $tax->tax_name }} ({{ $tax->tax_code }})</td>
@@ -21,8 +23,11 @@
                 <td style="border: 1px solid #e5e7eb;">{{ ucfirst($tax->behavior) }}{{ $tax->is_reversal ? ' reversal' : '' }}</td>
                 <td style="border: 1px solid #e5e7eb; text-align: right; color: {{ $tax->behavior === 'deductive' || $tax->is_reversal ? '#dc2626' : '#166534' }};">{{ $tax->behavior === 'deductive' || $tax->is_reversal ? '-' : '+' }}{{ $symbol }} {{ number_format((float)$group->sum('tax_amount'), 2) }}</td>
             </tr>
-        @endforeach
+        @empty
+            <tr>
+                <td colspan="6" style="border: 1px solid #e5e7eb; padding: 6px; text-align: center; color: #6b7280;">No managed tax applied to this invoice.</td>
+            </tr>
+        @endforelse
         </tbody>
     </table>
 </div>
-@endif

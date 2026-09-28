@@ -33,6 +33,7 @@ class PricingLevelCostSyncTest extends TestCase
             $table->decimal('company_rb_price', 15, 2)->default(0);
             $table->decimal('mrp_price', 15, 2)->default(0);
             $table->decimal('fix_price', 15, 2)->default(0);
+            $table->decimal('invoice_print_price', 15, 2)->default(0);
             $table->decimal('price', 15, 2)->default(0);
             $table->decimal('wholesale_price', 15, 2)->default(0);
             $table->decimal('min_price', 15, 2)->default(0);
@@ -49,6 +50,7 @@ class PricingLevelCostSyncTest extends TestCase
             $table->decimal('company_rb_price', 15, 2)->default(0);
             $table->decimal('mrp_price', 15, 2)->default(0);
             $table->decimal('fix_price', 15, 2)->default(0);
+            $table->decimal('invoice_print_price', 15, 2)->default(0);
             $table->decimal('price', 15, 2)->default(0);
             $table->decimal('wholesale', 15, 2)->default(0);
             $table->decimal('min_price', 15, 2)->default(0);
@@ -67,6 +69,7 @@ class PricingLevelCostSyncTest extends TestCase
             $table->decimal('company_rb_price', 15, 2)->default(0);
             $table->decimal('mrp_price', 15, 2)->default(0);
             $table->decimal('fix_price', 15, 2)->default(0);
+            $table->decimal('invoice_print_price', 15, 2)->default(0);
             $table->decimal('price', 15, 2)->default(0);
             $table->decimal('wholesale_price', 15, 2)->default(0);
             $table->decimal('min_price', 15, 2)->default(0);
@@ -212,12 +215,33 @@ class PricingLevelCostSyncTest extends TestCase
         $this->assertSame(950.0, $snapshot->fresh()->wholesale_price);
     }
 
+    public function test_invoice_fixed_price_is_saved_without_changing_sale_price_tiers(): void
+    {
+        $product = Product::create([
+            'name' => 'Invoice price product',
+            'type' => 'is_single',
+            'cost' => 50000,
+            'purchase_price' => 50000,
+            'price' => 57500,
+        ]);
+
+        $this->savePricing($product->id, null, 50000, false, [], 61000, 57500);
+
+        $product->refresh();
+        $detail = PricingLevelDetail::firstOrFail();
+        $this->assertSame(61000.0, $product->invoice_print_price);
+        $this->assertSame(61000.0, $detail->invoice_print_price);
+        $this->assertSame(57500.0, $product->price);
+    }
+
     private function savePricing(
         int $productId,
         ?int $variantId,
         float $cost,
         bool $costUpdated = false,
-        array $margins = []
+        array $margins = [],
+        float $invoicePrintPrice = 0,
+        float $alMadinaPrice = 0
     ): void {
         $entry = new PricingLevel;
         $entry->id = 1;
@@ -228,11 +252,12 @@ class PricingLevelCostSyncTest extends TestCase
             'product_id' => $productId,
             'product_variant_id' => $variantId,
             'cost_updated' => $costUpdated,
+            'invoice_print_price' => $invoicePrintPrice,
             'company_rb_price' => 0,
             'mrp_price' => 0,
             'cost' => $cost,
             'fix_price' => 0,
-            'price' => 0,
+            'price' => $alMadinaPrice,
             'wholesale_price' => 0,
             'min_price' => 0,
             'pricing_margins' => $margins,

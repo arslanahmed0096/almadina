@@ -1719,7 +1719,9 @@ export default {
       const base = Number(purchasePrice);
       const profit = Number(this.marginProfit(row, purchasePrice));
       if (!Number.isFinite(base) || !Number.isFinite(profit) || row.value === '') return '';
-      return Math.round(base + profit);
+      const rawPrice = Math.round(base + profit);
+      const increment = [1, 10, 50, 100, 500, 1000].includes(Number(row.round_to)) ? Number(row.round_to) : 1;
+      return Math.ceil(rawPrice / increment) * increment;
     },
     validateMarginRows() {
       const rows = this.product.pricing_margins || [];

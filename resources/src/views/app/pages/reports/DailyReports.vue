@@ -182,7 +182,7 @@
           <table class="table table-hover mb-0 branch-detail-table">
             <thead>
               <tr>
-                <th>Date / Time</th><th>Type / Order No.</th><th>Customer</th><th>Items Sold</th><th>Sold By</th>
+                <th>Date / Time</th><th>Type / Order No.</th><th>Customer</th><th>Items Sold / Unit Sale Price</th><th>Sold By</th>
                 <th class="amount">Total</th><th class="amount">Paid to Date</th><th class="amount">Received in Period</th><th class="amount">Remaining</th>
               </tr>
             </thead>
@@ -193,7 +193,11 @@
                 <td><strong>{{ row.customer_name }}</strong><br><small>{{ row.customer_phone || '-' }}</small><br><small>{{ row.customer_address || '' }}</small></td>
                 <td>
                   <div v-for="(item, itemIndex) in row.items" :key="row.id + '-item-' + itemIndex" class="item-line">
-                    <span>{{ item.model }}</span><strong>x {{ money(item.quantity) }}</strong>
+                    <span class="item-model">{{ item.model }}</span>
+                    <span class="item-sale-details">
+                      <strong>x {{ money(item.quantity) }}</strong>
+                      <small>Unit price: {{ currency }} {{ money(item.unit_price) }}</small>
+                    </span>
                   </div>
                   <small v-if="!row.items.length">No item details</small>
                   <div class="item-total">Total Qty: {{ money(row.quantity) }}</div>
@@ -222,7 +226,7 @@
           <table class="table table-hover mb-0 branch-detail-table">
             <thead>
               <tr>
-                <th>Receipt Date / Time</th><th>Payment Type</th><th>Receipt / Order No.</th><th>Customer</th><th>Related Items</th>
+                <th>Receipt Date / Time</th><th>Payment Type</th><th>Receipt / Order No.</th><th>Customer</th><th>Related Items / Unit Sale Price</th>
                 <th>Received By / Method</th><th class="amount">Received</th><th class="amount">Remaining After Receipt</th><th class="amount">Current Remaining</th>
               </tr>
             </thead>
@@ -234,7 +238,11 @@
                 <td><strong>{{ row.customer_name }}</strong><br><small>{{ row.customer_phone || '-' }}</small><br><small>{{ row.customer_address || '' }}</small></td>
                 <td>
                   <div v-for="(item, itemIndex) in row.items" :key="row.id + '-receipt-item-' + itemIndex" class="item-line">
-                    <span>{{ item.model }}</span><strong>x {{ money(item.quantity) }}</strong>
+                    <span class="item-model">{{ item.model }}</span>
+                    <span class="item-sale-details">
+                      <strong>x {{ money(item.quantity) }}</strong>
+                      <small>Unit price: {{ currency }} {{ money(item.unit_price) }}</small>
+                    </span>
                   </div>
                   <small v-if="!row.items.length">No item details</small>
                 </td>
@@ -485,6 +493,9 @@ export default {
 .branch-detail-table .nowrap { white-space: nowrap; }
 .item-line { display: flex; justify-content: space-between; gap: 12px; min-width: 220px; padding: 2px 0; border-bottom: 1px dashed #dce4e9; }
 .item-line:last-of-type { border-bottom: 0; }
+.item-model { min-width: 0; }
+.item-sale-details { display: flex; flex: 0 0 auto; flex-direction: column; align-items: flex-end; white-space: nowrap; }
+.item-sale-details small { color: #6b7280; font-weight: 600; }
 .item-total { margin-top: 4px; color: #111827; font-weight: 700; }
 .received-cell { color: #137447; font-weight: 800; }
 .balance-cell { color: #9a3412; font-weight: 800; }

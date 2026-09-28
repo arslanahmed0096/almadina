@@ -9,7 +9,7 @@ class SaleDetail extends Model
 {
     protected $fillable = [
         'id', 'date', 'sale_id', 'sale_unit_id', 'quantity', 'product_id', 'total', 'product_variant_id',
-        'price', 'TaxNet', 'discount', 'discount_method', 'tax_method', 'price_type',
+        'price', 'invoice_print_price', 'TaxNet', 'discount', 'discount_method', 'tax_method', 'price_type',
         'warranty_date', 'guarantee_date',
     ];
 
@@ -22,6 +22,7 @@ class SaleDetail extends Model
         'product_id' => 'integer',
         'product_variant_id' => 'integer',
         'price' => 'double',
+        'invoice_print_price' => 'double',
         'TaxNet' => 'double',
         'discount' => 'double',
         'price_type' => 'string',
@@ -47,6 +48,121 @@ class SaleDetail extends Model
     public function shipmentItem()
     {
         return $this->hasOne(ShipmentItem::class);
+    }
+
+    public static function snapshotInvoicePrintPrice(Product $product, $variantId = null): float
+    {
+        $printPrice = 0.0;
+        if ($variantId) {
+            $variant = ProductVariant::where('product_id', $product->id)->find($variantId);
+            $printPrice = (float) ($variant->invoice_print_price ?? 0);
+        }
+
+        if ($printPrice <= 0) {
+            $printPrice = (float) ($product->invoice_print_price ?? 0);
+        }
+
+        return max(0, $printPrice);
+    }
+
+    public function printableUnitPrice(): float
+    {
+        if ($this->invoice_print_price !== null) {
+            return (float) $this->invoice_print_price > 0
+                ? (float) $this->invoice_print_price
+                : (float) $this->price;
+        }
+
+        $variant = $this->product_variant_id ? $this->productVariant : null;
+        $printPrice = (float) ($variant->invoice_print_price ?? 0);
+        if ($printPrice <= 0) {
+            $printPrice = (float) ($this->product->invoice_print_price ?? 0);
+        }
+
+        return $printPrice > 0 ? $printPrice : (float) $this->price;
+    }
+
+    public function usesInvoicePrintPrice(): bool
+    {
+        if ($this->invoice_print_price !== null) {
+            return (float) $this->invoice_print_price > 0;
+        }
+
+        $variant = $this->product_variant_id ? $this->productVariant : null;
+        if ((float) ($variant->invoice_print_price ?? 0) > 0) {
+            return true;
+        }
+
+        return (float) ($this->product->invoice_print_price ?? 0) > 0;
+    }
+
+    public function printableLineTotal(): float
+    {
+        if ($this->usesInvoicePrintPrice()) {
+            return round($this->printableUnitPrice() * (float) $this->quantity, 2);
+        }
+
+        return round((float) $this->total, 2);
+    }
+
+    public function printableDiscountNet(): float
+    {
+        if ($this->usesInvoicePrintPrice()) {
+            return 0.0;
+        }
+
+        $storedDiscount = (string) $this->discount_method === '2'
+            ? (float) $this->discount
+            : (float) $this->price * (float) $this->discount / 100;
+
+        return round($storedDiscount, 2);
+    }
+
+    public static function printableSaleSummary(Sale $sale): array
+    {
+        $details = $sale->relationLoaded('details')
+            ? $sale->details
+            : $sale->details()->with(['product', 'productVariant'])->get();
+        $hasFixedPrintPrice = $details->contains(fn (SaleDetail $detail) => $detail->usesInvoicePrintPrice());
+
+        if (! $hasFixedPrintPrice) {
+            $grandTotal = (float) $sale->GrandTotal;
+            $paidAmount = (float) ($sale->paid_amount ?? 0);
+
+            return [
+                'has_fixed_print_price' => false,
+                'subtotal' => round($details->sum(fn (SaleDetail $detail) => $detail->printableLineTotal()), 2),
+                'tax' => round((float) ($sale->TaxNet ?? 0), 2),
+                'discount' => round((float) ($sale->discount ?? 0), 2),
+                'discount_method' => $sale->discount_Method ?? '2',
+                'points_discount' => round((float) ($sale->discount_from_points ?? 0), 2),
+                'shipping' => round((float) ($sale->shipping ?? 0), 2),
+                'grand_total' => round($grandTotal, 2),
+                'paid_amount' => round($paidAmount, 2),
+                'due' => round(max(0, $grandTotal - $paidAmount), 2),
+            ];
+        }
+
+        $subtotal = round($details->sum(fn (SaleDetail $detail) => $detail->printableLineTotal()), 2);
+        $shipping = round((float) ($sale->shipping ?? 0), 2);
+        $grandTotal = round($subtotal + $shipping, 2);
+        $actualPaid = (float) ($sale->paid_amount ?? 0);
+        $wasFullyPaid = strtolower((string) ($sale->payment_statut ?? '')) === 'paid'
+            || $actualPaid >= (float) $sale->GrandTotal - 0.01;
+        $paidAmount = $wasFullyPaid ? $grandTotal : min($actualPaid, $grandTotal);
+
+        return [
+            'has_fixed_print_price' => true,
+            'subtotal' => $subtotal,
+            'tax' => 0.0,
+            'discount' => 0.0,
+            'discount_method' => '2',
+            'points_discount' => 0.0,
+            'shipping' => $shipping,
+            'grand_total' => $grandTotal,
+            'paid_amount' => round($paidAmount, 2),
+            'due' => round(max(0, $grandTotal - $paidAmount), 2),
+        ];
     }
 
     /**

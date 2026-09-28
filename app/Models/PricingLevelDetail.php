@@ -8,7 +8,7 @@ class PricingLevelDetail extends Model
 {
     protected $fillable = [
         'pricing_level_id', 'product_id', 'product_variant_id',
-        'company_rb_price', 'mrp_price', 'cost', 'purchase_price', 'pricing_margins', 'fix_price',
+        'company_rb_price', 'mrp_price', 'cost', 'purchase_price', 'pricing_margins', 'fix_price', 'invoice_print_price',
         'price', 'wholesale_price', 'min_price',
         'previous_company_rb_price', 'previous_mrp_price', 'previous_cost', 'previous_purchase_price',
         'previous_pricing_margins', 'previous_fix_price', 'previous_price',
@@ -25,6 +25,7 @@ class PricingLevelDetail extends Model
         'purchase_price' => 'double',
         'pricing_margins' => 'array',
         'fix_price' => 'double',
+        'invoice_print_price' => 'double',
         'price' => 'double',
         'wholesale_price' => 'double',
         'min_price' => 'double',
