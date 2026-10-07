@@ -4,7 +4,7 @@
     <div class='target-card target-filters no-print'><div class='row'>
       <div class='col-md-3'><label>Search</label><input v-model='filters.search' class='form-control' placeholder='Target name'></div>
       <div class='col-md-3'><label>Supplier</label><v-select v-model='filters.supplier_id' :options='options.suppliers' label='name' :reduce='reduceId' placeholder='All suppliers'/></div>
-      <div class='col-md-2'><label>Period</label><select v-model='filters.period_type' class='form-control'><option value=''>All</option><option value='annual'>Annual</option><option value='monthly'>Monthly</option></select></div>
+      <div class='col-md-2'><label>Period</label><select v-model='filters.period_type' class='form-control'><option value=''>All</option><option value='annual'>Annual</option><option value='quarterly'>Quarterly</option><option value='monthly'>Monthly</option></select></div>
       <div class='col-md-2'><label>Status</label><select v-model='filters.status' class='form-control'><option value=''>All</option><option v-for='status in statuses' :key='status' :value='status'>{{ status }}</option></select></div>
       <div class='col-md-2'><label>Warehouse</label><v-select v-model='filters.warehouse_id' :options='options.warehouses' label='name' :reduce='reduceId' placeholder='All'/></div>
     </div></div>

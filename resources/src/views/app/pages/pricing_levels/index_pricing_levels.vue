@@ -132,8 +132,8 @@
                 <table class="table table-hover pricing-view-table mb-0">
                   <thead>
                     <tr>
-                      <th>Product</th><th>Code</th><th>Purchase Price</th><th>Fixed Price</th><th>Product Cost</th>
-                      <th>Regular Price</th><th>Al-Madina Price</th><th>Wholesale</th><th>Minimum</th><th>Margins</th>
+                      <th>Product</th><th>Code</th><th>Purchase Price</th><th>Further Discounted Price</th><th>Fixed Price</th><th>Product Cost</th>
+                      <th>Regular Price</th><th>Al-Madina Price</th><th>Wholesale</th><th>Minimum</th><th>Further Discounts</th><th>Margins</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -141,12 +141,25 @@
                       <td class="pricing-view-product"><strong>{{ row.name }}</strong><small v-if="row.variant"><span>VARIANT</span>{{ row.variant }}</small></td>
                       <td class="pricing-view-code">{{ row.code }}</td>
                       <td>{{ priceDisplay(row.purchase_price) }}</td>
+                      <td class="pricing-discounted-price">{{ priceDisplay(
+                        row.further_discounted_price === null || row.further_discounted_price === undefined
+                          ? row.purchase_price
+                          : row.further_discounted_price
+                      ) }}</td>
                       <td>{{ priceDisplay(row.invoice_print_price) }}</td>
                       <td>{{ priceDisplay(row.cost) }}</td>
                       <td>{{ priceDisplay(row.fix_price) }}</td>
                       <td>{{ priceDisplay(row.price) }}</td>
                       <td>{{ priceDisplay(row.wholesale_price) }}</td>
                       <td>{{ priceDisplay(row.min_price) }}</td>
+                      <td class="pricing-margin-summary">
+                        <template v-if="row.further_discounts && row.further_discounts.length">
+                          <span v-for="(discount, index) in row.further_discounts" :key="`${row.key}-discount-${index}`" class="pricing-discount-chip">
+                            {{ discount.label }}: {{ discount.value }}{{ discount.type === "percentage" ? "%" : " fixed" }}
+                          </span>
+                        </template>
+                        <span v-else class="pricing-no-margin">No further discounts</span>
+                      </td>
                       <td class="pricing-margin-summary">
                         <template v-if="row.pricing_margins && row.pricing_margins.length">
                           <span v-for="(margin, index) in row.pricing_margins" :key="`${row.key}-margin-${index}`" class="pricing-margin-chip">
@@ -157,7 +170,7 @@
                         <span v-else class="pricing-no-margin">No margins</span>
                       </td>
                     </tr>
-                    <tr v-if="!viewRows.length"><td colspan="10" class="text-center text-muted py-5">No active product pricing details.</td></tr>
+                    <tr v-if="!viewRows.length"><td colspan="12" class="text-center text-muted py-5">No active product pricing details.</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -526,7 +539,7 @@ export default {
 }
 
 .pricing-view-table {
-  min-width: 1240px;
+  min-width: 1570px;
 }
 
 .pricing-view-table th,
@@ -591,6 +604,8 @@ export default {
 .pricing-view-product small span { display: inline-block; padding: 2px 5px; margin-right: 5px; color: #71379f; border-radius: 7px; background: #f0e7f8; font-size: 9px; font-weight: 800; }
 .pricing-view-code { color: #64748b !important; font-family: monospace; }
 .pricing-margin-chip { display: inline-block; padding: 3px 7px; margin: 2px; color: #5f2d86; border: 1px solid #e3d5ef; border-radius: 9px; background: #faf7fd; font-size: 10px; }
+.pricing-discount-chip { display: inline-block; padding: 3px 7px; margin: 2px; color: #17663d; border: 1px solid #cfe8da; border-radius: 9px; background: #f0faf4; font-size: 10px; }
+.pricing-discounted-price { color: #17663d !important; font-weight: 700; background: #f5fcf8; }
 .pricing-no-margin { color: #94a3b8; font-size: 11px; }
 
 @media (max-width: 767px) {

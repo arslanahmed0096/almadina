@@ -41,6 +41,7 @@ class PaymentAccountServiceTest extends TestCase
             ['id' => 2, 'name' => 'Cash', 'created_at' => $now, 'updated_at' => $now],
             ['id' => 6, 'name' => 'bank transfer', 'created_at' => $now, 'updated_at' => $now],
             ['id' => 8, 'name' => 'EasyPaisa', 'created_at' => $now, 'updated_at' => $now],
+            ['id' => 9, 'name' => 'Cheque', 'created_at' => $now, 'updated_at' => $now],
         ]);
     }
 
@@ -58,6 +59,7 @@ class PaymentAccountServiceTest extends TestCase
         $this->assertSame(1, $service->resolve(PaymentMethod::findOrFail(6), 1)->id);
         $this->assertSame(2, $service->resolve(PaymentMethod::findOrFail(8), 2)->id);
         $this->assertNull($service->resolve(PaymentMethod::findOrFail(2), null));
+        $this->assertSame(1, $service->resolve(PaymentMethod::findOrFail(9), 1)->id);
     }
 
     public function test_it_rejects_an_account_of_the_wrong_type(): void

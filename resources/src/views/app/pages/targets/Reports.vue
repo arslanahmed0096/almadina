@@ -1,9 +1,9 @@
 <template>
   <div class='main-content targets-page'>
-    <div class='targets-hero'><div><h2>Target Reports</h2><p>Supplier, annual, monthly, warehouse and product target performance.</p></div><router-link class='btn btn-outline-light' to='/app/targets/dashboard'>Dashboard</router-link></div>
+    <div class='targets-hero'><div><h2>Target Reports</h2><p>Supplier, annual, quarterly, monthly, warehouse and product target performance.</p></div><router-link class='btn btn-outline-light' to='/app/targets/dashboard'>Dashboard</router-link></div>
     <div class='target-card target-filters no-print'><div class='row'>
       <div class='col-md-3'><label>Supplier</label><v-select v-model='filters.supplier_id' :options='options.suppliers' label='name' :reduce='reduceId' placeholder='All suppliers'/></div>
-      <div class='col-md-2'><label>Period</label><select v-model='filters.period_type' class='form-control'><option value=''>All</option><option value='annual'>Annual</option><option value='monthly'>Monthly</option></select></div>
+      <div class='col-md-2'><label>Period</label><select v-model='filters.period_type' class='form-control'><option value=''>All</option><option value='annual'>Annual</option><option value='quarterly'>Quarterly</option><option value='monthly'>Monthly</option></select></div>
       <div class='col-md-2'><label>Year</label><input v-model.number='filters.year' type='number' class='form-control'></div>
       <div class='col-md-2'><label>Warehouse</label><v-select v-model='filters.warehouse_id' :options='options.warehouses' label='name' :reduce='reduceId' placeholder='All'/></div>
       <div class='col-md-3 d-flex align-items-end'><button class='btn target-purple-btn mr-2' @click='load'>Preview</button><button class='btn btn-outline-secondary mr-2' @click='printReport'>Print</button><button v-if='canExport' class='btn btn-outline-primary' @click='downloadPdf'>PDF</button></div>

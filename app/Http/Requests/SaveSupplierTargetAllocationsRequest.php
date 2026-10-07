@@ -15,9 +15,13 @@ class SaveSupplierTargetAllocationsRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'allocations' => ['present', 'array'],
+            'allocations' => ['required_without:line_allocations', 'array'],
             'allocations.*.warehouse_id' => ['required', 'integer', 'exists:warehouses,id'],
             'allocations.*.allocated_quantity' => ['required', 'numeric', 'min:0', 'max:99999999999999999'],
+            'line_allocations' => ['required_without:allocations', 'array'],
+            'line_allocations.*.supplier_target_line_id' => ['required', 'integer', 'exists:supplier_target_lines,id'],
+            'line_allocations.*.warehouse_id' => ['required', 'integer', 'exists:warehouses,id'],
+            'line_allocations.*.allocated_quantity' => ['required', 'numeric', 'min:0', 'max:99999999999999999'],
         ];
     }
 
@@ -27,6 +31,11 @@ class SaveSupplierTargetAllocationsRequest extends FormRequest
             $ids = collect($this->input('allocations', []))->pluck('warehouse_id')->filter();
             if ($ids->unique()->count() !== $ids->count()) {
                 $validator->errors()->add('allocations', 'A warehouse may only appear once.');
+            }
+            $lineKeys = collect($this->input('line_allocations', []))
+                ->map(fn ($row) => ($row['supplier_target_line_id'] ?? '').':'.($row['warehouse_id'] ?? ''));
+            if ($lineKeys->unique()->count() !== $lineKeys->count()) {
+                $validator->errors()->add('line_allocations', 'A target line may only be allocated once to each warehouse.');
             }
         }];
     }

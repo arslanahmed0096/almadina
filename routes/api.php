@@ -177,8 +177,10 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
     Route::get('targets/report/print', 'SupplierTargetController@reportPrint');
     Route::get('targets/report/pdf', 'SupplierTargetController@reportPdf');
     Route::get('targets/report/excel', 'SupplierTargetController@reportExcel');
+    Route::get('targets/discount-ledger', 'SupplierTargetController@discountLedger');
     Route::get('targets', 'SupplierTargetController@index');
     Route::post('targets', 'SupplierTargetController@store');
+    Route::get('targets/{target}/allocation-suggestion', 'SupplierTargetController@allocationSuggestion');
     Route::get('targets/{target}', 'SupplierTargetController@show');
     Route::put('targets/{target}', 'SupplierTargetController@update');
     Route::put('targets/{target}/lines', 'SupplierTargetController@saveLines');
@@ -186,6 +188,8 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
     Route::post('targets/{target}/activate', 'SupplierTargetController@activate');
     Route::post('targets/{target}/cancel', 'SupplierTargetController@cancel');
     Route::post('targets/{target}/complete', 'SupplierTargetController@complete');
+    Route::post('targets/{target}/discount-postings', 'SupplierTargetController@postDiscount');
+    Route::delete('targets/{target}/discount-postings/{posting}', 'SupplierTargetController@deleteDiscount');
     Route::delete('targets/{target}', 'SupplierTargetController@destroy');
     Route::get('real_time_sales_counter_data', 'DashboardController@real_time_sales_counter_data');
     Route::get('sales_3d_dashboard_data', 'Sales3DDashboardController@data');
@@ -790,6 +794,10 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
     Route::get('payment_purchase_get_number', 'PaymentPurchasesController@getNumberOrder');
     Route::post('payment_purchase_send_email', 'PaymentPurchasesController@SendEmail');
     Route::post('payment_purchase_send_sms', 'PaymentPurchasesController@Send_SMS');
+    Route::get('supplier-payments/outstanding', 'SupplierPaymentController@outstanding');
+    Route::get('supplier-payments', 'SupplierPaymentController@index');
+    Route::post('supplier-payments', 'SupplierPaymentController@store');
+    Route::delete('supplier-payments/{supplierPayment}', 'SupplierPaymentController@destroy');
 
     // -------------------------------  Sales --------------------------\\
     // ------------------------------------------------------------------\\

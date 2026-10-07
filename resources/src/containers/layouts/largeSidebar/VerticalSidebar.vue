@@ -392,6 +392,8 @@
             v-show="currentUserPermissions && (
               currentUserPermissions.includes('Purchases_view') ||
               currentUserPermissions.includes('Purchases_add') ||
+              currentUserPermissions.includes('payment_purchases_view') ||
+              currentUserPermissions.includes('payment_purchases_add') ||
               currentUserPermissions.includes('purchase_orders_view') ||
               currentUserPermissions.includes('purchase_orders_create') ||
               currentUserPermissions.includes('gate_passes_view') ||
@@ -422,6 +424,12 @@
                 <router-link to="/app/purchases/list" class="submenu-link">
                   <lucide-icon class="submenu-icon" name="files" />
                   <span>{{ $t('ListPurchases') }}</span>
+                </router-link>
+              </li>
+              <li class="submenu-item" v-if="currentUserPermissions && (currentUserPermissions.includes('payment_purchases_view') || currentUserPermissions.includes('payment_purchases_add'))">
+                <router-link to="/app/purchases/supplier-payments" class="submenu-link">
+                  <lucide-icon class="submenu-icon" name="landmark" />
+                  <span>Supplier Payments</span>
                 </router-link>
               </li>
               <li class="submenu-item" v-if="currentUserPermissions && currentUserPermissions.includes('Purchases_add')">
@@ -511,6 +519,7 @@
             <ul class='submenu' v-if='openMenus.includes(&quot;targets&quot;) && !isCollapsed'>
               <li class='submenu-item'><router-link to='/app/targets/dashboard' class='submenu-link'><lucide-icon class='submenu-icon' name='layout-dashboard' /><span>Target Dashboard</span></router-link></li>
               <li class='submenu-item'><router-link to='/app/targets/list' class='submenu-link'><lucide-icon class='submenu-icon' name='list' /><span>Manage Targets</span></router-link></li>
+              <li class='submenu-item' v-if='currentUserPermissions && currentUserPermissions.includes(&quot;targets.discount_ledger&quot;)'><router-link to='/app/targets/discount-ledger' class='submenu-link'><lucide-icon class='submenu-icon' name='badge-percent' /><span>Further Discount Ledger</span></router-link></li>
             </ul>
           </li>
 

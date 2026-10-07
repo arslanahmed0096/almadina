@@ -146,9 +146,26 @@
       size="xl"
       scrollable
       hide-footer
-      :title="branchDetailsTitle"
       dialog-class="branch-details-dialog"
     >
+      <template #modal-header="{ close }">
+        <h5 class="modal-title mb-0">{{ branchDetailsTitle }}</h5>
+        <div class="branch-modal-actions">
+          <b-button
+            v-if="canExport"
+            size="sm"
+            variant="success"
+            :disabled="branchDetailsLoading || !branchDetails"
+            @click="exportBranchCsv"
+          >
+            <lucide-icon name="file-spreadsheet" class="mr-1" /> Excel Export
+          </b-button>
+          <button type="button" class="close" aria-label="Close" @click="close">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+      </template>
+
       <div v-if="branchDetailsLoading" class="text-center py-5">
         <b-spinner variant="primary" />
         <div class="mt-2">Loading branch transactions and receipts...</div>
@@ -405,6 +422,110 @@ export default {
     printReport() {
       window.print();
     },
+    downloadCsv(rows, filename) {
+      const escape = value => {
+        let text = String(value == null ? "" : value);
+        if (/^[=+\-@]/.test(text)) text = `'${text}`;
+        return `"${text.replace(/"/g, '""')}"`;
+      };
+      const csv = "\ufeff" + rows.map(row => row.map(escape).join(",")).join("\r\n");
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+    },
+    exportBranchCsv() {
+      if (!this.branchDetails || !this.selectedBranch) return;
+
+      const details = this.branchDetails;
+      const totals = details.totals || {};
+      const rows = [
+        ["Branch Sale Report"],
+        ["Branch", details.warehouse || this.selectedBranch.warehouse],
+        ["Report Period", details.start_date, details.end_date],
+        [],
+        ["Summary", "Value"],
+        ["Transactions", totals.transaction_count],
+        ["Items Quantity", totals.quantity],
+        ["Sales Value", totals.sales_value],
+        ["Orders Value", totals.orders_value],
+        ["Payments Received", totals.payments_received],
+        ["Advance Payments", totals.advance_received],
+        ["Previous Balance Received", totals.previous_balance_received],
+        ["Current Outstanding", totals.current_outstanding],
+        [],
+        ["Sales and Orders Created in This Period"],
+        ["Date", "Time", "Type", "Order No.", "Status", "Payment Status", "Customer", "Phone", "Address", "Item", "Quantity", "Unit Sale Price", "Sold By", "Invoice Total", "Paid to Date", "Received in Period", "Remaining"]
+      ];
+
+      details.transactions.forEach(transaction => {
+        const items = transaction.items && transaction.items.length ? transaction.items : [{}];
+        items.forEach((item, index) => {
+          rows.push([
+            transaction.date,
+            transaction.time,
+            transaction.transaction_type,
+            transaction.order_number,
+            transaction.status,
+            transaction.payment_status,
+            transaction.customer_name,
+            transaction.customer_phone,
+            transaction.customer_address,
+            item.model || "",
+            item.quantity == null ? "" : item.quantity,
+            item.unit_price == null ? "" : item.unit_price,
+            transaction.sold_by,
+            index === 0 ? transaction.total : "",
+            index === 0 ? transaction.paid_to_date : "",
+            index === 0 ? transaction.received_in_period : "",
+            index === 0 ? transaction.remaining_balance : ""
+          ]);
+        });
+      });
+
+      rows.push(
+        [],
+        ["Customer Payments Received in This Period"],
+        ["Receipt Date", "Time", "Payment Type", "Receipt Reference", "Order No.", "Sale Date", "Customer", "Phone", "Address", "Related Item", "Quantity", "Unit Sale Price", "Received By", "Method", "Received", "Remaining After Receipt", "Current Remaining"]
+      );
+
+      details.receipts.forEach(receipt => {
+        const items = receipt.items && receipt.items.length ? receipt.items : [{}];
+        items.forEach((item, index) => {
+          rows.push([
+            receipt.receipt_date,
+            receipt.receipt_time,
+            receipt.receipt_type,
+            receipt.receipt_reference,
+            receipt.order_number,
+            receipt.sale_date,
+            receipt.customer_name,
+            receipt.customer_phone,
+            receipt.customer_address,
+            item.model || "",
+            item.quantity == null ? "" : item.quantity,
+            item.unit_price == null ? "" : item.unit_price,
+            receipt.received_by,
+            receipt.payment_method,
+            index === 0 ? receipt.amount : "",
+            index === 0 ? receipt.remaining_after_receipt : "",
+            index === 0 ? receipt.current_remaining : ""
+          ]);
+        });
+      });
+
+      const safeBranch = String(details.warehouse || this.selectedBranch.warehouse || "branch")
+        .replace(/[^a-z0-9_-]+/gi, "-")
+        .replace(/^-+|-+$/g, "")
+        .toLowerCase();
+      this.downloadCsv(
+        rows,
+        `branch-sale-report-${safeBranch || "branch"}-${details.start_date}-to-${details.end_date}.csv`
+      );
+    },
     exportCsv() {
       const rows = [
         ["Daily Report", this.report.start_date, this.report.end_date, this.report.day_name, this.report.scope, this.report.supplier_scope],
@@ -434,17 +555,7 @@ export default {
         ["Payment Method", "Received", "Paid Out", "Net Movement"],
         ...this.report.payment_methods.map(row => [row.payment_method, row.inflow, row.outflow, row.net])
       ];
-      const escape = value => {
-        let text = String(value == null ? "" : value);
-        if (/^[=+\-@]/.test(text)) text = `'${text}`;
-        return `"${text.replace(/"/g, '""')}"`;
-      };
-      const csv = "\ufeff" + rows.map(row => row.map(escape).join(",")).join("\r\n");
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-      link.download = `daily-report-${this.report.start_date}-to-${this.report.end_date}.csv`;
-      link.click();
-      URL.revokeObjectURL(link.href);
+      this.downloadCsv(rows, `daily-report-${this.report.start_date}-to-${this.report.end_date}.csv`);
     }
   }
 };
@@ -499,6 +610,9 @@ export default {
 .item-total { margin-top: 4px; color: #111827; font-weight: 700; }
 .received-cell { color: #137447; font-weight: 800; }
 .balance-cell { color: #9a3412; font-weight: 800; }
+.branch-modal-actions { display: flex; align-items: center; gap: 12px; }
+.branch-modal-actions .btn { display: inline-flex; align-items: center; margin: 0; white-space: nowrap; }
+.branch-modal-actions .close { margin: 0; padding: 0; }
 @media (max-width: 767px) {
   .daily-report-page { padding: 8px; }
   .report-actions { justify-content: flex-start; flex-wrap: wrap; }

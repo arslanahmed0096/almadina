@@ -20,6 +20,19 @@ class TargetActivationService
             if ($lineTotal <= 0 || abs($lineTotal - $allocationTotal) > 0.0001) {
                 throw ValidationException::withMessages(['allocations' => ['Allocation must exactly equal the product/category target total before activation.']]);
             }
+            if (! $locked->lineAllocations()->exists()) {
+                throw ValidationException::withMessages([
+                    'line_allocations' => ['Every product/category target must be distributed to branches before activation.'],
+                ]);
+            }
+            foreach ($locked->lines()->get() as $line) {
+                $allocated = round((float) $line->allocations()->sum('allocated_quantity'), 3);
+                if (abs((float) $line->target_quantity - $allocated) > 0.0001) {
+                    throw ValidationException::withMessages([
+                        'line_allocations' => ['Every product/category target must be fully distributed to branches before activation.'],
+                    ]);
+                }
+            }
             if ($conflictCheck) {
                 $conflictCheck($locked);
             }

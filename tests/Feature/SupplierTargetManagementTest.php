@@ -11,6 +11,7 @@ use App\Policies\SupplierTargetPolicy;
 use App\Services\Targets\TargetAchievementService;
 use App\Services\Targets\TargetActivationService;
 use App\Services\Targets\TargetAllocationService;
+use App\Services\Targets\TargetDiscountVisibilityService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -47,6 +48,27 @@ class SupplierTargetManagementTest extends TestCase
             $t->integer('category_id')->nullable();
             $t->integer('unit_id')->nullable();
             $t->decimal('target_quantity', 20, 3);
+            $t->decimal('further_discount_per_unit', 20, 2)->default(0);
+            $t->json('further_discounts')->nullable();
+            $t->timestamps();
+        });
+        Schema::create('supplier_target_line_allocations', function (Blueprint $t) {
+            $t->id();
+            $t->integer('supplier_target_id');
+            $t->integer('supplier_target_line_id');
+            $t->integer('warehouse_id');
+            $t->decimal('allocated_quantity', 20, 3);
+            $t->timestamps();
+        });
+        Schema::create('supplier_target_discount_postings', function (Blueprint $t) {
+            $t->id();
+            $t->integer('supplier_target_id');
+            $t->integer('supplier_target_line_id');
+            $t->date('posting_date');
+            $t->decimal('amount', 20, 2);
+            $t->string('reference')->nullable();
+            $t->text('notes')->nullable();
+            $t->integer('created_by');
             $t->timestamps();
         });
         Schema::create('supplier_target_allocations', function (Blueprint $t) {
@@ -86,6 +108,8 @@ class SupplierTargetManagementTest extends TestCase
             $t->id();
             $t->string('name');
             $t->integer('category_id')->nullable();
+            $t->decimal('cost', 15, 2)->default(0);
+            $t->decimal('purchase_price', 15, 2)->nullable();
             $t->boolean('is_active')->default(true);
             $t->softDeletes();
             $t->timestamps();
@@ -151,8 +175,9 @@ class SupplierTargetManagementTest extends TestCase
             'supplier_id' => 1, 'target_name' => 'Annual 2026', 'period_type' => 'annual',
             'start_date' => '2026-01-01', 'end_date' => '2026-12-31', 'status' => 'active', 'created_by' => 1,
         ]);
-        $this->target->lines()->create(['product_id' => 1, 'target_quantity' => 10]);
+        $line = $this->target->lines()->create(['product_id' => 1, 'target_quantity' => 10]);
         $this->target->allocations()->create(['warehouse_id' => 1, 'allocated_quantity' => 10]);
+        $this->target->lineAllocations()->create(['supplier_target_line_id' => $line->id, 'warehouse_id' => 1, 'allocated_quantity' => 10]);
     }
 
     protected function tearDown(): void
@@ -199,6 +224,12 @@ class SupplierTargetManagementTest extends TestCase
     {
         $this->target->update(['period_type' => 'monthly', 'start_date' => '2026-05-01', 'end_date' => '2026-05-31']);
         $this->assertSame('monthly', $this->target->fresh()->period_type);
+    }
+
+    public function test_quarterly_target_is_supported(): void
+    {
+        $this->target->update(['period_type' => 'quarterly', 'start_date' => '2026-04-01', 'end_date' => '2026-06-30']);
+        $this->assertSame('quarterly', $this->target->fresh()->period_type);
     }
 
     public function test_line_total_is_derived(): void
@@ -312,6 +343,96 @@ class SupplierTargetManagementTest extends TestCase
         $this->assertCount(12, $this->metrics()['monthly']);
     }
 
+    public function test_quarterly_chart_contains_three_months(): void
+    {
+        $this->target->update(['period_type' => 'quarterly', 'start_date' => '2026-04-01', 'end_date' => '2026-06-30']);
+        $metrics = $this->metrics();
+
+        $this->assertCount(3, $metrics['monthly']);
+        $this->assertSame(['Apr', 'May', 'Jun'], $metrics['monthly']->pluck('label')->all());
+        $this->assertCount(3, $metrics['monthly_plan']);
+        $this->assertSame(10.0, round((float) $metrics['monthly_plan']->sum('target'), 3));
+    }
+
+    public function test_annual_branch_plan_is_divided_exactly_across_twelve_months(): void
+    {
+        $months = $this->metrics()['monthly_plan'];
+        $this->assertCount(12, $months);
+        $this->assertSame(10.0, round((float) $months->sum('target'), 3));
+        $this->assertSame(0.834, $months->first()['branches']->first()['target']);
+    }
+
+    public function test_four_quarter_totals_are_available(): void
+    {
+        $quarters = $this->metrics()['quarters'];
+        $this->assertCount(4, $quarters);
+        $this->assertSame(10.0, round((float) $quarters->sum('target'), 3));
+    }
+
+    public function test_further_discount_accrues_on_each_sold_unit_up_to_target_quantity(): void
+    {
+        $this->target->lines()->update(['further_discount_per_unit' => 1800]);
+        $this->sale(9);
+        $this->assertSame(16200.0, $this->metrics()['discount']['earned']);
+        DB::table('sales')->delete();
+        DB::table('sale_details')->delete();
+        $this->sale(12);
+        $this->assertSame(18000.0, $this->metrics()['discount']['earned']);
+    }
+
+    public function test_multiple_target_discounts_use_purchase_price_and_flow_to_pricing(): void
+    {
+        $rules = [
+            ['label' => 'Payment Clearance', 'type' => 'percentage', 'value' => 5],
+            ['label' => 'Target', 'type' => 'percentage', 'value' => 3],
+            ['label' => 'Per Item', 'type' => 'fixed', 'value' => 1400],
+        ];
+        DB::table('products')->where('id', 1)->update(['purchase_price' => 45000, 'cost' => 45000]);
+        $this->target->lines()->first()->update(['further_discounts' => $rules]);
+        $this->sale(2);
+
+        $lineMetric = $this->metrics()['lines'][0];
+        $this->assertSame(5000.0, $lineMetric['discount_rate_per_unit']);
+        $this->assertSame(10000.0, $lineMetric['discount_earned']);
+
+        $pricingDiscounts = app(TargetDiscountVisibilityService::class)
+            ->forPricing(\App\Models\Product::findOrFail(1), '2026-05-01');
+        $this->assertCount(3, $pricingDiscounts);
+        $this->assertSame('Payment Clearance', $pricingDiscounts[0]['label']);
+        $this->assertSame('Welcome', $pricingDiscounts[0]['supplier']);
+    }
+
+    public function test_create_sale_target_discount_information_is_available_without_changing_sale_values(): void
+    {
+        $this->target->lines()->update(['further_discount_per_unit' => 1000]);
+        $this->sale(4);
+        $discounts = app(TargetDiscountVisibilityService::class)
+            ->forProduct(\App\Models\Product::findOrFail(1), 1, '2026-05-01');
+        $discount = $discounts->first();
+
+        $this->assertCount(1, $discounts);
+        $this->assertSame('Welcome', $discount['supplier']);
+        $this->assertSame(1000.0, $discount['rate_per_unit']);
+        $this->assertSame(4.0, $discount['accrued_quantity']);
+        $this->assertSame(4000.0, $discount['accrued_amount']);
+        $this->assertSame(6.0, $discount['remaining_eligible_quantity']);
+    }
+
+    public function test_partial_company_posting_reduces_discount_balance(): void
+    {
+        $line = $this->target->lines()->first();
+        $line->update(['further_discount_per_unit' => 1800]);
+        $this->sale(10);
+        $this->target->discountPostings()->create([
+            'supplier_target_line_id' => $line->id, 'posting_date' => '2026-06-01',
+            'amount' => 5000, 'reference' => 'CN-1', 'created_by' => 1,
+        ]);
+        $discount = $this->metrics()['discount'];
+        $this->assertSame(18000.0, $discount['earned']);
+        $this->assertSame(5000.0, $discount['posted']);
+        $this->assertSame(13000.0, $discount['balance']);
+    }
+
     public function test_monthly_chart_uses_weekly_buckets(): void
     {
         $this->target->update(['period_type' => 'monthly', 'start_date' => '2026-05-01', 'end_date' => '2026-05-31']);
@@ -347,6 +468,48 @@ class SupplierTargetManagementTest extends TestCase
         app(TargetAllocationService::class)->equally(10, 0);
     }
 
+    public function test_decimal_target_and_allocation_quantities_are_preserved(): void
+    {
+        $line = $this->target->lines()->first();
+        $line->update(['target_quantity' => 10.125]);
+        $allocation = $this->target->lineAllocations()->first();
+        $allocation->update(['allocated_quantity' => 10.125]);
+
+        $this->assertSame('10.125', $line->fresh()->target_quantity);
+        $this->assertSame('10.125', $allocation->fresh()->allocated_quantity);
+    }
+
+    public function test_weighted_distribution_is_exact_with_decimal_rounding(): void
+    {
+        $values = app(TargetAllocationService::class)->weighted(10.125, [70, 30]);
+
+        $this->assertSame(10.125, array_sum($values));
+        $this->assertSame([7.088, 3.037], $values);
+    }
+
+    public function test_sales_weighted_allocation_assigns_more_to_higher_selling_branch(): void
+    {
+        $this->sale(70, 'completed', '2025-06-01', 1);
+        $this->sale(30, 'completed', '2025-06-01', 2);
+        $suggestion = app(TargetAllocationService::class)->byHistoricalSales($this->target->fresh(), collect([1, 2]));
+        $rows = $suggestion['line_allocations'];
+
+        $this->assertSame('2025-01-01', $suggestion['history_start']);
+        $this->assertSame('2025-12-31', $suggestion['history_end']);
+        $this->assertSame(7.0, $rows->firstWhere('warehouse_id', 1)['allocated_quantity']);
+        $this->assertSame(3.0, $rows->firstWhere('warehouse_id', 2)['allocated_quantity']);
+        $this->assertSame([], $suggestion['fallback_line_ids']);
+    }
+
+    public function test_sales_weighted_allocation_falls_back_to_equal_without_history(): void
+    {
+        $suggestion = app(TargetAllocationService::class)->byHistoricalSales($this->target->fresh(), collect([1, 2]));
+        $rows = $suggestion['line_allocations'];
+
+        $this->assertSame([5.0, 5.0], $rows->pluck('allocated_quantity')->all());
+        $this->assertSame([$this->target->lines()->first()->id], $suggestion['fallback_line_ids']);
+    }
+
     public function test_incomplete_allocation_cannot_activate(): void
     {
         $this->target->update(['status' => 'draft']);
@@ -360,6 +523,14 @@ class SupplierTargetManagementTest extends TestCase
         $this->target->update(['status' => 'draft']);
         $activated = app(TargetActivationService::class)->activate($this->target, 1);
         $this->assertSame('active', $activated->status);
+    }
+
+    public function test_target_cannot_activate_without_category_branch_allocation(): void
+    {
+        $this->target->update(['status' => 'draft']);
+        $this->target->lineAllocations()->delete();
+        $this->expectException(\Illuminate\Validation\ValidationException::class);
+        app(TargetActivationService::class)->activate($this->target, 1);
     }
 
     public function test_activation_records_audit_history(): void
@@ -383,6 +554,27 @@ class SupplierTargetManagementTest extends TestCase
             'supplier_id' => 1, 'target_name' => 'Monthly', 'period_type' => 'monthly',
             'start_date' => '2026-05-01', 'end_date' => '2026-06-01',
         ]);
+        $this->assertTrue($validator->fails());
+        $this->assertArrayHasKey('end_date', $validator->errors()->toArray());
+    }
+
+    public function test_quarterly_period_is_accepted_within_one_calendar_quarter(): void
+    {
+        $validator = $this->requestValidator(SaveSupplierTargetDetailsRequest::class, [
+            'supplier_id' => 1, 'target_name' => 'Q2 Target', 'period_type' => 'quarterly',
+            'start_date' => '2026-04-01', 'end_date' => '2026-06-30',
+        ]);
+
+        $this->assertTrue($validator->passes());
+    }
+
+    public function test_quarterly_period_cannot_cross_calendar_quarters(): void
+    {
+        $validator = $this->requestValidator(SaveSupplierTargetDetailsRequest::class, [
+            'supplier_id' => 1, 'target_name' => 'Quarterly', 'period_type' => 'quarterly',
+            'start_date' => '2026-03-01', 'end_date' => '2026-04-30',
+        ]);
+
         $this->assertTrue($validator->fails());
         $this->assertArrayHasKey('end_date', $validator->errors()->toArray());
     }

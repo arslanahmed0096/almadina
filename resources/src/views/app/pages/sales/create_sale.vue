@@ -265,6 +265,18 @@
                                 <lucide-icon name="package" style="margin-right: 3px;" />{{ $t('Batches') || 'Batches' }}
                               </span>
                             </div>
+                            <div
+                              v-for="targetDiscount in (detail.target_discounts || [])"
+                              :key="'target-discount-' + detail.detail_id + '-' + targetDiscount.target_line_id"
+                              class="mt-2 p-2"
+                              style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:6px;color:#065f46;font-size:11px;line-height:1.45;"
+                            >
+                              <strong>Company Further Discount: {{ currentUser.currency }} {{ formatNumber(targetDiscount.rate_per_unit, 2) }} / unit</strong>
+                              <span class="d-block">{{ targetDiscount.supplier }} · {{ targetDiscount.target_name }}</span>
+                              <span class="d-block">Accrued before this sale: {{ currentUser.currency }} {{ formatNumber(targetDiscount.accrued_amount, 2) }}</span>
+                              <span class="d-block">{{ targetDiscountSaleLabel() }}: {{ currentUser.currency }} {{ formatNumber(targetDiscountCurrentSale(detail,targetDiscount), 2) }}</span>
+                              <span class="d-block text-muted">Information only — sale price and customer ledger stay unchanged.</span>
+                            </div>
                           </td>
                           <td>
                             <div class="d-flex align-items-center">
@@ -492,6 +504,13 @@
                       <tr v-if="getLineDiscountAmount() > 0">
                         <td class="bold">Item Discount</td>
                         <td>{{currentUser.currency}} {{getLineDiscountAmount().toFixed(2)}}</td>
+                      </tr>
+                      <tr v-if="getTargetDiscountAccrualAmount() > 0">
+                        <td>
+                          <span class="font-weight-bold text-success">Company Further Discount Accrual</span>
+                          <small class="d-block text-muted">Supplier incentive only; not deducted from this sale.</small>
+                        </td>
+                        <td class="text-success">+ {{currentUser.currency}} {{getTargetDiscountAccrualAmount().toFixed(2)}}</td>
                       </tr>
                       <tr>
                         <td class="bold">Additional Order Discount</td>
@@ -855,10 +874,10 @@
 
                 <b-col md="12">
                   <b-form-group>
-                    <b-button variant="primary" :disabled="paymentProcessing || managedTaxLoading || hasMinPriceViolation || (sale.statut === 'completed' && hasBatchValidationErrors)" @click="Submit_Sale">
+                    <b-button type="submit" variant="primary" :disabled="paymentProcessing || managedTaxLoading || hasMinPriceViolation || (sale.statut === 'completed' && hasBatchValidationErrors)">
                       <span v-if="paymentProcessing" class="spinner sm spinner-white mr-2"></span>
-                      <lucide-icon v-else class="me-2 font-weight-bold" name="check" />
-                      {{ paymentProcessing ? ($t('Saving') || 'Saving...') : $t('submit') }}
+                      <lucide-icon v-else class="me-2 font-weight-bold" name="printer" />
+                      {{ paymentProcessing ? ($t('Saving') || 'Saving...') : 'Submit and Print' }}
                     </b-button>
                     <div v-once class="typo__p" v-if="paymentProcessing">
                     <div class="spinner sm spinner-primary mt-3"></div>
@@ -1168,6 +1187,7 @@ export default {
       product_filter:[],
 
       paymentProcessing: false,
+      salePrintWindow: null,
       Submit_Processing_detail:false,
       SubmitProcessing: false,
       isLoading: true,
@@ -1185,6 +1205,7 @@ export default {
       managedTaxPreviewLoaded: false,
       managedTaxPreviewTimer: null,
       managedTaxRequestSequence: 0,
+      targetDiscountRefreshTimer: null,
       managedTaxPreview: {
         rows: [],
         summary: [],
@@ -1306,6 +1327,7 @@ export default {
         batches: [],
         available_batches: [],
         batches_loading: false,
+        target_discounts: [],
       }
     };
   },
@@ -1573,9 +1595,11 @@ export default {
     },
     'sale.date'() {
       this.scheduleManagedTaxPreview();
+      this.scheduleTargetDiscountRefresh();
     },
     'sale.warehouse_id'() {
       this.scheduleManagedTaxPreview();
+      this.scheduleTargetDiscountRefresh();
     }
   },
  
@@ -2023,6 +2047,58 @@ export default {
 
 
   
+    openSalePrintWindow() {
+      this.closeSalePrintWindow();
+      this.salePrintWindow = window.open('', '_blank', 'width=900,height=700');
+      if (this.salePrintWindow) {
+        this.salePrintWindow.document.open();
+        this.salePrintWindow.document.write('<!doctype html><html><head><title>Preparing Invoice</title></head><body style="font-family:Arial,sans-serif;padding:30px">Saving sale and preparing invoice...</body></html>');
+        this.salePrintWindow.document.close();
+      }
+    },
+    closeSalePrintWindow() {
+      if (this.salePrintWindow && !this.salePrintWindow.closed) {
+        this.salePrintWindow.close();
+      }
+      this.salePrintWindow = null;
+    },
+    printCreatedSale(saleId) {
+      const printWindow = this.salePrintWindow;
+      this.salePrintWindow = null;
+      if (!printWindow || printWindow.closed) {
+        this.makeToast('warning', 'Sale saved, but the print window was blocked. Please print it from the Sales list.', this.$t('Warning'));
+        return Promise.resolve();
+      }
+
+      return axios.get(`sale_print_html/${saleId}`).then(response => {
+        let printed = false;
+        const triggerPrint = () => {
+          if (printed || printWindow.closed) return;
+          printed = true;
+          try {
+            printWindow.focus();
+            printWindow.print();
+          } catch (error) {
+            if (!printWindow.closed) printWindow.close();
+          }
+        };
+        printWindow.onafterprint = () => {
+          if (!printWindow.closed) printWindow.close();
+        };
+        printWindow.document.open();
+        printWindow.document.write(response.data);
+        printWindow.document.close();
+        if (printWindow.document.readyState === 'complete') {
+          setTimeout(triggerPrint, 150);
+        } else {
+          printWindow.onload = () => setTimeout(triggerPrint, 150);
+        }
+      }).catch(() => {
+        if (!printWindow.closed) printWindow.close();
+        this.makeToast('warning', 'Sale saved, but the invoice could not be opened for printing.', this.$t('Warning'));
+      });
+    },
+
     //--- Submit Validate Create Sale
     Submit_Sale() {
       if (this.paymentProcessing) {
@@ -2035,9 +2111,11 @@ export default {
         return;
       }
 
+      this.openSalePrintWindow();
       this.paymentProcessing = true;
       this.$refs.create_sale.validate().then(success => {
         if (!success) {
+          this.closeSalePrintWindow();
           this.paymentProcessing = false;
           this.makeToast(
             "danger",
@@ -2045,11 +2123,13 @@ export default {
             this.$t("Failed")
           );
         } else if (Number(this.GrandTotal) < 0) {
+          this.closeSalePrintWindow();
           this.paymentProcessing = false;
           const msg = this.$t ? `${this.$t('pos.Total_Payable')} ${this.$t('cannot_be_negative') || 'cannot be negative'}` : 'Total Payable cannot be negative';
           this.makeToast('warning', msg, this.$t ? this.$t('Warning') : 'Warning');
           return;
         } else if (this.payment.amount > this.customerGrandTotal) {
+            this.closeSalePrintWindow();
             this.paymentProcessing = false;
             this.makeToast(
               "warning",
@@ -2070,6 +2150,7 @@ export default {
                 const newTotalDue = currentDue + newSaleDue;
 
                 if (newTotalDue > this.selectedClientCreditLimit) {
+                  this.closeSalePrintWindow();
                   this.paymentProcessing = false;
                   const exceededAmount = newTotalDue - this.selectedClientCreditLimit;
                   this.makeToast(
@@ -2088,6 +2169,7 @@ export default {
             this.Create_Sale();
           }
       }).catch(() => {
+        this.closeSalePrintWindow();
         this.paymentProcessing = false;
       });
     },
@@ -2789,6 +2871,28 @@ export default {
 
      //------------------------------------ Get Products By Warehouse -------------------------\\
 
+    scheduleTargetDiscountRefresh() {
+      clearTimeout(this.targetDiscountRefreshTimer);
+      this.targetDiscountRefreshTimer = setTimeout(() => this.refreshTargetDiscounts(), 250);
+    },
+
+    async refreshTargetDiscounts() {
+      const warehouseId = this.sale && this.sale.warehouse_id;
+      if (!warehouseId || !Array.isArray(this.details) || !this.details.length) return;
+      const date = this.sale.date || new Date().toISOString().slice(0, 10);
+      await Promise.all(this.details.map(async detail => {
+        if (!detail || !detail.product_id) return;
+        const variantId = detail.product_variant_id || 0;
+        const path = '/show_product_data/' + detail.product_id + '/' + variantId + '/' + warehouseId;
+        try {
+          const response = await axios.get(path, {params:{date}});
+          this.$set(detail, 'target_discounts', Array.isArray(response.data.target_discounts) ? response.data.target_discounts : []);
+        } catch (error) {
+          this.$set(detail, 'target_discounts', []);
+        }
+      }));
+    },
+
     Get_Products_By_Warehouse(id) {
       // Start the progress bar.
         NProgress.start();
@@ -3173,6 +3277,32 @@ export default {
 
     // Item-level discounts are already included in each row's Net_price.
     // Keep this amount display-only so it is not deducted again as an order discount.
+    targetDiscountCurrentSale(detail, targetDiscount) {
+      const quantity = Math.max(Number(detail && detail.quantity) || 0, 0);
+      const remaining = Math.max(Number(targetDiscount && targetDiscount.remaining_eligible_quantity) || 0, 0);
+      const rate = Math.max(Number(targetDiscount && targetDiscount.rate_per_unit) || 0, 0);
+      return parseFloat((Math.min(quantity, remaining) * rate).toFixed(2));
+    },
+
+    targetDiscountSaleLabel() {
+      return this.sale.statut === 'completed'
+        ? 'This sale accrual'
+        : 'Potential accrual after completion / shipment';
+    },
+
+    getTargetDiscountAccrualAmount() {
+      if (!Array.isArray(this.details)) return 0;
+      const total = this.details.reduce((sum, detail) => {
+        const discounts = Array.isArray(detail.target_discounts) ? detail.target_discounts : [];
+        return sum + discounts.reduce(
+          (lineTotal, targetDiscount) => lineTotal + this.targetDiscountCurrentSale(detail, targetDiscount),
+          0
+        );
+      }, 0);
+
+      return parseFloat(total.toFixed(2));
+    },
+
     getLineDiscountAmount() {
       if (!Array.isArray(this.details)) return 0;
 
@@ -3261,6 +3391,7 @@ export default {
     Create_Sale() {
       if (this.verifiedForm()) {
         if (Number(this.GrandTotal) < 0) {
+          this.closeSalePrintWindow();
           this.paymentProcessing = false;
           const msg = this.$t ? `${this.$t('pos.Total_Payable')} ${this.$t('cannot_be_negative') || 'cannot be negative'}` : 'Total Payable cannot be negative';
           this.makeToast('warning', msg, this.$t ? this.$t('Warning') : 'Warning');
@@ -3269,6 +3400,7 @@ export default {
 
         // Batch validation for batch-tracked products (only enforced when completed).
         if (this.sale.statut === 'completed' && this.hasBatchValidationErrors) {
+          this.closeSalePrintWindow();
           this.paymentProcessing = false;
           this.makeToast('warning', this.firstBatchErrorMessage, this.$t('Warning') || 'Warning');
           return;
@@ -3292,6 +3424,7 @@ export default {
             delete out.supplier_id;
             delete out.supplier_name;
             delete out.supplier_tax_status;
+            delete out.target_discounts;
             if (d.is_batch_tracked && Array.isArray(d.batches)) {
               out.batches = d.batches
                 .filter(b => b && b.product_batch_id && Number(b.qty) > 0)
@@ -3337,9 +3470,19 @@ export default {
               );
               NProgress.done();
               this.paymentProcessing = false;
-              this.$router.push({ name: "index_sales" });
+              const saleId = response && response.data ? response.data.sale_id : null;
+              if (!saleId) {
+                this.closeSalePrintWindow();
+                this.makeToast('warning', 'Sale saved, but its invoice ID was not returned for printing.', this.$t('Warning'));
+                this.$router.push({ name: "index_sales" });
+                return;
+              }
+              this.printCreatedSale(saleId).finally(() => {
+                this.$router.push({ name: "index_sales" });
+              });
             })
             .catch(error => {
+              this.closeSalePrintWindow();
               NProgress.done();
               this.paymentProcessing = false;
               this.makeToast(
@@ -3350,6 +3493,7 @@ export default {
             });
         }
       } else {
+        this.closeSalePrintWindow();
         this.paymentProcessing = false;
       }
     },
@@ -3365,9 +3509,10 @@ export default {
 
     Get_Product_Details(product_id, variant_id) {
       const wid = this.sale && this.sale.warehouse_id ? this.sale.warehouse_id : null;
-      const url = wid
-        ? `/show_product_data/${product_id}/${variant_id}/${wid}`
-        : `/show_product_data/${product_id}/${variant_id}`;
+      const path = wid
+        ? '/show_product_data/' + product_id + '/' + variant_id + '/' + wid
+        : '/show_product_data/' + product_id + '/' + variant_id;
+      const url = path + '?date=' + encodeURIComponent(this.sale.date || new Date().toISOString().slice(0, 10));
 
       axios.get(url).then(response => {
         this.product.discount           = response.data.discount;
@@ -3390,6 +3535,7 @@ export default {
         this.$set(this.product, 'supplier_id', response.data.supplier_id || null);
         this.$set(this.product, 'supplier_name', response.data.supplier_name || null);
         this.$set(this.product, 'supplier_tax_status', response.data.supplier_tax_status || null);
+        this.$set(this.product, 'target_discounts', Array.isArray(response.data.target_discounts) ? response.data.target_discounts : []);
         this.$set(
           this.product,
           'gst_option',

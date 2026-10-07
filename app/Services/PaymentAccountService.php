@@ -16,7 +16,7 @@ class PaymentAccountService
             return 'easypaisa';
         }
 
-        if (str_contains($name, 'bank')) {
+        if (str_contains($name, 'bank') || str_contains($name, 'cheque') || str_contains($name, 'check')) {
             return 'bank';
         }
 

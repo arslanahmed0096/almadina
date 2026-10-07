@@ -61,4 +61,14 @@ class SupplierTargetPolicy
     {
         return $this->allowed($user, 'targets.export');
     }
+
+    public function discountLedger(User $user, ?SupplierTarget $target = null): bool
+    {
+        return $this->allowed($user, 'targets.discount_ledger');
+    }
+
+    public function postDiscount(User $user, ?SupplierTarget $target = null): bool
+    {
+        return $this->allowed($user, 'targets.discount_postings');
+    }
 }

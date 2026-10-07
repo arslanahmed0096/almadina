@@ -97,6 +97,7 @@
               <th rowspan="2">Brand</th>
               <th rowspan="2">Category</th>
               <th rowspan="2">Purchase Price</th>
+              <th rowspan="2">Further Discounted Price</th>
               <th colspan="8" class="pricing-group-heading">Pricing Level</th>
               <th rowspan="2" class="margin-icon-heading"><lucide-icon name="percent" /></th>
             </tr>
@@ -122,7 +123,8 @@
               <td>{{ row.code }}</td>
               <td>{{ row.brand || "N/D" }}</td>
               <td class="category-cell">{{ row.category || "N/D" }}</td>
-              <td class="purchase-price-cell">{{ wholeNumber(activePurchasePrice(row)) }}</td>
+              <td class="purchase-price-cell">{{ decimalPrice(activePurchasePrice(row)) }}</td>
+              <td class="discounted-price-cell">{{ decimalPrice(discountedPurchasePrice(row, row.further_discounts)) }}</td>
               <td v-for="field in priceFields" :key="`${row.row_key}-${field}`" class="price-input-cell">
                 <b-form-input
                   v-model.number="row[field]"
@@ -138,14 +140,16 @@
               <td class="margin-action-cell">
                 <b-button
                   v-b-tooltip.hover
-                  :title="row.pricing_margins.length ? `Edit ${row.pricing_margins.length} margin${row.pricing_margins.length === 1 ? '' : 's'}` : 'Add margins'"
+                  :title="`Edit ${row.further_discounts.length} further discount(s) and ${row.pricing_margins.length} margin(s)`"
                   class="margin-icon-button"
                   size="sm"
                   variant="outline-primary"
                   @click="openMarginModal(row)"
                 >
                   <lucide-icon name="percent" />
-                  <span v-if="row.pricing_margins.length" class="margin-count-badge">{{ row.pricing_margins.length }}</span>
+                  <span v-if="row.pricing_margins.length || row.further_discounts.length" class="margin-count-badge">
+                    {{ row.pricing_margins.length + row.further_discounts.length }}
+                  </span>
                 </b-button>
               </td>
             </tr>
@@ -177,7 +181,7 @@
       dialog-class="pricing-margin-dialog"
       centered
       hide-footer
-      title="Purchase Price Margins"
+      title="Further Discounts & Purchase Price Margins"
       @hidden="closeMarginModal"
     >
       <template v-if="activeMarginRow">
@@ -193,14 +197,69 @@
           </div>
           <div class="margin-modal-product__price">
             <small>PURCHASE PRICE</small>
-            <strong>{{ wholeNumber(activePurchasePrice(activeMarginRow)) }}</strong>
+            <strong>{{ decimalPrice(activePurchasePrice(activeMarginRow)) }}</strong>
+            <small class="mt-2">FURTHER DISCOUNTED PRICE</small>
+            <strong class="discounted-price-value">{{ decimalPrice(discountedPurchasePrice(activeMarginRow, discountDraft)) }}</strong>
           </div>
+        </div>
+
+        <div class="margin-modal-heading discount-heading">
+          <div>
+            <h5>Further Discounts</h5>
+            <p>Discounts are imported from the matching active supplier target. Percentages use the original purchase price.</p>
+          </div>
+          <span v-if="discountsFromTarget" class="badge badge-success p-2">Imported from Active Target</span>
+        </div>
+
+        <div v-if="!discountDraft.length" class="margin-modal-empty discount-empty">
+          No active target further discounts found. Margins will use the original purchase price.
+        </div>
+
+        <b-row
+          v-for="(discount, index) in discountDraft"
+          :key="`modal-discount-${index}`"
+          class="align-items-end discount-modal-line"
+        >
+          <b-col lg="3" md="6">
+            <b-form-group label="Discount Category / Name">
+              <b-form-input v-model="discount.label" type="text" readonly />
+            </b-form-group>
+          </b-col>
+          <b-col lg="2" md="6">
+            <b-form-group label="Discount Type">
+              <b-form-select v-model="discount.type" :options="marginTypeOptions" disabled />
+            </b-form-group>
+          </b-col>
+          <b-col lg="2" md="4">
+            <b-form-group label="Discount">
+              <b-form-input v-model="discount.value" type="number" readonly />
+            </b-form-group>
+          </b-col>
+          <b-col lg="2" md="4">
+            <b-form-group label="Discount Amount">
+              <b-form-input :value="discountAmount(activeMarginRow, discount)" readonly />
+            </b-form-group>
+          </b-col>
+          <b-col lg="2" md="4">
+            <b-form-group label="Price After">
+              <b-form-input :value="discountPriceAfter(activeMarginRow, index)" readonly />
+            </b-form-group>
+          </b-col>
+          <b-col lg="1" md="4" class="mb-3 text-center">
+            <small v-if="discount.target_name" class="text-success d-block">{{ discount.supplier }}</small>
+            <small v-if="discount.target_name" class="text-muted d-block">{{ discount.target_name }}</small>
+          </b-col>
+        </b-row>
+
+        <div class="discount-total-bar">
+          <span>Total further discount</span>
+          <strong>{{ decimalPrice(totalFurtherDiscount(activeMarginRow, discountDraft)) }}</strong>
         </div>
 
         <div class="margin-modal-heading">
           <div>
             <h5>Margins</h5>
-            <p>The first four rows update Minimum, Wholesale, Al-Madina, and Regular prices. Choose a separate round-up value for each price.</p>
+            <p>The first four rows update Minimum, Wholesale, Al-Madina, and Regular prices. All margins use the further discounted price shown above.</p>
           </div>
           <b-button
             size="sm"
@@ -299,10 +358,12 @@ export default {
       dirtyProducts: {},
       activeMarginRow: null,
       marginDraft: [],
+      discountDraft: [],
+      discountsFromTarget: false,
       productSortType: "asc",
       marginTypeOptions: [
         { text: "%", value: "percentage" },
-        { text: "Fixed amount", value: "fixed" }
+        { text: "Fixed amount / item", value: "fixed" }
       ],
       roundingOptions: [
         { text: "Exact (1)", value: 1 },
@@ -384,6 +445,17 @@ export default {
           : (margin && String(margin.label || "").trim()) || `Custom Price ${index + 1}`
       }));
     },
+    normalizeFurtherDiscounts(discounts) {
+      return (Array.isArray(discounts) ? discounts : []).map(discount => ({
+        label: discount && discount.label ? String(discount.label) : "",
+        type: discount && discount.type === "fixed" ? "fixed" : "percentage",
+        value: discount && discount.value !== undefined && discount.value !== null ? discount.value : "",
+        target_id: discount && discount.target_id ? discount.target_id : null,
+        target_line_id: discount && discount.target_line_id ? discount.target_line_id : null,
+        target_name: discount && discount.target_name ? discount.target_name : "",
+        supplier: discount && discount.supplier ? discount.supplier : ""
+      }));
+    },
     withStandardMargins(margins) {
       const normalized = this.normalizeMargins(margins);
       while (normalized.length < 4) {
@@ -400,6 +472,12 @@ export default {
     wholeNumber(value) {
       return Math.round(this.numericValue(value));
     },
+    decimalPrice(value) {
+      return this.numericValue(value).toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      });
+    },
     roundingIncrement(margin) {
       const increment = Number(margin && margin.round_to);
       return [1, 10, 50, 100, 500, 1000].includes(increment) ? increment : 1;
@@ -412,11 +490,53 @@ export default {
     openMarginModal(row) {
       this.activeMarginRow = row;
       this.marginDraft = this.withStandardMargins(row.pricing_margins);
+      const targetDiscounts = this.normalizeFurtherDiscounts(row.target_further_discounts);
+      this.discountsFromTarget = targetDiscounts.length > 0;
+      this.discountDraft = targetDiscounts;
       this.$bvModal.show("pricing-margin-modal");
     },
     closeMarginModal() {
       this.activeMarginRow = null;
       this.marginDraft = [];
+      this.discountDraft = [];
+      this.discountsFromTarget = false;
+    },
+    addFurtherDiscount() {
+      if (!this.activeMarginRow || !(Number(this.activePurchasePrice(this.activeMarginRow)) > 0)) return;
+      this.discountDraft.push({
+        label: "",
+        type: "percentage",
+        value: ""
+      });
+    },
+    removeFurtherDiscount(index) {
+      this.discountDraft.splice(index, 1);
+    },
+    discountAmount(row, discount) {
+      const base = Number(this.activePurchasePrice(row));
+      const value = Number(discount && discount.value);
+      if (!Number.isFinite(base) || !Number.isFinite(value) || discount.value === "") return "";
+      const amount = discount.type === "percentage" ? base * value / 100 : value;
+      return Math.round(amount * 100) / 100;
+    },
+    totalFurtherDiscount(row, discounts) {
+      return (Array.isArray(discounts) ? discounts : []).reduce((total, discount) => {
+        const amount = Number(this.discountAmount(row, discount));
+        return total + (Number.isFinite(amount) ? amount : 0);
+      }, 0);
+    },
+    discountedPurchasePrice(row, discounts = null) {
+      const base = Number(this.activePurchasePrice(row));
+      const appliedDiscounts = discounts === null ? (row.further_discounts || []) : discounts;
+      const price = base - this.totalFurtherDiscount(row, appliedDiscounts);
+      return Math.round(Math.max(0, price) * 100) / 100;
+    },
+    discountPriceAfter(row, index) {
+      return this.discountedPurchasePrice(row, this.discountDraft.slice(0, index + 1));
+    },
+    marginBase(row) {
+      const discounts = this.activeMarginRow === row ? this.discountDraft : (row.further_discounts || []);
+      return this.discountedPurchasePrice(row, discounts);
     },
     addMargin() {
       if (!this.activeMarginRow || !(Number(this.activePurchasePrice(this.activeMarginRow)) > 0)) return;
@@ -431,13 +551,13 @@ export default {
       this.marginDraft.splice(index, 1);
     },
     rawMarginProfit(row, margin) {
-      const base = Number(this.activePurchasePrice(row));
+      const base = Number(this.marginBase(row));
       const amount = Number(margin.value);
       if (!Number.isFinite(base) || !Number.isFinite(amount) || margin.value === "") return "";
       return Math.round(margin.type === "percentage" ? base * amount / 100 : amount);
     },
     marginPrice(row, margin) {
-      const base = Number(this.activePurchasePrice(row));
+      const base = Number(this.marginBase(row));
       const profit = Number(this.rawMarginProfit(row, margin));
       if (!Number.isFinite(base) || !Number.isFinite(profit) || margin.value === "") return "";
       const rawPrice = Math.round(base + profit);
@@ -445,7 +565,7 @@ export default {
       return Math.ceil(rawPrice / increment) * increment;
     },
     marginProfit(row, margin) {
-      const base = Number(this.activePurchasePrice(row));
+      const base = Number(this.marginBase(row));
       const price = Number(this.marginPrice(row, margin));
       if (!Number.isFinite(base) || !Number.isFinite(price) || margin.value === "") return "";
       return Math.round(price - base);
@@ -463,8 +583,8 @@ export default {
     },
     validateMarginList(row, margins) {
       if (!margins.length) return true;
-      if (!(Number(this.activePurchasePrice(row)) > 0)) {
-        this.makeToast("danger", `Purchase Price is required for ${row.name}.`, this.$t("Failed"));
+      if (!(Number(this.marginBase(row)) > 0)) {
+        this.makeToast("danger", `A positive further discounted price is required for ${row.name}.`, this.$t("Failed"));
         return false;
       }
 
@@ -489,8 +609,42 @@ export default {
       }
       return true;
     },
+    validateFurtherDiscounts(row, discounts) {
+      if (!discounts.length) return true;
+      const purchasePrice = Number(this.activePurchasePrice(row));
+      if (!(purchasePrice > 0)) {
+        this.makeToast("danger", `Purchase Price is required for ${row.name}.`, this.$t("Failed"));
+        return false;
+      }
+
+      for (const discount of discounts) {
+        const value = Number(discount.value);
+        if (!String(discount.label || "").trim()) {
+          this.makeToast("danger", `Enter a name for every further discount on ${row.name}.`, this.$t("Failed"));
+          return false;
+        }
+        if (!["percentage", "fixed"].includes(discount.type) || discount.value === "" || !Number.isFinite(value) || value < 0) {
+          this.makeToast("danger", `Enter a non-negative further discount for ${row.name}.`, this.$t("Failed"));
+          return false;
+        }
+        if (discount.type === "percentage" && value > 100) {
+          this.makeToast("danger", `A percentage further discount cannot exceed 100% for ${row.name}.`, this.$t("Failed"));
+          return false;
+        }
+      }
+      if (this.totalFurtherDiscount(row, discounts) > purchasePrice) {
+        this.makeToast("danger", `Total further discount cannot exceed the purchase price for ${row.name}.`, this.$t("Failed"));
+        return false;
+      }
+      return true;
+    },
     saveMarginModal() {
-      if (!this.activeMarginRow || !this.validateMarginList(this.activeMarginRow, this.marginDraft)) return;
+      if (!this.activeMarginRow ||
+          !this.validateFurtherDiscounts(this.activeMarginRow, this.discountDraft) ||
+          !this.validateMarginList(this.activeMarginRow, this.marginDraft)) return;
+      this.$set(this.activeMarginRow, "further_discounts", this.normalizeFurtherDiscounts(this.discountDraft));
+      this.$set(this.activeMarginRow, "further_discounted_price",
+        this.discountedPurchasePrice(this.activeMarginRow, this.discountDraft));
       this.$set(this.activeMarginRow, "pricing_margins", this.normalizeMargins(this.marginDraft));
       this.applyMarginPrices(this.activeMarginRow);
       this.markDirty(this.activeMarginRow.product_id);
@@ -499,8 +653,9 @@ export default {
     },
     validatePricingMargins() {
       for (const row of this.pricingRows) {
+        const discounts = row.further_discounts || [];
         const margins = row.pricing_margins || [];
-        if (!this.validateMarginList(row, margins)) {
+        if (!this.validateFurtherDiscounts(row, discounts) || !this.validateMarginList(row, margins)) {
           this.openMarginModal(row);
           return false;
         }
@@ -562,7 +717,14 @@ export default {
               purchase_price: this.numericValue(variant.purchase_price),
               purchase_price_tracks_cost: ["none", "cost"].includes(variant.purchase_price_source),
               cost_updated: false,
-              pricing_margins: this.normalizeMargins(variant.pricing_margins)
+              pricing_margins: this.normalizeMargins(variant.pricing_margins),
+              further_discounts: this.normalizeFurtherDiscounts(variant.further_discounts),
+              target_further_discounts: this.normalizeFurtherDiscounts(variant.target_further_discounts),
+              further_discounted_price: this.numericValue(
+                variant.further_discounted_price !== undefined
+                  ? variant.further_discounted_price
+                  : variant.purchase_price
+              )
             });
             this.priceFields.forEach(field => { row[field] = this.numericValue(variant[field]); });
             rows.push(row);
@@ -578,7 +740,14 @@ export default {
           purchase_price: this.numericValue(product.purchase_price),
           purchase_price_tracks_cost: ["none", "cost"].includes(product.purchase_price_source),
           cost_updated: false,
-          pricing_margins: this.normalizeMargins(product.pricing_margins)
+          pricing_margins: this.normalizeMargins(product.pricing_margins),
+          further_discounts: this.normalizeFurtherDiscounts(product.further_discounts),
+          target_further_discounts: this.normalizeFurtherDiscounts(product.target_further_discounts),
+          further_discounted_price: this.numericValue(
+            product.further_discounted_price !== undefined
+              ? product.further_discounted_price
+              : product.purchase_price
+          )
         });
         this.priceFields.forEach(field => { row[field] = this.numericValue(product[field]); });
         rows.push(row);
@@ -593,6 +762,8 @@ export default {
         this.$set(row, "purchase_price", this.numericValue(row.cost));
         this.$set(row, "purchase_price_tracks_cost", true);
         this.$set(row, "cost_updated", true);
+        this.$set(row, "further_discounted_price",
+          this.discountedPurchasePrice(row, row.further_discounts || []));
         this.applyMarginPrices(row);
       }
       this.markDirty(row.product_id);
@@ -699,7 +870,10 @@ export default {
       this.selectedCategoryId = draft.category_id || null;
       this.pricingRows = draft.rows.map(row => Object.assign({}, row, {
         purchase_price: this.numericValue(row.purchase_price),
-        pricing_margins: this.normalizeMargins(row.pricing_margins)
+        pricing_margins: this.normalizeMargins(row.pricing_margins),
+        further_discounts: this.normalizeFurtherDiscounts(row.further_discounts),
+        target_further_discounts: this.normalizeFurtherDiscounts(row.target_further_discounts),
+        further_discounted_price: this.discountedPurchasePrice(row, row.further_discounts || [])
       }));
       this.dirtyProducts = draft.dirty_products || {};
       this.hasSearched = !!draft.has_searched || this.pricingRows.length > 0;
@@ -734,6 +908,11 @@ export default {
           product_id: row.product_id,
           product_variant_id: row.variant_id || null,
           cost_updated: !!row.cost_updated,
+          further_discounts: (row.further_discounts || []).map(discount => ({
+            label: String(discount.label || "").trim(),
+            type: discount.type,
+            value: this.numericValue(discount.value)
+          })),
           pricing_margins: (row.pricing_margins || []).map(margin => ({
             type: margin.type,
             value: this.numericValue(margin.value),
@@ -847,7 +1026,7 @@ export default {
 }
 
 .pricing-table {
-  min-width: 1550px;
+  min-width: 1690px;
 }
 
 .pricing-table thead th {
@@ -949,6 +1128,13 @@ export default {
   background: #f7f1fb;
 }
 
+.discounted-price-cell {
+  min-width: 145px;
+  font-weight: 700;
+  color: #1f7a4d;
+  background: #effaf4;
+}
+
 .margin-icon-heading,
 .margin-action-cell {
   width: 72px;
@@ -1004,6 +1190,10 @@ export default {
   display: block;
 }
 
+.margin-modal-product__price .discounted-price-value {
+  color: #1f7a4d;
+}
+
 .margin-modal-product__identity small,
 .margin-modal-product__price small {
   color: #72798a;
@@ -1044,6 +1234,42 @@ export default {
 .margin-modal-heading h5,
 .margin-modal-heading p {
   margin: 0;
+}
+
+.discount-heading {
+  padding-bottom: 12px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid #dcefe4;
+}
+
+.discount-modal-line {
+  padding: 12px 4px 0;
+  margin: 8px 0 0;
+  border: 1px solid #dcefe4;
+  border-radius: 8px;
+  background: #f7fcf9;
+}
+
+.discount-empty {
+  margin-top: 8px;
+  border-color: #cfe8da;
+  background: #f7fcf9;
+}
+
+.discount-total-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 10px 14px;
+  margin: 10px 0 22px;
+  color: #24633f;
+  border-radius: 8px;
+  background: #eaf8f0;
+}
+
+.discount-total-bar strong {
+  font-size: 17px;
 }
 
 .margin-modal-heading p {

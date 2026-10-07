@@ -100,4 +100,41 @@ class ProductMarginPricingServiceTest extends TestCase
             ['type' => 'percentage', 'value' => 10, 'round_to' => 25],
         ]);
     }
+
+    public function test_multiple_further_discounts_reduce_margin_base_without_changing_purchase_price(): void
+    {
+        $product = new Product([
+            'purchase_price' => 45000,
+            'further_discounts' => [
+                ['label' => 'Payment Clearance', 'type' => 'percentage', 'value' => 5],
+                ['label' => 'Target', 'type' => 'percentage', 'value' => 3],
+                ['label' => 'Per Item', 'type' => 'fixed', 'value' => 1400],
+            ],
+        ]);
+
+        (new ProductMarginPricingService)->apply($product, [
+            ['type' => 'percentage', 'value' => 10],
+        ]);
+
+        $this->assertSame(45000.0, (float) $product->purchase_price);
+        $this->assertSame(40000.0, (float) $product->further_discounted_price);
+        $this->assertSame(2250.0, (float) $product->further_discounts[0]['amount']);
+        $this->assertSame(1350.0, (float) $product->further_discounts[1]['amount']);
+        $this->assertSame(1400.0, (float) $product->further_discounts[2]['amount']);
+        $this->assertSame(44000.0, (float) $product->min_price);
+        $this->assertSame(4000.0, (float) $product->pricing_margins[0]['profit']);
+    }
+
+    public function test_further_discounts_cannot_exceed_purchase_price(): void
+    {
+        $product = new Product([
+            'purchase_price' => 1000,
+            'further_discounts' => [
+                ['label' => 'Too much', 'type' => 'fixed', 'value' => 1001],
+            ],
+        ]);
+
+        $this->expectException(ValidationException::class);
+        (new ProductMarginPricingService)->apply($product, []);
+    }
 }

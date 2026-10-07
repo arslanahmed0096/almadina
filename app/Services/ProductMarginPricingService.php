@@ -21,9 +21,13 @@ class ProductMarginPricingService
 
     public function apply(Model $product, array $rows): void
     {
-        $base = (float) ($product->purchase_price ?? 0);
+        $discountResult = $this->applyFurtherDiscounts(
+            $product,
+            $product->further_discounts ?: []
+        );
+        $base = $discountResult['price'];
         if ($rows && $base <= 0) {
-            throw ValidationException::withMessages(['pricing_margins' => 'A purchase price is required before margins can be applied.']);
+            throw ValidationException::withMessages(['pricing_margins' => 'A positive further discounted price is required before margins can be applied.']);
         }
 
         $previous = null;
@@ -69,6 +73,79 @@ class ProductMarginPricingService
             ];
         }
         $product->pricing_margins = $clean;
+    }
+
+    public function applyFurtherDiscounts(Model $product, array $rows): array
+    {
+        $purchasePrice = round((float) ($product->purchase_price ?? 0), 2);
+        $result = $this->calculateFurtherDiscounts($purchasePrice, $rows);
+        $product->further_discounts = $result['discounts'];
+        $product->further_discounted_price = $result['price'];
+
+        return $result;
+    }
+
+    public function calculateFurtherDiscounts(float $purchasePrice, array $rows): array
+    {
+        $purchasePrice = round($purchasePrice, 2);
+        if ($rows && $purchasePrice <= 0) {
+            throw ValidationException::withMessages([
+                'further_discounts' => 'A purchase price is required before further discounts can be applied.',
+            ]);
+        }
+
+        $clean = [];
+        $totalDiscount = 0.0;
+        foreach (array_values($rows) as $index => $row) {
+            $label = trim((string) ($row['label'] ?? ''));
+            $type = $row['type'] ?? null;
+            $value = $row['value'] ?? null;
+
+            if ($label === '' || mb_strlen($label) > 100) {
+                throw ValidationException::withMessages([
+                    'further_discounts' => 'Each further discount must have a name of 100 characters or fewer.',
+                ]);
+            }
+            if (! in_array($type, ['percentage', 'fixed'], true) || ! is_numeric($value) || (float) $value < 0) {
+                throw ValidationException::withMessages([
+                    'further_discounts' => 'Each further discount must be a non-negative percentage or fixed amount.',
+                ]);
+            }
+
+            $value = (float) $value;
+            if ($type === 'percentage' && $value > 100) {
+                throw ValidationException::withMessages([
+                    'further_discounts' => 'A percentage further discount cannot exceed 100%.',
+                ]);
+            }
+
+            // Supplier discount percentages are independent benefits and are each
+            // calculated from the original purchase price, not compounded.
+            $amount = round($type === 'percentage' ? $purchasePrice * $value / 100 : $value, 2);
+            $totalDiscount = round($totalDiscount + $amount, 2);
+            if ($totalDiscount > $purchasePrice) {
+                throw ValidationException::withMessages([
+                    'further_discounts' => 'The total further discount cannot exceed the purchase price.',
+                ]);
+            }
+
+            $clean[] = [
+                'label' => $label,
+                'type' => $type,
+                'value' => $value,
+                'amount' => $amount,
+                'price_after' => round($purchasePrice - $totalDiscount, 2),
+                'position' => $index + 1,
+            ];
+        }
+
+        $discountedPrice = round($purchasePrice - $totalDiscount, 2);
+        return [
+            'purchase_price' => $purchasePrice,
+            'total_discount' => $totalDiscount,
+            'price' => $discountedPrice,
+            'discounts' => $clean,
+        ];
     }
 
     public function effectivePurchasePrice(Model $product): array
@@ -177,8 +254,11 @@ class ProductMarginPricingService
                 }
                 $model->purchase_price = round($allocation['amount'] / $allocation['quantity'], 2);
                 $rows = $model->pricing_margins ?: [];
-                if ($rows) {
+                $discounts = $model->further_discounts ?: [];
+                if ($rows || $discounts) {
                     $this->apply($model, $rows);
+                } else {
+                    $model->further_discounted_price = $model->purchase_price;
                 }
                 $model->save();
             }

@@ -12,13 +12,14 @@ class PaymentPurchase extends Model
     protected $dates = ['deleted_at'];
 
     protected $fillable = [
-        'purchase_id', 'date', 'montant', 'change', 'Ref', 'payment_method_id', 'user_id', 'notes', 'account_id',
+        'purchase_id', 'supplier_payment_id', 'date', 'montant', 'change', 'Ref', 'payment_method_id', 'user_id', 'notes', 'account_id',
     ];
 
     protected $casts = [
         'montant' => 'double',
         'change' => 'double',
         'purchase_id' => 'integer',
+        'supplier_payment_id' => 'integer',
         'user_id' => 'integer',
         'account_id' => 'integer',
         'payment_method_id' => 'integer',
@@ -42,5 +43,10 @@ class PaymentPurchase extends Model
     public function purchase()
     {
         return $this->belongsTo('App\Models\Purchase');
+    }
+
+    public function supplierPayment()
+    {
+        return $this->belongsTo(SupplierPayment::class);
     }
 }

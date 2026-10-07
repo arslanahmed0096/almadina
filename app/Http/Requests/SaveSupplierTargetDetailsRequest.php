@@ -18,7 +18,7 @@ class SaveSupplierTargetDetailsRequest extends FormRequest
         return [
             'supplier_id' => ['required', 'integer', 'exists:providers,id'],
             'target_name' => ['required', 'string', 'max:191'],
-            'period_type' => ['required', 'in:annual,monthly'],
+            'period_type' => ['required', 'in:annual,quarterly,monthly'],
             'start_date' => ['required', 'date'],
             'end_date' => ['required', 'date', 'after_or_equal:start_date'],
             'measurement_type' => ['nullable', 'in:quantity'],
@@ -36,6 +36,9 @@ class SaveSupplierTargetDetailsRequest extends FormRequest
             $end = Carbon::parse($this->end_date);
             if ($this->period_type === 'monthly' && ! $start->isSameMonth($end)) {
                 $validator->errors()->add('end_date', 'A monthly target must start and end in the same calendar month.');
+            }
+            if ($this->period_type === 'quarterly' && ($start->year !== $end->year || $start->quarter !== $end->quarter)) {
+                $validator->errors()->add('end_date', 'A quarterly target must start and end in the same calendar quarter.');
             }
             if ($this->period_type === 'annual' && $start->year !== $end->year) {
                 $validator->errors()->add('end_date', 'An annual target must start and end in the same calendar year.');

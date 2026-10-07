@@ -259,6 +259,10 @@ class PricingLevelController extends Controller
             'details.*.pricing_margins.*.value' => ['required', 'numeric', 'min:0'],
             'details.*.pricing_margins.*.label' => ['nullable', 'string', 'max:100'],
             'details.*.pricing_margins.*.round_to' => ['nullable', 'integer', 'in:1,10,50,100,500,1000'],
+            'details.*.further_discounts' => ['nullable', 'array'],
+            'details.*.further_discounts.*.label' => ['required', 'string', 'max:100'],
+            'details.*.further_discounts.*.type' => ['required', 'in:percentage,fixed'],
+            'details.*.further_discounts.*.value' => ['required', 'numeric', 'min:0'],
             'details.*.cost_updated' => ['sometimes', 'boolean'],
         ];
         foreach (self::PRICE_FIELDS as $field) {
@@ -332,6 +336,13 @@ class PricingLevelController extends Controller
                     'round_to' => (int) ($margin['round_to'] ?? 1),
                 ])->values()->all()
                 : null;
+            $row['further_discounts'] = array_key_exists('further_discounts', $detail)
+                ? collect($detail['further_discounts'] ?? [])->map(fn ($discount) => [
+                    'label' => trim((string) ($discount['label'] ?? '')),
+                    'type' => $discount['type'],
+                    'value' => (float) $discount['value'],
+                ])->values()->all()
+                : null;
             $prepared[] = $row;
         }
 
@@ -368,6 +379,8 @@ class PricingLevelController extends Controller
                 'mrp_price' => (float) ($model->mrp_price ?? 0),
                 'cost' => (float) ($model->cost ?? 0),
                 'purchase_price' => (float) $pricingService->effectivePurchasePrice($model)['price'],
+                'further_discounted_price' => (float) ($model->further_discounted_price
+                    ?? $pricingService->effectivePurchasePrice($model)['price']),
                 'fix_price' => (float) ($model->fix_price ?? 0),
                 'price' => (float) ($model->price ?? 0),
                 'wholesale_price' => (float) ($model instanceof ProductVariant
@@ -376,6 +389,7 @@ class PricingLevelController extends Controller
                 'min_price' => (float) ($model->min_price ?? 0),
             ];
             $previousMargins = $model->pricing_margins ?: [];
+            $previousFurtherDiscounts = $model->further_discounts ?: [];
 
             $costChanged = (float) ($model->cost ?? 0) !== (float) $prices['cost'];
             $model->fill($attributes);
@@ -386,6 +400,7 @@ class PricingLevelController extends Controller
                 $model->purchase_price = $pricingService->effectivePurchasePrice($model)['price'];
             }
             $margins = $detail['pricing_margins'] ?? ($model->pricing_margins ?: []);
+            $model->further_discounts = $detail['further_discounts'] ?? ($model->further_discounts ?: []);
             $pricingService->apply($model, $margins);
             $model->save();
 
@@ -398,6 +413,8 @@ class PricingLevelController extends Controller
                 'cost' => $model->cost,
                 'purchase_price' => $model->purchase_price,
                 'pricing_margins' => $model->pricing_margins,
+                'further_discounts' => $model->further_discounts,
+                'further_discounted_price' => $model->further_discounted_price,
                 'fix_price' => $model->fix_price,
                 'invoice_print_price' => $model->invoice_print_price,
                 'price' => $model->price,
@@ -410,6 +427,8 @@ class PricingLevelController extends Controller
                 'previous_cost' => $previousPrices['cost'],
                 'previous_purchase_price' => $previousPrices['purchase_price'],
                 'previous_pricing_margins' => $previousMargins,
+                'previous_further_discounts' => $previousFurtherDiscounts,
+                'previous_further_discounted_price' => $previousPrices['further_discounted_price'],
                 'previous_fix_price' => $previousPrices['fix_price'],
                 'previous_price' => $previousPrices['price'],
                 'previous_wholesale_price' => $previousPrices['wholesale_price'],
@@ -438,6 +457,12 @@ class PricingLevelController extends Controller
         $prices['pricing_margins'] = $model
             ? ($model->pricing_margins ?: [])
             : ($detail->pricing_margins ?: []);
+        $prices['further_discounts'] = $model
+            ? ($model->further_discounts ?: [])
+            : ($detail->further_discounts ?: []);
+        $prices['further_discounted_price'] = $model
+            ? (float) ($model->further_discounted_price ?? $prices['purchase_price'])
+            : (float) ($detail->further_discounted_price ?? $prices['purchase_price']);
 
         return $prices;
     }

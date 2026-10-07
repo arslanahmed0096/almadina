@@ -362,7 +362,7 @@ class AccountingHelper
                 $cashCoaId = self::getOrCreateCoa('1000-CASH', 'Cash', 'asset');
             }
             $apCoaId = self::getOrCreateCoa('2100-AP', 'Accounts Payable', 'liability');
-            $amount = (float) ($payment->amount ?? 0);
+            $amount = (float) ($payment->montant ?? $payment->amount ?? 0);
             if ($amount <= 0) {
                 return;
             }

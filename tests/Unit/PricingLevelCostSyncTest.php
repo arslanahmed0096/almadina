@@ -30,6 +30,8 @@ class PricingLevelCostSyncTest extends TestCase
             $table->decimal('cost', 15, 2)->default(0);
             $table->decimal('purchase_price', 15, 2)->nullable();
             $table->json('pricing_margins')->nullable();
+            $table->json('further_discounts')->nullable();
+            $table->decimal('further_discounted_price', 15, 2)->nullable();
             $table->decimal('company_rb_price', 15, 2)->default(0);
             $table->decimal('mrp_price', 15, 2)->default(0);
             $table->decimal('fix_price', 15, 2)->default(0);
@@ -47,6 +49,8 @@ class PricingLevelCostSyncTest extends TestCase
             $table->decimal('cost', 15, 2)->default(0);
             $table->decimal('purchase_price', 15, 2)->nullable();
             $table->json('pricing_margins')->nullable();
+            $table->json('further_discounts')->nullable();
+            $table->decimal('further_discounted_price', 15, 2)->nullable();
             $table->decimal('company_rb_price', 15, 2)->default(0);
             $table->decimal('mrp_price', 15, 2)->default(0);
             $table->decimal('fix_price', 15, 2)->default(0);
@@ -66,6 +70,8 @@ class PricingLevelCostSyncTest extends TestCase
             $table->decimal('cost', 15, 2)->default(0);
             $table->decimal('purchase_price', 15, 2)->nullable();
             $table->json('pricing_margins')->nullable();
+            $table->json('further_discounts')->nullable();
+            $table->decimal('further_discounted_price', 15, 2)->nullable();
             $table->decimal('company_rb_price', 15, 2)->default(0);
             $table->decimal('mrp_price', 15, 2)->default(0);
             $table->decimal('fix_price', 15, 2)->default(0);
@@ -78,6 +84,8 @@ class PricingLevelCostSyncTest extends TestCase
             $table->decimal('previous_cost', 15, 2)->nullable();
             $table->decimal('previous_purchase_price', 15, 2)->nullable();
             $table->json('previous_pricing_margins')->nullable();
+            $table->json('previous_further_discounts')->nullable();
+            $table->decimal('previous_further_discounted_price', 15, 2)->nullable();
             $table->decimal('previous_fix_price', 15, 2)->nullable();
             $table->decimal('previous_price', 15, 2)->nullable();
             $table->decimal('previous_wholesale_price', 15, 2)->nullable();
@@ -234,6 +242,42 @@ class PricingLevelCostSyncTest extends TestCase
         $this->assertSame(57500.0, $product->price);
     }
 
+    public function test_pricing_level_saves_discount_stack_and_uses_discounted_base_for_margins(): void
+    {
+        $product = Product::create([
+            'name' => 'Discounted product',
+            'type' => 'is_single',
+            'cost' => 45000,
+            'purchase_price' => 45000,
+        ]);
+        $discounts = [
+            ['label' => 'Payment Clearance', 'type' => 'percentage', 'value' => 5],
+            ['label' => 'Target', 'type' => 'percentage', 'value' => 3],
+            ['label' => 'Per Item', 'type' => 'fixed', 'value' => 1400],
+        ];
+
+        $this->savePricing(
+            $product->id,
+            null,
+            45000,
+            false,
+            [['type' => 'percentage', 'value' => 10]],
+            0,
+            0,
+            $discounts
+        );
+
+        $product->refresh();
+        $detail = PricingLevelDetail::firstOrFail();
+        $this->assertSame(45000.0, $product->purchase_price);
+        $this->assertSame(40000.0, $product->further_discounted_price);
+        $this->assertSame(44000.0, $product->min_price);
+        $this->assertCount(3, $product->further_discounts);
+        $this->assertSame(40000.0, $detail->further_discounted_price);
+        $this->assertSame('Payment Clearance', $detail->further_discounts[0]['label']);
+        $this->assertSame(45000.0, $detail->previous_further_discounted_price);
+    }
+
     private function savePricing(
         int $productId,
         ?int $variantId,
@@ -241,7 +285,8 @@ class PricingLevelCostSyncTest extends TestCase
         bool $costUpdated = false,
         array $margins = [],
         float $invoicePrintPrice = 0,
-        float $alMadinaPrice = 0
+        float $alMadinaPrice = 0,
+        array $furtherDiscounts = []
     ): void {
         $entry = new PricingLevel;
         $entry->id = 1;
@@ -261,6 +306,7 @@ class PricingLevelCostSyncTest extends TestCase
             'wholesale_price' => 0,
             'min_price' => 0,
             'pricing_margins' => $margins,
+            'further_discounts' => $furtherDiscounts,
         ]]);
     }
 }

@@ -31,6 +31,16 @@ class SupplierTarget extends Model
         return $this->hasMany(SupplierTargetAllocation::class);
     }
 
+    public function lineAllocations()
+    {
+        return $this->hasMany(SupplierTargetLineAllocation::class);
+    }
+
+    public function discountPostings()
+    {
+        return $this->hasMany(SupplierTargetDiscountPosting::class);
+    }
+
     public function histories()
     {
         return $this->hasMany(SupplierTargetHistory::class)->latest();

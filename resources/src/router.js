@@ -71,6 +71,11 @@ const baseRoutes = [
                 component: () => import(/* webpackChunkName: 'targets' */ './views/app/pages/targets/Reports')
             },
             {
+                path: '/app/targets/discount-ledger',
+                name: 'target_discount_ledger',
+                component: () => import(/* webpackChunkName: 'targets' */ './views/app/pages/targets/DiscountLedger')
+            },
+            {
                 path: '/app/targets/:id',
                 name: 'target_show',
                 component: () => import(/* webpackChunkName: 'targets' */ './views/app/pages/targets/Show')
@@ -979,6 +984,15 @@ const baseRoutes = [
                             import(
                                 /* webpackChunkName: "store_purchase" */
                                 "./views/app/pages/purchases/create_purchase"
+                            )
+                    },
+                    {
+                        name: "supplier_payments",
+                        path: "supplier-payments",
+                        component: () =>
+                            import(
+                                /* webpackChunkName: "supplier_payments" */
+                                "./views/app/pages/purchases/supplier_payments"
                             )
                     },
 

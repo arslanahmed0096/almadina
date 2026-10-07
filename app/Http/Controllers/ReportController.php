@@ -1339,6 +1339,7 @@ class ReportController extends BaseController
             ->whereNull('purchases.deleted_at')
             ->where('purchases.provider_id', $provider->id)
             ->where('purchases.statut', 'received')
+            ->whereNull('payment_purchases.supplier_payment_id')
             ->orderBy('payment_purchases.date')
             ->orderBy('payment_purchases.id')
             ->get([
@@ -1353,6 +1354,45 @@ class ReportController extends BaseController
                     'type' => 'Supplier Payment',
                     'date' => (string) $payment->date,
                     'description' => $this->supplierStatementDescription('Payment for '.$payment->purchase_ref, $payment->Ref, $payment->notes),
+                    'debit' => (float) $payment->montant,
+                    'credit' => 0,
+                ]);
+            });
+
+        DB::table('supplier_payments')
+            ->leftJoin('payment_purchases', function ($join) {
+                $join->on('payment_purchases.supplier_payment_id', '=', 'supplier_payments.id')
+                    ->whereNull('payment_purchases.deleted_at');
+            })
+            ->leftJoin('purchases', 'purchases.id', '=', 'payment_purchases.purchase_id')
+            ->where('supplier_payments.provider_id', $provider->id)
+            ->where('supplier_payments.status', 'posted')
+            ->groupBy(
+                'supplier_payments.id', 'supplier_payments.payment_date', 'supplier_payments.reference',
+                'supplier_payments.amount', 'supplier_payments.notes'
+            )
+            ->orderBy('supplier_payments.payment_date')
+            ->orderBy('supplier_payments.id')
+            ->get([
+                'supplier_payments.id',
+                'supplier_payments.payment_date as date',
+                'supplier_payments.reference as Ref',
+                'supplier_payments.amount as montant',
+                'supplier_payments.notes',
+                DB::raw("GROUP_CONCAT(DISTINCT purchases.Ref ORDER BY purchases.date, purchases.id SEPARATOR ', ') as purchase_refs"),
+            ])
+            ->each(function ($payment) use ($entries) {
+                $description = 'Company payment';
+                if ($payment->purchase_refs) {
+                    $description .= ' allocated to '.$payment->purchase_refs;
+                }
+                $entries->push([
+                    'sort_date' => (string) $payment->date,
+                    'sort_rank' => 3,
+                    'sort_id' => (int) $payment->id,
+                    'type' => 'Supplier Payment',
+                    'date' => (string) $payment->date,
+                    'description' => $this->supplierStatementDescription($description, $payment->Ref, $payment->notes),
                     'debit' => (float) $payment->montant,
                     'credit' => 0,
                 ]);

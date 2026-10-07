@@ -25,6 +25,7 @@ use App\Models\WarehouseLocation;
 use App\Models\ProductWarehouseLocation;
 use App\Services\ProductGalleryService;
 use App\Services\ProductSupplierResolver;
+use App\Services\Targets\TargetDiscountVisibilityService;
 use App\Models\Setting;
 use App\utils\helpers;
 use Carbon\Carbon;
@@ -43,6 +44,8 @@ use Intervention\Image\ImageManagerStatic as Image;
 
 class ProductsController extends BaseController
 {
+    public function __construct(private TargetDiscountVisibilityService $targetDiscountVisibility) {}
+
     // ------------ Get ALL Products --------------\\
 
     public function index(Request $request)
@@ -188,6 +191,7 @@ class ProductsController extends BaseController
                 : ($item['category'] ?? '');
             $item['brand'] = $product->brand ? $product->brand->name : 'N/D';
             $item['product_type'] = $product->type;
+            $targetPricingDiscounts = [];
             if ($isPricingRequest && $canViewPricing) {
                 $item['invoice_print_price'] = (float) $product->invoice_print_price;
                 $item['company_rb_price'] = (float) $product->company_rb_price;
@@ -200,6 +204,11 @@ class ProductsController extends BaseController
                 $item['purchase_price'] = $purchasePricing['price'];
                 $item['purchase_price_source'] = $purchasePricing['source'];
                 $item['pricing_margins'] = $product->pricing_margins ?: [];
+                $item['further_discounts'] = $product->further_discounts ?: [];
+                $item['further_discounted_price'] = (float) ($product->further_discounted_price
+                    ?? $purchasePricing['price']);
+                $targetPricingDiscounts = $this->targetDiscountVisibility->forPricing($product)->all();
+                $item['target_further_discounts'] = $targetPricingDiscounts;
             } else {
                 $item['fix_price'] = number_format((float) $product->fix_price, 2, '.', '');
             }
@@ -271,7 +280,7 @@ class ProductsController extends BaseController
                     ->whereNull('deleted_at')
                     ->get();
                 if ($isPricingRequest && $canViewPricing) {
-                    $item['pricing_variants'] = $variants->map(function ($variant) {
+                    $item['pricing_variants'] = $variants->map(function ($variant) use ($targetPricingDiscounts) {
                         $purchasePricing = app(\App\Services\ProductMarginPricingService::class)
                             ->effectivePurchasePrice($variant);
 
@@ -288,7 +297,12 @@ class ProductsController extends BaseController
                             'wholesale_price' => (float) $variant->wholesale,
                             'min_price' => (float) $variant->min_price,
                             'purchase_price' => $purchasePricing['price'],
+                            'purchase_price_source' => $purchasePricing['source'],
                             'pricing_margins' => $variant->pricing_margins ?: [],
+                            'further_discounts' => $variant->further_discounts ?: [],
+                            'further_discounted_price' => (float) ($variant->further_discounted_price
+                                ?? $purchasePricing['price']),
+                            'target_further_discounts' => $targetPricingDiscounts,
                         ];
                     })->values();
                 }
@@ -513,9 +527,9 @@ class ProductsController extends BaseController
                     ]);
                     if ($costChanged) {
                         $variant->purchase_price = $variantData['cost'];
-                        if ($variant->pricing_margins) {
+                        if ($variant->pricing_margins || $variant->further_discounts) {
                             app(\App\Services\ProductMarginPricingService::class)
-                                ->apply($variant, $variant->pricing_margins);
+                                ->apply($variant, $variant->pricing_margins ?: []);
                         }
                     }
                     $variant->save();
@@ -527,9 +541,9 @@ class ProductsController extends BaseController
             $product->fill($validated);
             if ($costChanged) {
                 $product->purchase_price = $validated['cost'];
-                if ($product->pricing_margins) {
+                if ($product->pricing_margins || $product->further_discounts) {
                     app(\App\Services\ProductMarginPricingService::class)
-                        ->apply($product, $product->pricing_margins);
+                        ->apply($product, $product->pricing_margins ?: []);
                 }
             }
             $product->save();
@@ -546,6 +560,7 @@ class ProductsController extends BaseController
     private function pricingLevelPayload(Product $product): array
     {
         $product->loadMissing(['brand', 'category', 'categories']);
+        $targetFurtherDiscounts = $this->targetDiscountVisibility->forPricing($product)->all();
 
         $payload = [
             'id' => $product->id,
@@ -573,6 +588,10 @@ class ProductsController extends BaseController
             'purchase_price_source' => app(\App\Services\ProductMarginPricingService::class)
                 ->effectivePurchasePrice($product)['source'],
             'pricing_margins' => $product->pricing_margins ?: [],
+            'further_discounts' => $product->further_discounts ?: [],
+            'further_discounted_price' => (float) ($product->further_discounted_price
+                ?? app(\App\Services\ProductMarginPricingService::class)->effectivePurchasePrice($product)['price']),
+            'target_further_discounts' => $targetFurtherDiscounts,
             'variants' => [],
         ];
 
@@ -581,7 +600,7 @@ class ProductsController extends BaseController
                 ->whereNull('deleted_at')
                 ->orderBy('id')
                 ->get()
-                ->map(function ($variant) {
+                ->map(function ($variant) use ($targetFurtherDiscounts) {
                     $purchasePricing = app(\App\Services\ProductMarginPricingService::class)
                         ->effectivePurchasePrice($variant);
 
@@ -600,6 +619,10 @@ class ProductsController extends BaseController
                     'purchase_price' => $purchasePricing['price'],
                     'purchase_price_source' => $purchasePricing['source'],
                     'pricing_margins' => $variant->pricing_margins ?: [],
+                    'further_discounts' => $variant->further_discounts ?: [],
+                    'further_discounted_price' => (float) ($variant->further_discounted_price
+                        ?? $purchasePricing['price']),
+                    'target_further_discounts' => $targetFurtherDiscounts,
                     ];
                 })
                 ->values()
@@ -2160,6 +2183,8 @@ class ProductsController extends BaseController
                 : 'product';
             $prices = [
                 'purchase_price' => (float) ($detail->purchase_price ?? 0),
+                'further_discounted_price' => (float) ($detail->further_discounted_price
+                    ?? $detail->purchase_price ?? 0),
                 'cost' => (float) $detail->cost,
                 'min_price' => (float) $detail->min_price,
                 'wholesale_price' => (float) $detail->wholesale_price,
@@ -2169,8 +2194,10 @@ class ProductsController extends BaseController
                 'company_rb_price' => (float) $detail->company_rb_price,
             ];
             $margins = $detail->pricing_margins ?: [];
+            $furtherDiscounts = $detail->further_discounts ?: [];
             $hasStoredPrevious = collect([
                 $detail->previous_purchase_price,
+                $detail->previous_further_discounted_price,
                 $detail->previous_cost,
                 $detail->previous_min_price,
                 $detail->previous_wholesale_price,
@@ -2179,11 +2206,14 @@ class ProductsController extends BaseController
                 $detail->previous_mrp_price,
                 $detail->previous_company_rb_price,
             ])->contains(fn ($value) => $value !== null)
-                || $detail->previous_pricing_margins !== null;
+                || $detail->previous_pricing_margins !== null
+                || $detail->previous_further_discounts !== null;
 
             if ($hasStoredPrevious) {
                 $previousPrices = [
                     'purchase_price' => (float) ($detail->previous_purchase_price ?? 0),
+                    'further_discounted_price' => (float) ($detail->previous_further_discounted_price
+                        ?? $detail->previous_purchase_price ?? 0),
                     'cost' => (float) ($detail->previous_cost ?? 0),
                     'min_price' => (float) ($detail->previous_min_price ?? 0),
                     'wholesale_price' => (float) ($detail->previous_wholesale_price ?? 0),
@@ -2193,10 +2223,12 @@ class ProductsController extends BaseController
                     'company_rb_price' => (float) ($detail->previous_company_rb_price ?? 0),
                 ];
                 $previousMargins = $detail->previous_pricing_margins ?: [];
+                $previousFurtherDiscounts = $detail->previous_further_discounts ?: [];
             } else {
                 $previous = $lastSnapshotBySubject[$subjectKey] ?? null;
                 $previousPrices = $previous['prices'] ?? null;
                 $previousMargins = $previous['margins'] ?? [];
+                $previousFurtherDiscounts = $previous['further_discounts'] ?? [];
             }
 
             $entry = $detail->pricingLevel;
@@ -2220,10 +2252,13 @@ class ProductsController extends BaseController
                 'previous_prices' => $previousPrices,
                 'pricing_margins' => $margins,
                 'previous_pricing_margins' => $previousMargins,
+                'further_discounts' => $furtherDiscounts,
+                'previous_further_discounts' => $previousFurtherDiscounts,
             ];
             $lastSnapshotBySubject[$subjectKey] = [
                 'prices' => $prices,
                 'margins' => $margins,
+                'further_discounts' => $furtherDiscounts,
             ];
         }
 
@@ -2747,6 +2782,9 @@ class ProductsController extends BaseController
         $item['supplier_id'] = $supplier ? (int) $supplier->id : null;
         $item['supplier_name'] = $supplier?->name;
         $item['supplier_tax_status'] = $supplier ? ($supplier->tax_status === 'gst' ? 'gst' : 'non_gst') : null;
+        $item['target_discounts'] = $warehouse_id
+            ? $this->targetDiscountVisibility->forProduct($Product_data, (int) $warehouse_id, $request->input('date'))->all()
+            : [];
 
         $data[] = $item;
 

@@ -9,11 +9,14 @@
         <router-link v-if='canReports' class='target-hero-btn target-hero-btn-secondary' to='/app/targets/reports'>
           <lucide-icon name='file-text' :size='19'/><span>Reports</span>
         </router-link>
+        <router-link v-if='canLedger' class='target-hero-btn target-hero-btn-secondary' to='/app/targets/discount-ledger'>
+          <lucide-icon name='badge-percent' :size='19'/><span>Discount Ledger</span>
+        </router-link>
       </div>
     </div>
     <div class='target-card target-filters no-print'><div class='row'>
       <div class='col-md-3'><label>Supplier</label><v-select v-model='filters.supplier_id' :options='options.suppliers' label='name' :reduce='reduceId' placeholder='All suppliers'/></div>
-      <div class='col-md-2'><label>Period</label><select v-model='filters.period_type' class='form-control'><option value=''>All periods</option><option value='annual'>Annual</option><option value='monthly'>Monthly</option></select></div>
+      <div class='col-md-2'><label>Period</label><select v-model='filters.period_type' class='form-control'><option value=''>All periods</option><option value='annual'>Annual</option><option value='quarterly'>Quarterly</option><option value='monthly'>Monthly</option></select></div>
       <div class='col-md-2'><label>Year</label><select v-model='filters.year' class='form-control'><option v-for='year in years' :key='year' :value='year'>{{ year }}</option></select></div>
       <div v-if='isMonthly' class='col-md-2'><label>Month</label><select v-model='filters.month' class='form-control'><option value=''>All</option><option v-for='m in 12' :key='m' :value='m'>{{ monthName(m) }}</option></select></div>
       <div class='col-md-3'><label>Warehouse</label><v-select v-model='filters.warehouse_id' :options='options.warehouses' label='name' :reduce='reduceId' placeholder='All warehouses'/></div>
@@ -59,11 +62,13 @@ export default {
     permissions(){return this.$store.getters.currentUserPermissions||[]},
     canCreate(){return this.permissions.includes('targets.create')},
     canReports(){return this.permissions.includes('targets.reports')},
+    canLedger(){return this.permissions.includes('targets.discount_ledger')},
     isMonthly(){return this.filters.period_type==='monthly'},
     chartTitle(){return this.isMonthly?'Weekly Achievement':'Monthly Achievement'},
+    targetPeriodLabel(){return {annual:'Annual',quarterly:'Quarterly',monthly:'Monthly'}[this.filters.period_type]||'Overall'},
     years(){const y=new Date().getFullYear();return Array.from({length:7},(_,i)=>y-3+i)},
     cards(){const s=this.data.summary;return[
-      {label:this.filters.period_type==='monthly'?'Monthly Target':'Annual Target',value:s.target,progress:100,icon:'target-arrow',tone:'purple'},
+      {label:this.targetPeriodLabel+' Target',value:s.target,progress:100,icon:'target-arrow',tone:'purple'},
       {label:'Achieved',value:s.achieved,progress:s.percentage,icon:'chart-no-axes-column',tone:'green'},
       {label:'Remaining',value:s.remaining,progress:Math.max(0,100-s.percentage),icon:'pie-chart',tone:'orange'},
       {label:'Achievement',value:s.percentage,progress:s.percentage,icon:'trophy',percent:true,tone:'purple'}

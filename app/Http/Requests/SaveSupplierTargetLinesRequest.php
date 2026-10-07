@@ -22,6 +22,10 @@ class SaveSupplierTargetLinesRequest extends FormRequest
             'lines.*.targetable_id' => ['required', 'integer'],
             'lines.*.unit_id' => ['nullable', 'integer', 'exists:units,id'],
             'lines.*.target_quantity' => ['required', 'numeric', 'gt:0', 'max:99999999999999999'],
+            'lines.*.further_discounts' => ['nullable', 'array'],
+            'lines.*.further_discounts.*.label' => ['required', 'string', 'max:100'],
+            'lines.*.further_discounts.*.type' => ['required', 'in:percentage,fixed'],
+            'lines.*.further_discounts.*.value' => ['required', 'numeric', 'min:0', 'max:999999999999999999'],
         ];
     }
 
@@ -48,6 +52,16 @@ class SaveSupplierTargetLinesRequest extends FormRequest
                 })->pluck('id');
                 if ($products->intersect($categoryProducts)->isNotEmpty()) {
                     $validator->errors()->add('lines', 'A product cannot be targeted directly and through a selected category.');
+                }
+            }
+            foreach ($lines as $lineIndex => $line) {
+                foreach (($line['further_discounts'] ?? []) as $discountIndex => $discount) {
+                    if (($discount['type'] ?? null) === 'percentage' && (float) ($discount['value'] ?? 0) > 100) {
+                        $validator->errors()->add(
+                            "lines.{$lineIndex}.further_discounts.{$discountIndex}.value",
+                            'A percentage further discount cannot exceed 100%.'
+                        );
+                    }
                 }
             }
         }];
