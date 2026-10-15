@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Mail\CustomEmail;
 use App\Services\BatchService;
+use App\Services\CustomerBalanceService;
 use App\Services\CustomerCreditService;
 use App\Services\PaymentAccountService;
 use App\Services\SaleReturnEligibilityService;
@@ -12,6 +13,7 @@ use App\Models\Account;
 use App\Models\Client;
 use App\Models\EmailMessage;
 use App\Models\PaymentMethod;
+use App\Models\PaymentOpeningBalance;
 use App\Models\PaymentSale;
 use App\Models\PosSetting;
 use App\Models\Product;
@@ -57,7 +59,11 @@ class SalesController extends BaseController
 {
     // ------------- GET ALL SALES -----------\\
 
-    public function index(request $request, CustomerCreditService $creditService)
+    public function index(
+        request $request,
+        CustomerCreditService $creditService,
+        CustomerBalanceService $customerBalanceService
+    )
     {
         $this->authorizeForUser($request->user('api'), 'view', Sale::class);
         $user = Auth::user();
@@ -156,8 +162,15 @@ class SalesController extends BaseController
             ->limit($perPage)
             ->orderBy($order, $dir)
             ->get();
+        $customerBalances = $customerBalanceService->summaries($Sales->pluck('client_id'));
 
         foreach ($Sales as $Sale) {
+            $customerBalance = $customerBalances->get((int) $Sale->client_id, [
+                'opening_balance' => 0,
+                'invoice_due' => 0,
+                'return_due' => 0,
+                'total_due' => 0,
+            ]);
 
             $item['id'] = $Sale['id'];
             $item['date'] = $Sale['date'].' '.$Sale['time'];
@@ -177,6 +190,10 @@ class SalesController extends BaseController
             $item['GrandTotal'] = number_format($Sale['GrandTotal'], 2, '.', '');
             $item['paid_amount'] = number_format($Sale['paid_amount'], 2, '.', '');
             $item['due'] = number_format($item['GrandTotal'] - $item['paid_amount'], 2, '.', '');
+            $item['opening_balance'] = number_format($customerBalance['opening_balance'], 2, '.', '');
+            $item['customer_invoice_due'] = number_format($customerBalance['invoice_due'], 2, '.', '');
+            $item['customer_return_due'] = number_format($customerBalance['return_due'], 2, '.', '');
+            $item['customer_total_due'] = number_format($customerBalance['total_due'], 2, '.', '');
             $item['payment_status'] = $Sale['payment_statut'];
             $item['credit_days'] = $Sale->credit_days;
             $item['credit_due_date'] = optional($Sale->credit_due_date)->format('Y-m-d');
@@ -271,9 +288,11 @@ class SalesController extends BaseController
                 ->orderBy('id')
                 ->lockForUpdate()
                 ->get();
-            $previousBalance = round((float) $previousSales->sum(function (Sale $sale) {
+            $openingBalance = round(max(0, (float) ($clientForCredit->opening_balance ?? 0)), 2);
+            $previousInvoiceBalance = round((float) $previousSales->sum(function (Sale $sale) {
                 return max(0, (float) $sale->GrandTotal - (float) $sale->paid_amount);
             }), 2);
+            $previousBalance = round($openingBalance + $previousInvoiceBalance, 2);
             $maximumPayment = round($previousBalance + $grandTotal, 2);
 
             if ($paymentStatus !== 'pending' && $requestedPayment <= 0) {
@@ -328,8 +347,36 @@ class SalesController extends BaseController
             $allocationReference = $initialPayment > 0 ? 'ALC-'.Str::upper(Str::random(16)) : null;
             $allocationSequence = 0;
             $previousAllocationPaymentIds = [];
-            // Allocate the received amount to older completed invoices first.
+            // Allocate the received amount to the customer's opening balance first,
+            // then to older completed invoices, and finally to the current sale.
             $paymentRemaining = $initialPayment;
+
+            if ($paymentRemaining > 0.009 && $openingBalance > 0) {
+                $openingAllocation = round(min($paymentRemaining, $openingBalance), 2);
+                $allocationSequence++;
+
+                PaymentOpeningBalance::create([
+                    'client_id' => $clientForCredit->id,
+                    'account_id' => $paymentAccountId,
+                    'Ref' => app(ClientController::class)->getOpeningBalancePaymentNumberOrder(),
+                    'date' => Carbon::now(),
+                    'payment_method_id' => $paymentMethodId,
+                    'montant' => $openingAllocation,
+                    'change' => 0,
+                    'notes' => sprintf(
+                        'Allocation %s: received with %s; applied to customer opening balance.',
+                        $allocationReference,
+                        $sourceSaleReference
+                    ),
+                    'user_id' => Auth::user()->id,
+                ]);
+
+                $clientForCredit->update([
+                    'opening_balance' => round($openingBalance - $openingAllocation, 2),
+                ]);
+                $paymentRemaining = round($paymentRemaining - $openingAllocation, 2);
+            }
+
             foreach ($previousSales as $previousSale) {
                 if ($paymentRemaining <= 0.009) {
                     break;
@@ -1511,7 +1558,12 @@ class SalesController extends BaseController
 
     // ---------------- Get Details Sale-----------------\\
 
-    public function show(Request $request, $id, CustomerCreditService $creditService)
+    public function show(
+        Request $request,
+        $id,
+        CustomerCreditService $creditService,
+        CustomerBalanceService $customerBalanceService
+    )
     {
 
         $this->authorizeForUser($request->user('api'), 'view', Sale::class);
@@ -1550,6 +1602,11 @@ class SalesController extends BaseController
         $sale_details['GrandTotal'] = number_format($sale_data->GrandTotal, 2, '.', '');
         $sale_details['paid_amount'] = number_format($sale_data->paid_amount, 2, '.', '');
         $sale_details['due'] = number_format($creditService->outstandingForSale($sale_data), 2, '.', '');
+        $customerBalance = $customerBalanceService->summary((int) $sale_data->client_id);
+        $sale_details['opening_balance'] = number_format($customerBalance['opening_balance'], 2, '.', '');
+        $sale_details['customer_invoice_due'] = number_format($customerBalance['invoice_due'], 2, '.', '');
+        $sale_details['customer_return_due'] = number_format($customerBalance['return_due'], 2, '.', '');
+        $sale_details['customer_total_due'] = number_format($customerBalance['total_due'], 2, '.', '');
         $sale_details['payment_status'] = $sale_data->payment_statut;
         $sale_details['credit_days'] = $sale_data->credit_days;
         $sale_details['credit_due_date'] = optional($sale_data->credit_due_date)->format('Y-m-d');

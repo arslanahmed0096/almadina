@@ -306,9 +306,25 @@
                     <td class="invoice-summary-paid-label">Paid Amount:</td>
                     <td class="invoice-summary-paid-value">{{ formatPriceWithSymbol(currentUser.currency, sale.paid_amount, 2) }}</td>
                   </tr>
+                  <tr class="invoice-summary-row">
+                    <td class="invoice-summary-label">This Invoice Due:</td>
+                    <td class="invoice-summary-value">{{ formatPriceWithSymbol(currentUser.currency, sale.due, 2) }}</td>
+                  </tr>
+                  <tr class="invoice-summary-row">
+                    <td class="invoice-summary-label">All Customer Invoice Due:</td>
+                    <td class="invoice-summary-value">{{ formatPriceWithSymbol(currentUser.currency, sale.customer_invoice_due, 2) }}</td>
+                  </tr>
+                  <tr v-if="Number(sale.opening_balance || 0) > 0" class="invoice-summary-row">
+                    <td class="invoice-summary-label">Opening Balance:</td>
+                    <td class="invoice-summary-value">{{ formatPriceWithSymbol(currentUser.currency, sale.opening_balance, 2) }}</td>
+                  </tr>
+                  <tr v-if="Number(sale.customer_return_due || 0) > 0" class="invoice-summary-row">
+                    <td class="invoice-summary-label">Less Return Due:</td>
+                    <td class="invoice-summary-discount-value">- {{ formatPriceWithSymbol(currentUser.currency, sale.customer_return_due, 2) }}</td>
+                  </tr>
                   <tr class="invoice-summary-due-row">
-                    <td class="invoice-summary-due-label">Amount Due:</td>
-                    <td class="invoice-summary-due-value">{{ formatPriceWithSymbol(currentUser.currency, sale.due, 2) }}</td>
+                    <td class="invoice-summary-due-label">Total Customer Due:</td>
+                    <td class="invoice-summary-due-value">{{ formatPriceWithSymbol(currentUser.currency, sale.customer_total_due, 2) }}</td>
                   </tr>
                 </table>
               </td>

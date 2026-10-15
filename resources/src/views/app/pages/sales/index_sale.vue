@@ -241,9 +241,16 @@
           <span v-else-if="props.column.field == 'paid_amount'">
             {{ formatPriceWithSymbol(currentUser.currency, props.row.paid_amount, 2) }}
           </span>
-          <span v-else-if="props.column.field == 'due'">
-            {{ formatPriceWithSymbol(currentUser.currency, props.row.due, 2) }}
-          </span>
+          <div v-else-if="props.column.field == 'due'" class="customer-due-cell">
+            <strong>{{ formatPriceWithSymbol(currentUser.currency, props.row.customer_total_due, 2) }}</strong>
+            <small>Invoice due: {{ formatPriceWithSymbol(currentUser.currency, props.row.due, 2) }}</small>
+            <small v-if="Number(props.row.opening_balance || 0) > 0">
+              Opening balance: {{ formatPriceWithSymbol(currentUser.currency, props.row.opening_balance, 2) }}
+            </small>
+            <small v-if="Number(props.row.customer_return_due || 0) > 0">
+              Less return due: {{ formatPriceWithSymbol(currentUser.currency, props.row.customer_return_due, 2) }}
+            </small>
+          </div>
            <div v-else-if="props.column.field == 'Ref'">
               <router-link
                 :to="'/app/sales/detail/'+props.row.id"
@@ -2192,7 +2199,7 @@ export default {
           sortable: false
         },
         {
-          label: this.$t("Due"),
+          label: "Customer Total Due",
           field: "due",
           tdClass: "text-left",
           thClass: "text-left",
@@ -4032,6 +4039,24 @@ export default {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
     .shipment-section-heading { align-items: flex-start; }
+  }
+
+  .customer-due-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    min-width: 150px;
+  }
+
+  .customer-due-cell strong {
+    color: #b42318;
+    font-size: 14px;
+  }
+
+  .customer-due-cell small {
+    color: #6b7280;
+    white-space: nowrap;
   }
 
   .total{

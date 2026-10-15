@@ -1514,12 +1514,14 @@ class ClientController extends BaseController
             return $invoice['outstanding_amount'] > 0.009;
         })->values();
 
-        $openingBalance = round((float) ($client->opening_balance ?? 0), 2);
+        $openingBalance = round(max(0, (float) ($client->opening_balance ?? 0)), 2);
+        $invoiceBalance = round((float) $invoices->sum('outstanding_amount'), 2);
 
         return response()->json([
             'credit_limit' => round((float) ($client->credit_limit ?? 0), 2),
             'opening_balance' => $openingBalance,
-            'previous_balance' => round($invoices->sum('outstanding_amount'), 2),
+            'invoice_balance' => $invoiceBalance,
+            'previous_balance' => round($openingBalance + $invoiceBalance, 2),
             'credit_balance' => $creditService->creditUsage($client),
             'invoices' => $invoices,
         ]);

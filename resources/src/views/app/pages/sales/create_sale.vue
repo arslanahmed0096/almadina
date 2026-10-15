@@ -134,7 +134,7 @@
 
                 <b-col v-if="selectedClientId" cols="12" class="mb-3">
                   <div class="customer-previous-balance">
-                    <span class="customer-previous-balance-label">Previous Balance</span>
+                    <span class="customer-previous-balance-label">Total Previous Balance</span>
                     <strong v-if="selectedClientCreditLoading">
                       <span class="spinner sm spinner-primary mr-1"></span>
                       Loading...
@@ -142,6 +142,16 @@
                     <strong v-else class="customer-previous-balance-amount">
                       {{ currentUser.currency }} {{ formatNumber(selectedClientPreviousBalance, 2) }}
                     </strong>
+                    <div v-if="!selectedClientCreditLoading" class="customer-balance-breakdown">
+                      <span>
+                        Opening balance:
+                        <strong>{{ currentUser.currency }} {{ formatNumber(selectedClientOpeningBalance, 2) }}</strong>
+                      </span>
+                      <span>
+                        Previous invoice due:
+                        <strong>{{ currentUser.currency }} {{ formatNumber(selectedClientInvoiceBalance, 2) }}</strong>
+                      </span>
+                    </div>
                     <div
                       v-if="!selectedClientCreditLoading && selectedClientOutstandingSales.length"
                       class="customer-balance-references"
@@ -814,7 +824,7 @@
                         aria-describedby="Amount-feedback"
                       ></b-form-input>
                       <small v-if="selectedClientPreviousBalance > 0" class="text-muted d-block mt-1">
-                        Payment is allocated to previous invoices first, then to this sale.
+                        Payment is allocated to the opening balance first, then previous invoices, then this sale.
                       </small>
                       <b-form-invalid-feedback
                         id="Amount-feedback"
@@ -1278,6 +1288,8 @@ export default {
       selectedClientCreditLimit: 0,
       selectedClientNetBalance: 0,
       selectedClientPreviousBalance: 0,
+      selectedClientOpeningBalance: 0,
+      selectedClientInvoiceBalance: 0,
       selectedClientOutstandingSales: [],
       selectedClientCreditLoading: false,
       creditLimitEditorOpen: false,
@@ -1798,6 +1810,8 @@ export default {
       this.selectedClientCreditLimit = 0;
       this.selectedClientNetBalance = 0;
       this.selectedClientPreviousBalance = 0;
+      this.selectedClientOpeningBalance = 0;
+      this.selectedClientInvoiceBalance = 0;
       this.selectedClientOutstandingSales = [];
       this.selectedClientCreditLoading = !!selectedClientId;
       this.payment.payment_method_id = 2;
@@ -1847,6 +1861,8 @@ export default {
             this.selectedClientCreditLimit = parseFloat(balanceData.credit_limit || 0);
             this.selectedClientNetBalance = parseFloat(balanceData.credit_balance || 0);
             this.selectedClientPreviousBalance = parseFloat(balanceData.previous_balance || 0);
+            this.selectedClientOpeningBalance = parseFloat(balanceData.opening_balance || 0);
+            this.selectedClientInvoiceBalance = parseFloat(balanceData.invoice_balance || 0);
             this.selectedClientOutstandingSales = Array.isArray(balanceData.invoices) ? balanceData.invoices : [];
             this.payment.received_amount = this.formatNumber(this.customerGrandTotal, 2);
             if (this.payment.status === 'paid') {
@@ -1859,6 +1875,8 @@ export default {
             this.selectedClientCreditLimit = 0;
             this.selectedClientNetBalance = 0;
             this.selectedClientPreviousBalance = 0;
+            this.selectedClientOpeningBalance = 0;
+            this.selectedClientInvoiceBalance = 0;
             this.selectedClientOutstandingSales = [];
           }
         } finally {
@@ -1872,6 +1890,8 @@ export default {
         this.selectedClientCreditLimit = 0;
         this.selectedClientNetBalance = 0;
         this.selectedClientPreviousBalance = 0;
+        this.selectedClientOpeningBalance = 0;
+        this.selectedClientInvoiceBalance = 0;
         this.selectedClientOutstandingSales = [];
         this.selectedClientCreditLoading = false;
       }
@@ -3715,6 +3735,20 @@ export default {
   .customer-previous-balance-amount {
     color: #111827;
     font-size: 16px;
+  }
+
+  .customer-balance-breakdown {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    width: 100%;
+    color: #4b5563;
+    font-size: 13px;
+  }
+
+  .customer-balance-breakdown strong {
+    color: #111827;
   }
 
   .customer-balance-references {
