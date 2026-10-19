@@ -756,6 +756,7 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
     Route::get('procurement/gate-passes', [GatePassController::class, 'index']);
     Route::get('procurement/gate-passes-metadata', [GatePassController::class, 'metadata']);
     Route::post('procurement/gate-passes', [GatePassController::class, 'store']);
+    Route::put('procurement/gate-passes/{gatePass}', [GatePassController::class, 'update']);
     Route::get('procurement/gate-passes/{gatePass}', [GatePassController::class, 'show']);
     Route::post('procurement/gate-passes/{gatePass}/confirm', [GatePassController::class, 'confirm']);
     Route::post('procurement/gate-passes/{gatePass}/reject', [GatePassController::class, 'reject']);

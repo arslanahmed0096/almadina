@@ -3,7 +3,7 @@
     <breadcumb page="All Pricing Levels" folder="Pricing Level" />
 
     <div class="d-flex flex-wrap align-items-center justify-content-between mt-2 mb-3">
-      <div class="pricing-level-search mb-2">
+      <div class="pricing-level-search d-flex align-items-center mb-2">
         <input
           v-model="search"
           type="text"
@@ -11,6 +11,17 @@
           :placeholder="$t('Search_this_table')"
           @input="onSearchInput($event.target.value)"
         >
+        <b-button
+          v-b-tooltip.hover
+          :title="$t('Reset')"
+          aria-label="Reset filters"
+          class="ml-1"
+          variant="outline-secondary"
+          size="sm"
+          @click="resetFilters(false)"
+        >
+          <lucide-icon name="refresh-ccw" />
+        </b-button>
       </div>
       <div class="mb-2">
         <b-button variant="outline-info m-1" size="sm" v-b-toggle.pricing-level-filter>
@@ -432,12 +443,18 @@ export default {
       this.getPricingLevels(1);
       this.$root.$emit("bv::toggle::collapse", "pricing-level-filter");
     },
-    resetFilters() {
+    resetFilters(closeSidebar = true) {
+      if (this.searchTimer) {
+        clearTimeout(this.searchTimer);
+        this.searchTimer = null;
+      }
+      this.search = "";
       this.filters = { date: "", brand_id: null, category_id: null };
       this.categories = [];
       this.updateParams({ page: 1 });
+      this.syncSearchQuery("");
       this.getPricingLevels(1);
-      this.$root.$emit("bv::toggle::collapse", "pricing-level-filter");
+      if (closeSidebar) this.$root.$emit("bv::toggle::collapse", "pricing-level-filter");
     },
     pricingLevelPdf() {
       if (!this.exportRows.length) return;

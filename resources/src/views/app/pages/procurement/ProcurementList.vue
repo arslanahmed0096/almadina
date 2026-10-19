@@ -16,6 +16,13 @@
               <td class="action-icons">
                 <router-link class="btn btn-sm btn-outline-primary action-icon" :to="detailUrl(row)" title="View" aria-label="View"><lucide-icon name="eye" /></router-link>
                 <router-link
+                  v-if="kind === 'gates' && row.can_edit"
+                  class="btn btn-sm btn-outline-success action-icon ml-1"
+                  :to="'/app/procurement/gate-passes/' + row.id + '/edit'"
+                  title="Edit"
+                  aria-label="Edit"
+                ><lucide-icon name="pencil" /></router-link>
+                <router-link
                   v-if="kind === 'gates' && can('Purchases_add') && row.can_invoice && ['accepted', 'partially_accepted'].includes(row.status)"
                   class="btn btn-sm btn-outline-success action-icon ml-1"
                   :to="{ path: '/app/purchases/store', query: { gate_pass: row.number } }"

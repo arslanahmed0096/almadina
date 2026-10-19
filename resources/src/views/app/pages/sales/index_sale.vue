@@ -762,7 +762,8 @@
                       <th class="text-center">Select</th>
                       <th>Product</th>
                       <th>Code</th>
-                      <th class="text-right">Qty</th>
+                      <th class="text-right">Remaining</th>
+                      <th style="width:130px">Qty to Pick</th>
                       <th class="text-right">Item Total</th>
                       <th class="text-right">Paid</th>
                       <th class="text-right">Outstanding</th>
@@ -786,6 +787,7 @@
                       <td class="align-middle font-weight-bold">{{ item.product_name }}</td>
                       <td class="align-middle">{{ item.product_code || '—' }}</td>
                       <td class="text-right align-middle">{{ formatNumber(item.quantity, 2) }}</td>
+                      <td><b-form-input v-model.number="shipmentQuantities[item.sale_detail_id]" type="number" min="0.01" :max="item.remaining_quantity" step="0.01" size="sm" :disabled="shipmentItemDisabled(item)" /></td>
                       <td class="text-right align-middle">{{ shipmentMoney(item.item_total) }}</td>
                       <td class="text-right align-middle text-success">{{ shipmentMoney(item.paid_amount) }}</td>
                       <td class="text-right align-middle" :class="item.outstanding_amount > 0 ? 'text-danger' : 'text-success'">
@@ -808,7 +810,7 @@
                       </td>
                     </tr>
                     <tr v-if="!remainingShipmentItems.length">
-                      <td colspan="8" class="text-center text-muted py-4">All sale items have already been delivered.</td>
+                      <td colspan="9" class="text-center text-muted py-4">All sale items have already been delivered.</td>
                     </tr>
                   </tbody>
                 </table>
@@ -1832,6 +1834,7 @@ export default {
       shipmentValidationError: "",
       shipmentEligibility: {},
       selectedShipmentItemIds: [],
+      shipmentQuantities: {},
       deliveryMethodOptions: [
         { text: "Self Delivery", value: "self_delivery" },
         { text: "Al Madina Driver", value: "almadina_driver" }
@@ -1973,7 +1976,9 @@ export default {
     },
 
     deliveredShipmentItems() {
-      return this.shipmentItems.filter(item => !!item.is_shipped);
+      return Array.isArray(this.shipmentEligibility.delivered_items)
+        ? this.shipmentEligibility.delivered_items
+        : this.shipmentItems.filter(item => Number(item.shipped_quantity || 0) > 0);
     },
 
     remainingShipmentItems() {
@@ -2021,7 +2026,7 @@ export default {
     selectedShipmentItemTotal() {
       return this.shipmentItems.reduce((total, item) => {
         return this.selectedShipmentItemIds.includes(item.sale_detail_id)
-          ? total + Number(item.item_total || 0)
+          ? total + Number(item.item_total || 0) * Math.min(Number(this.shipmentQuantities[item.sale_detail_id] || 0), Number(item.remaining_quantity || item.quantity || 0)) / Math.max(Number(item.remaining_quantity || item.quantity || 0), 0.000001)
           : total;
       }, 0);
     },
@@ -3656,6 +3661,8 @@ export default {
             .then(response => {
                 this.shipment   = response.data.shipment;
                 this.shipmentEligibility = response.data.eligibility || {};
+                this.shipmentQuantities = {};
+                this.remainingShipmentItems.forEach(item => { this.$set(this.shipmentQuantities, item.sale_detail_id, Math.min(1, Number(item.remaining_quantity || item.quantity || 0))); });
                 this.shipmentEligibilityLoading = false;
 
                  setTimeout(() => {
@@ -3700,6 +3707,13 @@ export default {
     },
 
       //----------------------- Update_Shipment ---------------------------\\
+    printShipmentReceipt(receipt) {
+      if (!receipt) return;
+      const rows = (receipt.items || []).map(item => '<tr><td>' + item.product_name + '</td><td>' + item.picked_quantity + '</td><td>' + item.remaining_quantity + '</td></tr>').join('');
+      const frame = document.createElement('iframe'); frame.style.display = 'none'; document.body.appendChild(frame);
+      frame.contentDocument.write('<html><head><title>Shipment Receipt</title><style>body{font-family:Arial;padding:24px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:8px;text-align:left}</style></head><body><h2>Shipment Receipt</h2><p><b>Customer:</b> ' + receipt.customer_name + '</p><p><b>Mobile:</b> ' + (receipt.customer_mobile || '-') + '</p><p><b>Sale:</b> ' + receipt.sale_ref + ' &nbsp; <b>Shipment:</b> ' + receipt.shipment_ref + '</p><table><thead><tr><th>Product</th><th>Picked Qty</th><th>Remaining Qty</th></tr></thead><tbody>' + rows + '</tbody></table></body></html>');
+      frame.contentDocument.close(); frame.contentWindow.focus(); frame.contentWindow.print(); setTimeout(() => frame.remove(), 1000);
+    },
     Update_Shipment() {
       var self = this;
       self.Submit_Processing_shipment = true;
@@ -3712,7 +3726,8 @@ export default {
           shipping_details: self.shipment.shipping_details,
           delivery_method: self.shipment.delivery_method,
           driver_name: self.shipment.delivery_method === "almadina_driver" ? self.shipment.driver_name : null,
-          sale_detail_ids: self.selectedShipmentItemIds
+          sale_detail_ids: self.selectedShipmentItemIds,
+          quantities: self.shipmentQuantities
         })
         .then(response => {
           this.makeToast(
@@ -3721,6 +3736,7 @@ export default {
             this.$t("Success")
           );
           Fire.$emit("event_update_shipment");
+          self.printShipmentReceipt(response.data.receipt);
           self.Submit_Processing_shipment = false;
         })
         .catch(error => {
@@ -3798,6 +3814,7 @@ export default {
       };
       this.shipmentEligibility = {};
       this.selectedShipmentItemIds = [];
+      this.shipmentQuantities = {};
       this.creditLimitEditorOpen = false;
       this.creditLimitAmount = "";
       this.creditLimitSaving = false;

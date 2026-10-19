@@ -109,6 +109,7 @@ class GatePassController extends Controller
                 $gatePass->purchase_order_id ? (float) ($remainingByOrder[$gatePass->purchase_order_id] ?? 0) : null
             );
             $gatePass->setAttribute('can_invoice', ! $gatePass->purchase_order_id || (bool) ($invoiceableByGatePass[$gatePass->id] ?? false));
+            $gatePass->setAttribute('can_edit', $canDelete);
             $gatePass->setAttribute('can_delete', $canDelete);
 
             return $gatePass;
@@ -188,8 +189,38 @@ class GatePassController extends Controller
 
         $gatePass->load(['purchaseOrder', 'provider', 'warehouse', 'receiver', 'items.purchaseOrderItem', 'supplierInvoices.purchase']);
         $gatePass->setAttribute('can_invoice', $this->gatePassHasInvoiceableQuantity($gatePass));
+        $gatePass->setAttribute('can_edit', $request->user('api')->isSuperAdmin());
 
         return response()->json(['gate_pass' => $gatePass]);
+    }
+
+    public function update(Request $request, GatePass $gatePass)
+    {
+        $user = $request->user('api');
+        abort_unless($user && $user->isSuperAdmin(), 403, 'Only the Super Admin can edit Gate Passes.');
+
+        $data = $request->validate([
+            'delivered_at' => 'required|date',
+            'supplier_gate_pass_number' => 'nullable|string|max:100',
+            'bilty_number' => 'nullable|string|max:100',
+            'vehicle_number' => 'nullable|string|max:80',
+            'driver_name' => 'nullable|string|max:150',
+            'driver_phone' => 'nullable|string|max:80',
+            'notes' => 'nullable|string|max:5000',
+        ]);
+        $fields = array_keys($data);
+        $before = $gatePass->only($fields);
+        $gatePass->update($data);
+        $this->audit->record(
+            $gatePass,
+            'updated_by_super_admin',
+            $before,
+            $gatePass->fresh()->only($fields),
+            'Gate Pass header details updated by Super Admin.',
+            $gatePass->purchase_order_id
+        );
+
+        return response()->json(['gate_pass' => $gatePass->fresh(['purchaseOrder', 'provider', 'warehouse', 'items.purchaseOrderItem'])]);
     }
 
     private function gatePassHasInvoiceableQuantity(GatePass $gatePass): bool

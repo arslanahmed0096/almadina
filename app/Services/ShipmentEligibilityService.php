@@ -36,10 +36,10 @@ class ShipmentEligibilityService
         $shippedItems = $sale->shipments
             ->flatMap(fn ($shipment) => $shipment->items)
             ->keyBy(fn ($item) => (int) $item->sale_detail_id);
-        $shippedIds = $shippedItems
-            ->pluck('sale_detail_id')
-            ->map(fn ($id) => (int) $id)
-            ->unique();
+        $shippedIds = $shippedItems->filter(function ($item) use ($sale) {
+            $detail = $sale->details->firstWhere('id', $item->sale_detail_id);
+            return (float) ($item->quantity ?? optional($detail)->quantity ?? 0) > 0;
+        })->keys()->map(fn ($id) => (int) $id)->values();
 
         // Before shipment_items existed, a shipped/delivered header represented every
         // line. The migration backfills these rows, and this fallback protects databases
@@ -54,12 +54,9 @@ class ShipmentEligibilityService
         // first. The remaining paid pool can fund any one unshipped item; it is not
         // permanently tied to the earliest sale-detail row.
         $allocations = $this->allocateSalePayments($sale, $shippedIds->all());
-        $availablePaidCents = max(
-            0,
-            $this->toCents($sale->paid_amount) - $shippedIds->sum(
-                fn ($detailId) => $this->toCents($allocations[(int) $detailId]['paid_amount'] ?? 0)
-            )
-        );
+        $availablePaidCents = max(0, $this->toCents($sale->paid_amount) - $shippedItems->sum(
+            fn ($item) => $this->toCents($item->paid_amount ?? 0)
+        ));
 
         $credit = $this->calculateCustomerAvailableCredit($sale->client, $sale);
         $overdueInvoices = app(CustomerCreditService::class)->overdueInvoices($sale->client);
@@ -69,8 +66,13 @@ class ShipmentEligibilityService
         $items = [];
         foreach ($sale->details as $detail) {
             $allocation = $allocations[(int) $detail->id];
-            $isShipped = $shippedIds->contains((int) $detail->id);
             $shippedItem = $shippedItems->get((int) $detail->id);
+            $orderedQuantity = (float) $detail->quantity;
+            $shippedQuantity = min($orderedQuantity, (float) ($shippedItem->quantity ?? ($shippedItem ? $orderedQuantity : 0)));
+            $remainingQuantity = max(0, $orderedQuantity - $shippedQuantity);
+            $isShipped = $remainingQuantity <= 0.000001;
+            $remainingRatio = $orderedQuantity > 0 ? $remainingQuantity / $orderedQuantity : 0;
+            $allocation['item_total'] = round((float) $allocation['item_total'] * $remainingRatio, 2);
             if (! $isShipped) {
                 // Evaluate every remaining line against the same uncommitted payment
                 // pool. Combined selections are checked separately on submit.
@@ -116,7 +118,10 @@ class ShipmentEligibilityService
                 'sale_detail_id' => (int) $detail->id,
                 'product_name' => trim(($product->name ?? 'Deleted product').($variant ? ' - '.$variant->name : '')),
                 'product_code' => (string) ($variant->code ?? $product->code ?? ''),
-                'quantity' => (float) $detail->quantity,
+                'quantity' => $remainingQuantity,
+                'ordered_quantity' => $orderedQuantity,
+                'shipped_quantity' => $shippedQuantity,
+                'remaining_quantity' => $remainingQuantity,
                 'is_shipped' => $isShipped,
                 'shipped_at' => $this->shippedAt($sale, (int) $detail->id),
                 'delivery_method' => $isShipped
@@ -129,7 +134,17 @@ class ShipmentEligibilityService
             ]);
         }
 
-        $unshipped = array_values(array_filter($items, fn ($item) => ! $item['is_shipped']));
+        $unshipped = array_values(array_filter($items, fn ($item) => $item['remaining_quantity'] > 0.000001));
+        $delivered = array_values(array_filter(array_map(function ($item) use ($shippedItems) {
+            if ($item['shipped_quantity'] <= 0.000001) return null;
+            $shippedItem = $shippedItems->get($item['sale_detail_id']);
+            $copy = $item;
+            $copy['quantity'] = $item['shipped_quantity'];
+            $copy['item_total'] = (float) (optional($shippedItem)->item_total ?? 0);
+            $copy['paid_amount'] = (float) (optional($shippedItem)->paid_amount ?? 0);
+            $copy['outstanding_amount'] = (float) (optional($shippedItem)->outstanding_amount ?? 0);
+            return $copy;
+        }, $items)));
 
         return [
             'sale_id' => (int) $sale->id,
@@ -142,6 +157,7 @@ class ShipmentEligibilityService
             'customer' => [
                 'id' => (int) $sale->client_id,
                 'name' => (string) ($sale->client->name ?? ''),
+                'phone' => (string) ($sale->client->phone ?? $sale->client->mobile ?? ''),
             ],
             'credit' => $credit,
             'available_paid_amount' => $this->fromCents($availablePaidCents),
@@ -150,9 +166,12 @@ class ShipmentEligibilityService
             // lines. `items` retains the existing unshipped-only API contract.
             'all_items' => $items,
             'items' => $unshipped,
-            'shipped_count' => count($items) - count($unshipped),
+            'delivered_items' => $delivered,
+            'shipped_count' => count($delivered),
             'unshipped_count' => count($unshipped),
             'total_count' => count($items),
+            'shipped_quantity_total' => array_sum(array_column($items, 'shipped_quantity')),
+            'remaining_quantity_total' => array_sum(array_column($items, 'remaining_quantity')),
         ];
     }
 
@@ -263,13 +282,16 @@ class ShipmentEligibilityService
     public function shipSelectedItems(Sale $sale, array $saleDetailIds, array $attributes, int $userId): array
     {
         $selectedIds = collect($saleDetailIds)->map(fn ($id) => (int) $id)->filter()->unique()->values();
+        $requestedQuantities = collect($attributes['quantities'] ?? [])->mapWithKeys(
+            fn ($quantity, $detailId) => [(int) $detailId => (float) $quantity]
+        );
         if ($selectedIds->isEmpty()) {
             throw ValidationException::withMessages([
                 'sale_detail_ids' => ['Select at least one eligible, unshipped item.'],
             ]);
         }
 
-        $result = DB::transaction(function () use ($sale, $selectedIds, $attributes, $userId) {
+        $result = DB::transaction(function () use ($sale, $selectedIds, $requestedQuantities, $attributes, $userId) {
             $lockedSale = Sale::whereKey($sale->id)->lockForUpdate()->firstOrFail();
             $client = Client::whereKey($lockedSale->client_id)->lockForUpdate()->firstOrFail();
 
@@ -298,11 +320,26 @@ class ShipmentEligibilityService
             $existingShipmentItems = ShipmentItem::whereIn('sale_detail_id', $details->pluck('id'))
                 ->lockForUpdate()
                 ->get();
-            $alreadyShipped = $existingShipmentItems->whereIn('sale_detail_id', $selectedIds);
-            if ($alreadyShipped->isNotEmpty()) {
-                throw ValidationException::withMessages([
-                    'sale_detail_ids' => ['One or more selected items have already been shipped. Refresh and try again.'],
-                ]);
+            $existingByDetail = $existingShipmentItems->keyBy(fn ($item) => (int) $item->sale_detail_id);
+            $pickedQuantities = [];
+            foreach ($selectedDetails as $detail) {
+                $existing = $existingByDetail->get((int) $detail->id);
+                $alreadyShipped = (float) ($existing->quantity ?? ($existing ? $detail->quantity : 0));
+                $remaining = max(0, (float) $detail->quantity - $alreadyShipped);
+                if ($remaining <= 0.000001) {
+                    throw ValidationException::withMessages([
+                        'sale_detail_ids' => ['One or more selected items have already been shipped. Refresh and try again.'],
+                    ]);
+                }
+                $picked = $requestedQuantities->has((int) $detail->id)
+                    ? (float) $requestedQuantities->get((int) $detail->id)
+                    : $remaining;
+                if ($picked <= 0 || $picked > $remaining + 0.000001) {
+                    throw ValidationException::withMessages([
+                        'quantities.'.$detail->id => ['Pick quantity must be greater than zero and cannot exceed the remaining quantity.'],
+                    ]);
+                }
+                $pickedQuantities[(int) $detail->id] = $picked;
             }
 
             $allocationPriority = $existingShipmentItems
@@ -324,7 +361,8 @@ class ShipmentEligibilityService
                         'sale_detail_ids' => ['A selected product is archived, deleted, or inactive and cannot be shipped.'],
                     ]);
                 }
-                $outstanding = $allocations[(int) $detail->id]['outstanding_amount'];
+                $ratio = (float) $detail->quantity > 0 ? $pickedQuantities[(int) $detail->id] / (float) $detail->quantity : 0;
+                $outstanding = round((float) $allocations[(int) $detail->id]['outstanding_amount'] * $ratio, 2);
                 $selectedOutstanding[] = $outstanding;
                 if ((float) $outstanding > 0.009 && $overdueInvoices->isNotEmpty()) {
                     $overdue = $overdueInvoices->first();
@@ -371,28 +409,35 @@ class ShipmentEligibilityService
             $inventoryWasAlreadyConsumed = $lockedSale->statut === 'completed';
             foreach ($selectedDetails as $detail) {
                 $allocation = $allocations[(int) $detail->id];
-                ShipmentItem::create([
+                $pickedQuantity = $pickedQuantities[(int) $detail->id];
+                $existingItem = $existingByDetail->get((int) $detail->id);
+                $ratio = (float) $detail->quantity > 0 ? $pickedQuantity / (float) $detail->quantity : 0;
+                $pickedTotal = round((float) $allocation['item_total'] * $ratio, 2);
+                $pickedPaid = min($pickedTotal, round((float) $allocation['paid_amount'] * $ratio, 2));
+                $pickedOutstanding = max(0, $pickedTotal - $pickedPaid);
+                ShipmentItem::updateOrCreate(['sale_detail_id' => $detail->id], [
                     'shipment_id' => $shipment->id,
-                    'sale_detail_id' => $detail->id,
+                    'quantity' => (float) ($existingItem->quantity ?? 0) + $pickedQuantity,
                     'shipped_by' => $userId,
                     'delivery_method' => $attributes['delivery_method'] ?? 'self_delivery',
                     'driver_name' => ($attributes['delivery_method'] ?? 'self_delivery') === 'almadina_driver'
                         ? ($attributes['driver_name'] ?? null)
                         : null,
-                    'item_total' => $allocation['item_total'],
-                    'paid_amount' => $allocation['paid_amount'],
-                    'outstanding_amount' => $allocation['outstanding_amount'],
-                    'credit_amount' => $allocation['outstanding_amount'],
+                    'item_total' => (float) ($existingItem->item_total ?? 0) + $pickedTotal,
+                    'paid_amount' => (float) ($existingItem->paid_amount ?? 0) + $pickedPaid,
+                    'outstanding_amount' => (float) ($existingItem->outstanding_amount ?? 0) + $pickedOutstanding,
+                    'credit_amount' => (float) ($existingItem->credit_amount ?? 0) + $pickedOutstanding,
                     'shipped_at' => now(),
                 ]);
 
                 if (! $inventoryWasAlreadyConsumed) {
-                    $this->consumeInventory($lockedSale, $detail);
+                    $this->consumeInventory($lockedSale, $detail, $pickedQuantity);
                 }
             }
 
-            $shippedCount = ShipmentItem::whereIn('sale_detail_id', $details->pluck('id'))->count();
-            $allShipped = $details->isNotEmpty() && $shippedCount === $details->count();
+            $shippedCount = (float) ShipmentItem::whereIn('sale_detail_id', $details->pluck('id'))->sum('quantity');
+            $totalCount = (float) $details->sum('quantity');
+            $allShipped = $totalCount > 0 && $shippedCount + 0.000001 >= $totalCount;
             $shipment->status = $allShipped ? 'shipped' : 'ordered';
             $shipment->save();
 
@@ -414,7 +459,22 @@ class ShipmentEligibilityService
                 'shipment' => $shipment->fresh(),
                 'all_shipped' => $allShipped,
                 'shipped_count' => $shippedCount,
-                'total_count' => $details->count(),
+                'total_count' => $totalCount,
+                'receipt' => [
+                    'sale_ref' => (string) $lockedSale->Ref,
+                    'shipment_ref' => (string) $shipment->Ref,
+                    'customer_name' => (string) ($client->name ?? ''),
+                    'customer_mobile' => (string) ($client->phone ?? $client->mobile ?? ''),
+                    'items' => $selectedDetails->map(function ($detail) use ($pickedQuantities, $existingByDetail) {
+                        $picked = $pickedQuantities[(int) $detail->id];
+                        $previous = (float) (optional($existingByDetail->get((int) $detail->id))->quantity ?? 0);
+                        return [
+                            'product_name' => trim(($detail->product->name ?? '').($detail->productVariant ? ' - '.$detail->productVariant->name : '')),
+                            'picked_quantity' => $picked,
+                            'remaining_quantity' => max(0, (float) $detail->quantity - $previous - $picked),
+                        ];
+                    })->values()->all(),
+                ],
             ];
         }, 10);
 
@@ -515,7 +575,7 @@ class ShipmentEligibilityService
         return $result;
     }
 
-    private function consumeInventory(Sale $sale, SaleDetail $detail): void
+    private function consumeInventory(Sale $sale, SaleDetail $detail, float $quantity): void
     {
         $product = $detail->product ?: Product::find($detail->product_id);
         if (! $product || $product->type === 'is_service') {
@@ -538,13 +598,16 @@ class ShipmentEligibilityService
 
         if ($warehouseStock) {
             $baseQuantity = $unit->operator === '/'
-                ? (float) $detail->quantity / (float) $unit->operator_value
-                : (float) $detail->quantity * (float) $unit->operator_value;
+                ? $quantity / (float) $unit->operator_value
+                : $quantity * (float) $unit->operator_value;
+            if ((float) $warehouseStock->qte + 0.000001 < $baseQuantity) {
+                throw ValidationException::withMessages(['quantities' => ['The selected quantity is not available in warehouse stock.']]);
+            }
             $warehouseStock->qte = (float) $warehouseStock->qte - $baseQuantity;
             $warehouseStock->save();
         }
 
-        app(BatchService::class)->applyForShippedSaleDetail($sale, $detail);
+        app(BatchService::class)->applyForShippedSaleDetail($sale, $detail, $quantity);
     }
 
     private function awardPendingLoyaltyPoints(Sale $sale, Client $client, Collection $details): void

@@ -31,14 +31,16 @@ class SaleReturnEligibilityService
     public function returnableQuantities(Sale $sale, ?int $excludingSaleReturnId = null): array
     {
         $details = $sale->relationLoaded('details') ? $sale->details : $sale->details()->get();
-        $deliveredIds = $sale->statut === 'completed'
-            ? $details->pluck('id')
-            : ShipmentItem::whereIn('sale_detail_id', $details->pluck('id'))->pluck('sale_detail_id');
+        $deliveredQuantities = ShipmentItem::whereIn('sale_detail_id', $details->pluck('id'))
+            ->get()->keyBy('sale_detail_id');
 
         $alreadyReturned = $this->returnedQuantities($details->pluck('id'), $excludingSaleReturnId);
 
-        return $details->mapWithKeys(function (SaleDetail $detail) use ($deliveredIds, $alreadyReturned) {
-            $delivered = $deliveredIds->contains($detail->id) ? (float) $detail->quantity : 0.0;
+        return $details->mapWithKeys(function (SaleDetail $detail) use ($deliveredQuantities, $alreadyReturned, $sale) {
+            $shipmentItem = $deliveredQuantities->get($detail->id);
+            $delivered = $shipmentItem
+                ? (float) ($shipmentItem->quantity ?? $detail->quantity)
+                : ($sale->statut === 'completed' ? (float) $detail->quantity : 0.0);
             $remaining = (float) max(0, $delivered - (float) ($alreadyReturned[$detail->id] ?? 0));
 
             return [$detail->id => $remaining];

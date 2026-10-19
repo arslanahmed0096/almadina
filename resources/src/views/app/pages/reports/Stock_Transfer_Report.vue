@@ -95,77 +95,85 @@
 
     <!-- Content -->
     <div v-else>
-      <!-- KPIs -->
-      <b-row>
-        <b-col md="3" sm="6" class="mb-3">
-          <StatTile icon="arrow-right-left" :label="$t('Transfers')" :value="num(kpis.transfers_count)" theme="blue" :sub="$t('Documents')" />
-        </b-col>
-        <b-col md="3" sm="6" class="mb-3">
-          <StatTile icon="file-text" :label="$t('Lines')" :value="num(kpis.lines_count)" theme="teal" />
-        </b-col>
-        <b-col md="3" sm="6" class="mb-3">
-          <StatTile icon="package" :label="$t('QtyMoved')" :value="formatQty(kpis.qty_sum)" theme="indigo" />
-        </b-col>
-        <b-col md="3" sm="6" class="mb-3">
-          <StatTile icon="banknote" :label="$t('ValueMoved')" :value="money(kpis.value_sum)" theme="green" />
-        </b-col>
+      <div class="report-scroll print-table-only">
+        <section class="stock-report-sheet">
+          <header class="stock-report-heading">
+            <h2>WAREHOUSE STOCK IN &amp; OUT</h2>
+            <strong>{{ reportDateLabel }}</strong>
+          </header>
 
-        <b-col md="3" sm="6" class="mb-3">
-          <StatTile icon="trending-up" :label="$t('AvgItemsPerTransfer')" :value="formatQty(kpis.avg_items_per_transfer)" theme="orange" />
-        </b-col>
-        <b-col md="3" sm="6" class="mb-3">
-          <StatTile icon="coins" :label="$t('AvgValuePerTransfer')" :value="money(kpis.avg_value_per_transfer)" theme="purple" />
-        </b-col>
-      </b-row>
+          <table class="stock-report-table">
+            <thead>
+              <tr>
+                <th>S.NO</th>
+                <th>TRANSFER<br>WAREHOUSE</th>
+                <th>WAREHOUSE<br>DESTINATION</th>
+                <th>COMPANY</th>
+                <th>PRODUCT</th>
+                <th>QTY</th>
+                <th>TOTAL ITEM<br>OUT</th>
+                <th>TOTAL ITEM<br>IN</th>
+                <th>DRIVER</th>
+                <th>IN/OUT</th>
+              </tr>
+            </thead>
+            <tbody v-if="rows.length">
+              <template v-for="(transfer, transferIndex) in rows">
+                <tr
+                  v-for="(item, itemIndex) in reportItems(transfer)"
+                  :key="`${transfer.transfer_id}-${item.detail_id || itemIndex}`"
+                >
+                  <td v-if="itemIndex === 0" :rowspan="reportItems(transfer).length" class="group-cell serial-cell">
+                    {{ pageStart + transferIndex }}
+                  </td>
+                  <td v-if="itemIndex === 0" :rowspan="reportItems(transfer).length" class="group-cell">
+                    {{ transfer.from || '-' }}
+                  </td>
+                  <td v-if="itemIndex === 0" :rowspan="reportItems(transfer).length" class="group-cell">
+                    {{ transfer.to || '-' }}
+                  </td>
+                  <td>{{ item.company || '-' }}</td>
+                  <td class="product-cell">{{ item.product || '-' }}</td>
+                  <td class="number-cell">{{ formatQty(item.qty) }}</td>
+                  <td v-if="itemIndex === 0" :rowspan="reportItems(transfer).length" class="group-cell number-cell">
+                    {{ formatQty(transfer.total_out) }}
+                  </td>
+                  <td v-if="itemIndex === 0" :rowspan="reportItems(transfer).length" class="group-cell number-cell">
+                    {{ formatQty(transfer.total_in) }}
+                  </td>
+                  <td v-if="itemIndex === 0" :rowspan="reportItems(transfer).length" class="group-cell">
+                    {{ transfer.driver || '-' }}
+                  </td>
+                  <td v-if="itemIndex === 0" :rowspan="reportItems(transfer).length" class="group-cell direction-cell">
+                    {{ transfer.direction }}
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+            <tbody v-else>
+              <tr><td colspan="10" class="empty-cell">No transfer records found.</td></tr>
+            </tbody>
+            <tfoot>
+              <tr>
+                <th colspan="5">TOTAL</th>
+                <th class="number-cell">{{ formatQty(totals.qty) }}</th>
+                <th class="number-cell">{{ formatQty(totals.total_out) }}</th>
+                <th class="number-cell">{{ formatQty(totals.total_in) }}</th>
+                <th colspan="2"></th>
+              </tr>
+            </tfoot>
+          </table>
+        </section>
+      </div>
 
-      <!-- Charts -->
-      <b-row>
-        <b-col md="8" class="mb-3">
-          <b-card class="shadow-soft border-0">
-            <div class="d-flex align-items-center justify-content-between mb-2">
-              <h6 class="m-0">{{$t('TransfersOverTime')}}</h6>
-              <small class="text-muted">{{ labelRange }}</small>
-            </div>
-            <apexchart type="line" height="300" :options="apexTimeOptions" :series="apexTimeSeries" />
-          </b-card>
-        </b-col>
-
-        <b-col md="4" class="mb-3">
-          <b-card class="shadow-soft border-0">
-            <div class="d-flex align-items-center justify-content-between mb-2">
-              <h6 class="m-0">{{$t('TopRoutes')}}</h6>
-              <small class="text-muted">{{$t('ByValue')}}</small>
-            </div>
-            <apexchart type="bar" height="300" :options="apexRouteOptions" :series="apexRouteSeries" />
-          </b-card>
-        </b-col>
-      </b-row>
-
-      <!-- Table -->
-      <b-card class="shadow-soft border-0 print-table-only">
-        <vue-good-table
-          mode="remote"
-          :rows="rows"
-          :columns="columns"
-          :totalRows="totalRows"
-          :group-options="{
-            enabled: true,
-            headerPosition: 'bottom',
-          }"
-          styleClass="tableOne table-hover vgt-table"
-          :pagination-options="{enabled:true, mode:'records'}"
-          :search-options="{enabled:true, placeholder:$t('Search_this_table')}"
-          @on-page-change="onPageChange"
-          @on-per-page-change="onPerPageChange"
-          @on-sort-change="onSortChange"
-          @on-search="onSearch"
-        >
-          <template slot="table-row" slot-scope="p">
-            <span v-if="p.column.field==='value'">{{ money(p.row.value) }}</span>
-            <span v-else>{{ p.formattedRow[p.column.field] }}</span>
-          </template>
-        </vue-good-table>
-      </b-card>
+      <div v-if="totalRows > serverParams.perPage" class="d-flex justify-content-center mt-3">
+        <b-pagination
+          v-model="serverParams.page"
+          :total-rows="totalRows"
+          :per-page="serverParams.perPage"
+          @change="changePage"
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -206,7 +214,7 @@ export default {
   metaInfo: { title: "Stock Transfer Report" },
   components: { apexchart: VueApexCharts, "date-range-picker": DateRangePicker, StatTile },
   data() {
-    const end = new Date(); const start = new Date(); start.setDate(end.getDate()-6);
+    const end = new Date(); const start = new Date();
     return {
       warehouses: [],
       warehouse_id: null,
@@ -231,10 +239,11 @@ export default {
       kpis: { transfers_count:0, lines_count:0, qty_sum:0, value_sum:0, avg_items_per_transfer:0, avg_value_per_transfer:0 },
       timeseries: [],
       routes: [],
-      rows: [{ statut: '', children: [] }],
+      rows: [],
+      totals: { qty:0, total_out:0, total_in:0 },
       totalRows: 0,
       // table state
-      serverParams: { page:1, perPage:10, sort:{ field:'dt', type:'desc' } },
+      serverParams: { page:1, perPage:10, sort:{ field:'dt', type:'asc' } },
       limit: 10,
       search: '',
       // Optional price format key for frontend display (loaded from system settings/localStorage)
@@ -245,6 +254,17 @@ export default {
     ...mapGetters(["currentUser"]),
     currency(){ return (this.currentUser && this.currentUser.currency) || "USD"; },
     labelRange(){ return `${this.fmt(this.dateRange.startDate)} - ${this.fmt(this.dateRange.endDate)}`; },
+    reportDateLabel(){
+      const start = moment(this.dateRange.startDate);
+      const end = moment(this.dateRange.endDate);
+      if (start.isSame(end, 'day')) {
+        return start.format('dddd DD/MM/YYYY').toUpperCase();
+      }
+      return `${start.format('DD/MM/YYYY')} - ${end.format('DD/MM/YYYY')}`;
+    },
+    pageStart(){
+      return ((this.serverParams.page - 1) * this.serverParams.perPage) + 1;
+    },
     columns(){
       return [
         { label: this.$t('ID'), field:'transfer_id', sortable:true, tdClass:'text-left', thClass:'text-left' },
@@ -323,6 +343,15 @@ export default {
     formatQty(v){
       const n = parseFloat(v||0);
       return isNaN(n) ? "0" : n.toLocaleString(undefined,{maximumFractionDigits:2});
+    },
+    reportItems(transfer){
+      return transfer && Array.isArray(transfer.items) && transfer.items.length
+        ? transfer.items
+        : [{ detail_id: `empty-${transfer ? transfer.transfer_id : 0}`, company:'-', product:'-', qty:0 }];
+    },
+    changePage(page){
+      this.serverParams.page = page;
+      this.fetchReport();
     },
 
     // Group footer helpers for vue-good-table
@@ -415,10 +444,8 @@ export default {
       axios.get(`report/stock_transfer?${qs}`)
         .then(({data})=>{
           const d = data.data || {};
-          this.kpis = d.kpis || this.kpis;
-          this.timeseries = d.timeseries || [];
-          this.routes = d.routes || [];
-          this.rows[0].children = d.rows || [];
+          this.rows = d.rows || [];
+          this.totals = d.totals || { qty:0, total_out:0, total_in:0 };
           this.totalRows = d.totalRows || 0;
           this.warehouses = data.warehouses || this.warehouses;
           this.isLoading = false; NProgress.done();
@@ -426,8 +453,87 @@ export default {
         .catch(()=>{ this.isLoading = false; NProgress.done(); });
     },
 
-    // ---- Export PDF (RTL + Vazirmatn) ----
-    async exportPDF() {
+    async exportPDF(){
+      try {
+        const { rows } = await this.fetchAllRowsForExport();
+        const doc = new jsPDF({ orientation:'portrait', unit:'pt', format:'a4' });
+        const margin = 28;
+        const pageWidth = doc.internal.pageSize.getWidth();
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(13);
+        doc.text('WAREHOUSE STOCK IN & OUT', margin, 38);
+        doc.setFontSize(9);
+        doc.text(this.reportDateLabel, pageWidth - margin, 38, { align:'right' });
+
+        const body = [];
+        (rows || []).forEach((transfer, transferIndex) => {
+          const items = this.reportItems(transfer);
+          items.forEach((item, itemIndex) => {
+            if (itemIndex === 0) {
+              body.push([
+                { content:String(transferIndex + 1), rowSpan:items.length, styles:{ valign:'middle' } },
+                { content:transfer.from || '-', rowSpan:items.length, styles:{ valign:'middle' } },
+                { content:transfer.to || '-', rowSpan:items.length, styles:{ valign:'middle' } },
+                item.company || '-',
+                item.product || '-',
+                this.formatQty(item.qty),
+                { content:this.formatQty(transfer.total_out), rowSpan:items.length, styles:{ valign:'middle' } },
+                { content:this.formatQty(transfer.total_in), rowSpan:items.length, styles:{ valign:'middle' } },
+                { content:transfer.driver || '-', rowSpan:items.length, styles:{ valign:'middle' } },
+                { content:transfer.direction || '-', rowSpan:items.length, styles:{ valign:'middle', fontStyle:'bold' } },
+              ]);
+            } else {
+              body.push([item.company || '-', item.product || '-', this.formatQty(item.qty)]);
+            }
+          });
+        });
+
+        autoTable(doc, {
+          startY:52,
+          head:[[ 'S.NO', 'TRANSFER\nWAREHOUSE', 'WAREHOUSE\nDESTINATION', 'COMPANY', 'PRODUCT', 'QTY', 'TOTAL ITEM\nOUT', 'TOTAL ITEM\nIN', 'DRIVER', 'IN/OUT' ]],
+          body,
+          foot:[[
+            { content:'TOTAL', colSpan:5, styles:{ halign:'center' } },
+            this.formatQty(this.totals.qty),
+            this.formatQty(this.totals.total_out),
+            this.formatQty(this.totals.total_in),
+            { content:'', colSpan:2 },
+          ]],
+          theme:'grid',
+          margin:{ left:margin, right:margin, top:32, bottom:24 },
+          rowPageBreak:'avoid',
+          showHead:'firstPage',
+          styles:{ font:'helvetica', fontSize:6.5, cellPadding:3, lineColor:[0,0,0], lineWidth:0.6, textColor:[0,0,0], valign:'middle' },
+          headStyles:{ fillColor:[255,255,255], textColor:[0,0,0], fontStyle:'bold', halign:'center', lineWidth:0.8 },
+          footStyles:{ fillColor:[255,242,0], textColor:[0,0,0], fontStyle:'bold', lineWidth:0.8 },
+          columnStyles:{
+            0:{ cellWidth:25, halign:'center' },
+            1:{ cellWidth:56 },
+            2:{ cellWidth:58 },
+            3:{ cellWidth:47 },
+            4:{ cellWidth:82 },
+            5:{ cellWidth:30, halign:'right' },
+            6:{ cellWidth:42, halign:'right' },
+            7:{ cellWidth:42, halign:'right' },
+            8:{ cellWidth:58 },
+            9:{ cellWidth:39, halign:'center' },
+          },
+          didDrawPage: data => {
+            const pageHeight = doc.internal.pageSize.getHeight();
+            doc.setFontSize(7);
+            doc.text(String(data.pageNumber), pageWidth - margin, pageHeight - 10, { align:'right' });
+          },
+        });
+
+        doc.save(`Warehouse_Stock_In_Out_${this.fmt(this.dateRange.startDate)}_${this.fmt(this.dateRange.endDate)}.pdf`);
+      } catch (error) {
+        console.error(error);
+      }
+    },
+
+    // Previous PDF implementation retained for compatibility reference.
+    async legacyExportPDF() {
       try {
         // get every page first
         const { rows: allRows } = await this.fetchAllRowsForExport();
@@ -585,8 +691,94 @@ export default {
       return { rows: allRows };
     },
 
-    //------ Print Table Only
-    printTableOnly() {
+    escapeHtml(value){
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    },
+
+    printableRows(rows){
+      let html = '';
+      (rows || []).forEach((transfer, transferIndex) => {
+        const items = this.reportItems(transfer);
+        items.forEach((item, itemIndex) => {
+          html += '<tr>';
+          if (itemIndex === 0) {
+            html += `<td rowspan="${items.length}" class="group">${transferIndex + 1}</td>`;
+            html += `<td rowspan="${items.length}" class="group">${this.escapeHtml(transfer.from || '-')}</td>`;
+            html += `<td rowspan="${items.length}" class="group">${this.escapeHtml(transfer.to || '-')}</td>`;
+          }
+          html += `<td>${this.escapeHtml(item.company || '-')}</td>`;
+          html += `<td>${this.escapeHtml(item.product || '-')}</td>`;
+          html += `<td class="num">${this.formatQty(item.qty)}</td>`;
+          if (itemIndex === 0) {
+            html += `<td rowspan="${items.length}" class="group num">${this.formatQty(transfer.total_out)}</td>`;
+            html += `<td rowspan="${items.length}" class="group num">${this.formatQty(transfer.total_in)}</td>`;
+            html += `<td rowspan="${items.length}" class="group">${this.escapeHtml(transfer.driver || '-')}</td>`;
+            html += `<td rowspan="${items.length}" class="group direction">${this.escapeHtml(transfer.direction || '-')}</td>`;
+          }
+          html += '</tr>';
+        });
+      });
+      return html;
+    },
+
+    async printTableOnly(){
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) return;
+
+      try {
+        const { rows } = await this.fetchAllRowsForExport();
+        const doc = printWindow.document;
+        doc.open();
+        doc.write(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Warehouse Stock In &amp; Out</title>
+  <style>
+    @page { size: A4 portrait; margin: 8mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #000; font-family: Arial, sans-serif; }
+    .heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
+    .heading h1 { margin: 0; font-size: 15px; }
+    .heading strong { font-size: 11px; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 8px; }
+    th, td { border: 1.2px solid #000; padding: 4px 3px; vertical-align: top; overflow-wrap: anywhere; }
+    thead th { text-align: center; vertical-align: middle; font-weight: 700; }
+    .group { vertical-align: middle; }
+    .num { text-align: right; }
+    .direction { text-align: center; font-weight: 700; }
+    tfoot th { background: #fff200; vertical-align: middle; font-weight: 700; }
+    col.serial { width: 5%; } col.warehouse { width: 12%; } col.destination { width: 13%; }
+    col.company { width: 9%; } col.product { width: 17%; } col.qty { width: 6%; }
+    col.total { width: 8%; } col.driver { width: 13%; } col.direction { width: 7%; }
+  </style>
+</head>
+<body>
+  <div class="heading"><h1>WAREHOUSE STOCK IN &amp; OUT</h1><strong>${this.escapeHtml(this.reportDateLabel)}</strong></div>
+  <table>
+    <colgroup><col class="serial"><col class="warehouse"><col class="destination"><col class="company"><col class="product"><col class="qty"><col class="total"><col class="total"><col class="driver"><col class="direction"></colgroup>
+    <thead><tr><th>S.NO</th><th>TRANSFER<br>WAREHOUSE</th><th>WAREHOUSE<br>DESTINATION</th><th>COMPANY</th><th>PRODUCT</th><th>QTY</th><th>TOTAL ITEM<br>OUT</th><th>TOTAL ITEM<br>IN</th><th>DRIVER</th><th>IN/OUT</th></tr></thead>
+    <tbody>${this.printableRows(rows) || '<tr><td colspan="10">No transfer records found.</td></tr>'}</tbody>
+    <tfoot><tr><th colspan="5">TOTAL</th><th class="num">${this.formatQty(this.totals.qty)}</th><th class="num">${this.formatQty(this.totals.total_out)}</th><th class="num">${this.formatQty(this.totals.total_in)}</th><th colspan="2"></th></tr></tfoot>
+  </table>
+</body>
+</html>`);
+        doc.close();
+        printWindow.focus();
+        setTimeout(() => { printWindow.print(); printWindow.close(); }, 300);
+      } catch (error) {
+        printWindow.close();
+        console.error(error);
+      }
+    },
+
+    // Previous print implementation retained for compatibility reference.
+    legacyPrintTableOnly() {
       const root = this.$el;
       if (!root) {
         window.print();
@@ -746,6 +938,54 @@ export default {
 .theme-green  { --gradA:#edf9ee; --gradB:#ffffff; color:#2e7d32; }
 .theme-orange { --gradA:#fff4e6; --gradB:#ffffff; color:#cc6b00; }
 .theme-purple { --gradA:#f5e6ff; --gradB:#ffffff; color:#6a2ecc; }
+
+.report-scroll { overflow-x:auto; padding-bottom:4px; }
+.stock-report-sheet {
+  min-width:1050px;
+  background:#fff;
+  border:1px solid #d8d8d8;
+  padding:18px;
+}
+.stock-report-heading {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  color:#000;
+  margin-bottom:10px;
+}
+.stock-report-heading h2 { margin:0; font-size:20px; font-weight:700; }
+.stock-report-heading strong { font-size:14px; }
+.stock-report-table {
+  width:100%;
+  table-layout:fixed;
+  border-collapse:collapse;
+  color:#000;
+  font-size:12px;
+}
+.stock-report-table th,
+.stock-report-table td {
+  border:1.5px solid #000;
+  padding:7px 6px;
+  vertical-align:top;
+  overflow-wrap:anywhere;
+}
+.stock-report-table thead th { text-align:center; vertical-align:middle; font-weight:700; }
+.stock-report-table th:nth-child(1) { width:5%; }
+.stock-report-table th:nth-child(2) { width:12%; }
+.stock-report-table th:nth-child(3) { width:13%; }
+.stock-report-table th:nth-child(4) { width:9%; }
+.stock-report-table th:nth-child(5) { width:18%; }
+.stock-report-table th:nth-child(6) { width:6%; }
+.stock-report-table th:nth-child(7),
+.stock-report-table th:nth-child(8) { width:8%; }
+.stock-report-table th:nth-child(9) { width:14%; }
+.stock-report-table th:nth-child(10) { width:7%; }
+.stock-report-table .group-cell { vertical-align:middle; }
+.stock-report-table .serial-cell,
+.stock-report-table .direction-cell { text-align:center; font-weight:700; }
+.stock-report-table .number-cell { text-align:right; }
+.stock-report-table .empty-cell { padding:22px; text-align:center; }
+.stock-report-table tfoot th { background:#fff200; vertical-align:middle; font-weight:700; }
 </style>
 
 <!-- Global (not scoped) styles for the daterangepicker popup -->

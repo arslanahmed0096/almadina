@@ -9,6 +9,7 @@ class ShipmentItem extends Model
     protected $fillable = [
         'shipment_id',
         'sale_detail_id',
+        'quantity',
         'shipped_by',
         'delivery_method',
         'driver_name',
@@ -22,6 +23,7 @@ class ShipmentItem extends Model
     protected $casts = [
         'shipment_id' => 'integer',
         'sale_detail_id' => 'integer',
+        'quantity' => 'decimal:6',
         'shipped_by' => 'integer',
         'item_total' => 'decimal:2',
         'paid_amount' => 'decimal:2',

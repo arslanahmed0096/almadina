@@ -99,6 +99,8 @@ class ShipmentController extends BaseController
             'sale_id' => ['required', 'integer', 'exists:sales,id'],
             'sale_detail_ids' => ['required', 'array', 'min:1'],
             'sale_detail_ids.*' => ['required', 'integer', 'distinct', 'exists:sale_details,id'],
+            'quantities' => ['nullable', 'array'],
+            'quantities.*' => ['numeric', 'gt:0'],
             'Ref' => ['nullable', 'string', 'max:192'],
             'delivered_to' => ['nullable', 'string', 'max:192'],
             'shipping_address' => ['nullable', 'string'],
@@ -123,6 +125,7 @@ class ShipmentController extends BaseController
                 : 'Selected items were shipped. The sale remains Ordered.',
             'sale_status' => $result['sale']->statut,
             'shipment_status' => $result['shipment']->status,
+            'receipt' => $result['receipt'],
         ]);
 
     }
@@ -176,6 +179,8 @@ class ShipmentController extends BaseController
             'sale_id' => ['required', 'integer', 'exists:sales,id'],
             'sale_detail_ids' => ['required', 'array', 'min:1'],
             'sale_detail_ids.*' => ['required', 'integer', 'distinct', 'exists:sale_details,id'],
+            'quantities' => ['nullable', 'array'],
+            'quantities.*' => ['numeric', 'gt:0'],
             'delivered_to' => ['nullable', 'string', 'max:192'],
             'shipping_address' => ['nullable', 'string'],
             'shipping_details' => ['nullable', 'string'],
@@ -205,6 +210,7 @@ class ShipmentController extends BaseController
                 : 'Selected items were shipped. The sale remains Ordered.',
             'sale_status' => $result['sale']->statut,
             'shipment_status' => $result['shipment']->status,
+            'receipt' => $result['receipt'],
         ]);
 
     }

@@ -490,7 +490,7 @@ class BatchService
      * The unique shipment-item marker protects the caller from duplicate execution;
      * the pivot check also protects legacy/manual retries.
      */
-    public function applyForShippedSaleDetail(Sale $sale, SaleDetail $detail): void
+    public function applyForShippedSaleDetail(Sale $sale, SaleDetail $detail, ?float $quantity = null): void
     {
         if (! $this->isSupported() || ! Schema::hasTable('sale_detail_batches')) {
             return;
@@ -498,11 +498,7 @@ class BatchService
         if (! $this->productIsTracked($detail->product_id)) {
             return;
         }
-        if (SaleDetailBatch::where('sale_detail_id', $detail->id)->exists()) {
-            return;
-        }
-
-        $this->autoFefoForSaleDetail($sale, $detail);
+        $this->autoFefoForSaleDetail($sale, $detail, $quantity);
     }
 
     /**
@@ -512,9 +508,9 @@ class BatchService
      * If no batches exist the detail is left unchanged (the product_warehouse.qte
      * path is still authoritative for overall stock).
      */
-    protected function autoFefoForSaleDetail(Sale $sale, SaleDetail $detail): void
+    protected function autoFefoForSaleDetail(Sale $sale, SaleDetail $detail, ?float $quantity = null): void
     {
-        $qtyNeeded = (float) ($detail->quantity ?? 0);
+        $qtyNeeded = $quantity === null ? (float) ($detail->quantity ?? 0) : $quantity;
         if ($qtyNeeded <= 0) {
             return;
         }

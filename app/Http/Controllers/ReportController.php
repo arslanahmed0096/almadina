@@ -9635,7 +9635,7 @@ public function draftInvoices(Request $request)
     {
         $this->authorizeForUser($request->user('api'), 'Stock_Transfer_Report', Transfer::class);
 
-        $start = Carbon::parse($request->from ?? now()->subDays(6))->startOfDay();
+        $start = Carbon::parse($request->from ?? now())->startOfDay();
         $end   = Carbon::parse($request->to ?? now())->endOfDay();
 
         /**
@@ -9677,13 +9677,15 @@ public function draftInvoices(Request $request)
             }
         }
 
-        // Table params
-        $perPage = max(1, (int) ($request->get('limit', 10)));
+        // Table params (pagination is by transfer so product lines stay grouped)
+        $rawLimit = (int) $request->get('limit', 10);
+        $showAll  = $rawLimit === -1;
+        $perPage  = $showAll ? 0 : max(1, $rawLimit);
         $page    = max(1, (int) ($request->get('page', 1)));
-        $offset  = ($page - 1) * $perPage;
+        $offset  = $showAll ? 0 : ($page - 1) * $perPage;
 
         $sortField = $request->get('SortField', 'dt');
-        $sortType  = strtolower($request->get('SortType', 'desc')) === 'asc' ? 'asc' : 'desc';
+        $sortType  = strtolower($request->get('SortType', 'asc')) === 'desc' ? 'desc' : 'asc';
 
         // ✅ Warehouses dropdown must return ONLY assigned warehouses (or all if allowed)
         if ($is_all_warehouses) {
@@ -9695,9 +9697,12 @@ public function draftInvoices(Request $request)
                 ->get(['id', 'name']);
         }
 
-        // Base join (details + header)
-        $base = TransferDetail::from('transfer_details as d')
-            ->join('transfers as t', 't.id', '=', 'd.transfer_id')
+        // Transfer header base. Product details are loaded separately so each
+        // transfer remains one report group and is never split across pages.
+        $base = Transfer::from('transfers as t')
+            ->leftJoin('warehouses as wf', 'wf.id', '=', 't.from_warehouse_id')
+            ->leftJoin('warehouses as wt', 'wt.id', '=', 't.to_warehouse_id')
+            ->leftJoin('employees as driver', 'driver.id', '=', 't.driver_id')
             ->whereNull('t.deleted_at')
             ->whereBetween(
                 DB::raw('COALESCE(CONCAT(t.date," ",IFNULL(t.time,"00:00:00")), t.created_at)'),
@@ -9729,87 +9734,116 @@ public function draftInvoices(Request $request)
             ->when($search !== '', function ($q) use ($search) {
                 $q->where(function ($w) use ($search) {
                     $w->where('t.notes', 'LIKE', "%{$search}%")
-                    ->orWhere('t.id', 'LIKE', "%{$search}%");
+                    ->orWhere('t.Ref', 'LIKE', "%{$search}%")
+                    ->orWhere('t.id', 'LIKE', "%{$search}%")
+                    ->orWhere('wf.name', 'LIKE', "%{$search}%")
+                    ->orWhere('wt.name', 'LIKE', "%{$search}%")
+                    ->orWhere('driver.firstname', 'LIKE', "%{$search}%")
+                    ->orWhere('driver.lastname', 'LIKE', "%{$search}%");
                 });
             });
 
-        // ---------- KPIs ----------
-        $kpi = (clone $base)
-            ->selectRaw('COUNT(DISTINCT t.id) as transfers_count')
-            ->selectRaw('COUNT(d.id) as lines_count')
-            ->selectRaw('COALESCE(SUM(d.quantity),0) as qty_sum')
-            ->selectRaw('COALESCE(SUM(d.total),0) as value_sum')
+        $totalRows = (clone $base)->distinct()->count('t.id');
+
+        $filteredTransfers = (clone $base)
+            ->select('t.id', 't.from_warehouse_id', 't.to_warehouse_id')
+            ->distinct();
+
+        $totals = DB::query()
+            ->fromSub($filteredTransfers, 'filtered_transfers')
+            ->join('transfer_details as total_d', 'total_d.transfer_id', '=', 'filtered_transfers.id')
+            ->selectRaw('COALESCE(SUM(total_d.quantity), 0) as qty')
+            ->when($warehouseId, function ($query) use ($warehouseId) {
+                $query->selectRaw('COALESCE(SUM(CASE WHEN filtered_transfers.from_warehouse_id = ? THEN total_d.quantity ELSE 0 END), 0) as total_out', [$warehouseId])
+                    ->selectRaw('COALESCE(SUM(CASE WHEN filtered_transfers.to_warehouse_id = ? THEN total_d.quantity ELSE 0 END), 0) as total_in', [$warehouseId]);
+            }, function ($query) {
+                $query->selectRaw('COALESCE(SUM(total_d.quantity), 0) as total_out')
+                    ->selectRaw('0 as total_in');
+            })
             ->first();
 
-        // ---------- Time-series (day) ----------
-        $timeseries = (clone $base)
-            ->selectRaw('DATE(COALESCE(t.date, DATE(t.created_at))) as d')
-            ->selectRaw('COALESCE(SUM(d.quantity),0) as qty')
-            ->selectRaw('COALESCE(SUM(d.total),0) as val')
-            ->groupBy('d')->orderBy('d', 'asc')->get();
-
-        // ---------- Top routes ----------
-        $routes = (clone $base)
-            ->join('warehouses as wf', 'wf.id', '=', 't.from_warehouse_id')
-            ->join('warehouses as wt', 'wt.id', '=', 't.to_warehouse_id')
-            ->selectRaw('t.from_warehouse_id, wf.name as from_name')
-            ->selectRaw('t.to_warehouse_id, wt.name as to_name')
-            ->selectRaw('COUNT(DISTINCT t.id) as transfers')
-            ->selectRaw('COALESCE(SUM(d.quantity),0) as qty')
-            ->selectRaw('COALESCE(SUM(d.total),0) as val')
-            ->groupBy('t.from_warehouse_id', 'wf.name', 't.to_warehouse_id', 'wt.name')
-            ->orderBy('val', 'desc')
-            ->limit(10)->get();
-
-        // ---------- Table (one row per transfer) ----------
+        // One grouped row per transfer; product lines are attached below.
         $tableBase = (clone $base)
-            ->leftJoin('warehouses as wf', 'wf.id', '=', 't.from_warehouse_id')
-            ->leftJoin('warehouses as wt', 'wt.id', '=', 't.to_warehouse_id')
+            ->join('transfer_details as d', 'd.transfer_id', '=', 't.id')
             ->selectRaw('t.id as transfer_id')
+            ->selectRaw('t.Ref as reference')
+            ->selectRaw('t.from_warehouse_id, t.to_warehouse_id')
             ->selectRaw('COALESCE(CONCAT(t.date," ",IFNULL(t.time,"00:00:00")), t.created_at) as dt')
             ->selectRaw('wf.name as from_wh, wt.name as to_wh')
-            ->selectRaw('COALESCE(SUM(d.quantity),0) as qty')
-            ->selectRaw('COALESCE(SUM(d.total),0) as val')
-            ->selectRaw('t.statut as statut')
-            ->groupBy('t.id', 'dt', 'from_wh', 'to_wh', 't.statut');
+            ->selectRaw("COALESCE(NULLIF(TRIM(CONCAT_WS(' ', driver.firstname, driver.lastname)), ''), '-') as driver_name")
+            ->selectRaw('COALESCE(SUM(d.quantity), 0) as total_qty')
+            ->groupBy(
+                't.id', 't.Ref', 'dt', 't.from_warehouse_id', 't.to_warehouse_id',
+                'wf.name', 'wt.name', 'driver.firstname', 'driver.lastname'
+            );
 
-        $totalRows = DB::table(DB::raw("({$tableBase->toSql()}) as x"))
-            ->mergeBindings($tableBase->getQuery())
-            ->count();
+        $sortable = [
+            'dt' => 'dt',
+            'transfer_id' => 'transfer_id',
+            'reference' => 'reference',
+            'from' => 'from_wh',
+            'to' => 'to_wh',
+            'driver' => 'driver_name',
+            'qty' => 'total_qty',
+        ];
 
-        $sortable = ['dt', 'from_wh', 'to_wh', 'qty', 'val', 'statut', 'transfer_id'];
-        if (! in_array($sortField, $sortable, true)) {
-            $sortField = 'dt';
+        $groupRows = $tableBase
+            ->orderBy($sortable[$sortField] ?? 'dt', $sortType)
+            ->orderBy('transfer_id', $sortType)
+            ->when(! $showAll, fn ($query) => $query->offset($offset)->limit($perPage))
+            ->get();
+
+        $transferIds = $groupRows->pluck('transfer_id')->map(fn ($id) => (int) $id)->all();
+        $detailsByTransfer = collect();
+
+        if (! empty($transferIds)) {
+            $detailsByTransfer = TransferDetail::from('transfer_details as detail')
+                ->join('products as product', 'product.id', '=', 'detail.product_id')
+                ->leftJoin('product_variants as variant', 'variant.id', '=', 'detail.product_variant_id')
+                ->leftJoin('brands as brand', 'brand.id', '=', 'product.brand_id')
+                ->whereIn('detail.transfer_id', $transferIds)
+                ->selectRaw('detail.id as detail_id, detail.transfer_id, detail.quantity')
+                ->selectRaw("COALESCE(NULLIF(brand.name, ''), '-') as company")
+                ->selectRaw("CASE WHEN variant.id IS NOT NULL THEN CONCAT('[', variant.name, '] ', product.name) ELSE product.name END as product_name")
+                ->orderBy('detail.id')
+                ->get()
+                ->groupBy('transfer_id');
         }
 
-        $rows = $tableBase
-            ->orderBy($sortField, $sortType)
-            ->offset($offset)->limit($perPage)
-            ->get()
-            ->map(function ($r) {
-                return [
-                    'transfer_id' => (int) $r->transfer_id,
-                    'date_time'   => Carbon::parse($r->dt)->format('Y-m-d H:i'),
-                    'from'        => $r->from_wh,
-                    'to'          => $r->to_wh,
-                    'qty'         => (float) $r->qty,
-                    'value'       => (float) $r->val,
-                    'statut'      => $r->statut,
-                ];
-            });
+        $rows = $groupRows->map(function ($row) use ($detailsByTransfer, $warehouseId) {
+            $isInbound = $warehouseId && (int) $row->to_warehouse_id === (int) $warehouseId;
+            $quantity = (float) $row->total_qty;
+
+            $items = collect($detailsByTransfer->get($row->transfer_id, []))
+                ->map(fn ($detail) => [
+                    'detail_id' => (int) $detail->detail_id,
+                    'company' => $detail->company,
+                    'product' => $detail->product_name,
+                    'qty' => (float) $detail->quantity,
+                ])->values();
+
+            return [
+                'transfer_id' => (int) $row->transfer_id,
+                'reference' => $row->reference,
+                'date_time' => Carbon::parse($row->dt)->format('Y-m-d H:i'),
+                'from' => $row->from_wh,
+                'to' => $row->to_wh,
+                'driver' => $row->driver_name,
+                'total_qty' => $quantity,
+                'total_out' => $isInbound ? 0 : $quantity,
+                'total_in' => $isInbound ? $quantity : 0,
+                'direction' => $isInbound ? 'IN' : 'OUT',
+                'items' => $items,
+            ];
+        });
 
         return response()->json([
             'data' => [
-                'kpis' => [
-                    'transfers_count'        => (int) $kpi->transfers_count,
-                    'lines_count'            => (int) $kpi->lines_count,
-                    'qty_sum'                => (float) $kpi->qty_sum,
-                    'value_sum'              => (float) $kpi->value_sum,
-                    'avg_items_per_transfer' => $kpi->transfers_count ? round($kpi->qty_sum / $kpi->transfers_count, 2) : 0,
-                    'avg_value_per_transfer' => $kpi->transfers_count ? round($kpi->value_sum / $kpi->transfers_count, 2) : 0,
+                'totals' => [
+                    'qty' => (float) ($totals->qty ?? 0),
+                    'total_out' => (float) ($totals->total_out ?? 0),
+                    'total_in' => (float) ($totals->total_in ?? 0),
                 ],
-                'timeseries' => $timeseries,
-                'routes'     => $routes,
                 'rows'       => $rows,
                 'totalRows'  => $totalRows,
             ],

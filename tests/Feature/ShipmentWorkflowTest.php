@@ -82,6 +82,24 @@ class ShipmentWorkflowTest extends TestCase
         $this->assertSame(2, ShipmentItem::count());
     }
 
+    public function test_one_of_nine_units_can_be_shipped_and_eight_remain(): void
+    {
+        [$sale, $detailIds] = $this->seedSale([9000], 9000, 9000, 0);
+        DB::table('sale_details')->where('id', $detailIds[0])->update(['quantity' => 9]);
+        $service = app(ShipmentEligibilityService::class);
+
+        $result = $service->shipSelectedItems($sale->fresh(), [$detailIds[0]], [
+            'quantities' => [$detailIds[0] => 1],
+        ], 1);
+
+        $this->assertFalse($result['all_shipped']);
+        $this->assertSame(1.0, (float) ShipmentItem::first()->quantity);
+        $this->assertSame(1.0, (float) $result['receipt']['items'][0]['picked_quantity']);
+        $this->assertSame(8.0, (float) $result['receipt']['items'][0]['remaining_quantity']);
+        $this->assertSame(8.0, (float) $service->forSale($sale->fresh())['items'][0]['remaining_quantity']);
+        $this->assertSame('ordered', $sale->fresh()->statut);
+    }
+
     public function test_combined_credit_failure_rolls_back_every_shipment_change(): void
     {
         [$sale, $detailIds] = $this->seedSale([6000, 5000], 11000, 0, 10000);
@@ -462,6 +480,7 @@ class ShipmentWorkflowTest extends TestCase
             $table->increments('id');
             $table->unsignedInteger('shipment_id');
             $table->unsignedInteger('sale_detail_id')->unique();
+            $table->decimal('quantity', 15, 2)->nullable();
             $table->unsignedInteger('shipped_by');
             $table->string('delivery_method', 32)->default('self_delivery');
             $table->string('driver_name', 192)->nullable();

@@ -34,6 +34,27 @@
       </div>
     </b-card>
 
+    <b-card v-else-if="editing && gate">
+      <b-form @submit.prevent="updateGatePass">
+        <b-alert show variant="light">
+          Editing <strong>{{ gate.number }}</strong>. Supplier, Purchase Order, products, and quantities cannot be changed.
+        </b-alert>
+        <b-row>
+          <b-col md="6"><p><strong>Supplier:</strong> {{ gate.provider ? gate.provider.name : '-' }}</p></b-col>
+          <b-col md="6"><p><strong>Purchase Order:</strong> {{ gate.purchase_order ? gate.purchase_order.number : 'Direct receipt' }}</p></b-col>
+          <b-col md="4"><b-form-group label="Delivery date/time *"><b-form-input type="datetime-local" v-model="form.delivered_at" required /></b-form-group></b-col>
+          <b-col md="4"><b-form-group label="Supplier Gate Pass / DN"><b-form-input v-model="form.supplier_gate_pass_number" /></b-form-group></b-col>
+          <b-col md="4"><b-form-group label="Bilty / consignment"><b-form-input v-model="form.bilty_number" /></b-form-group></b-col>
+          <b-col md="4"><b-form-group label="Vehicle"><b-form-input v-model="form.vehicle_number" /></b-form-group></b-col>
+          <b-col md="4"><b-form-group label="Driver name"><b-form-input v-model="form.driver_name" /></b-form-group></b-col>
+          <b-col md="4"><b-form-group label="Driver phone"><b-form-input v-model="form.driver_phone" /></b-form-group></b-col>
+          <b-col md="12"><b-form-group label="Notes"><b-form-textarea v-model="form.notes" /></b-form-group></b-col>
+        </b-row>
+        <b-button type="submit" variant="primary" :disabled="saving">{{ saving ? 'Updating...' : 'Update Gate Pass' }}</b-button>
+        <router-link class="btn btn-outline-secondary ml-2" :to="'/app/procurement/gate-passes/' + gate.id">Cancel</router-link>
+      </b-form>
+    </b-card>
+
     <b-card v-else-if="ready">
       <b-form @submit.prevent="save">
         <b-form-group>
@@ -130,6 +151,7 @@ export default {
   computed: {
     ...mapGetters(['currentUserPermissions']),
     viewing() { return this.$route.name === 'procurement_gate_detail'; },
+    editing() { return this.$route.name === 'procurement_gate_edit'; },
     direct() { return !this.hasPurchaseOrder; },
     filteredPurchaseOrders() {
       if (!this.form.provider_id) return [];
@@ -137,6 +159,7 @@ export default {
     },
     pageTitle() {
       if (this.viewing) return this.gate ? this.gate.number : 'Gate Pass';
+      if (this.editing) return this.gate ? 'Edit ' + this.gate.number : 'Edit Gate Pass';
       return 'Add Gate Pass';
     },
     productSearchPlaceholder() {
@@ -146,7 +169,7 @@ export default {
     }
   },
   mounted() {
-    if (this.viewing) this.loadGate();
+    if (this.viewing || this.editing) this.loadGate();
     else {
       const purchaseOrderId = this.$route.name === 'procurement_gate_create' ? Number(this.$route.params.id) : null;
       this.hasPurchaseOrder = true;
@@ -173,7 +196,20 @@ export default {
     },
     toast(message, variant = 'warning') { this.$root.$bvToast.toast(message, { title: 'Gate Pass', variant, solid: true }); },
     loadGate() {
-      axios.get('procurement/gate-passes/' + this.$route.params.id).then(response => { this.gate = response.data.gate_pass; })
+      axios.get('procurement/gate-passes/' + this.$route.params.id).then(response => {
+        this.gate = response.data.gate_pass;
+        if (this.editing) {
+          if (!this.gate.can_edit) {
+            this.toast('Only the Super Admin can edit Gate Passes.', 'danger');
+            this.$router.replace('/app/procurement/gate-passes/' + this.gate.id);
+            return;
+          }
+          this.form.delivered_at = String(this.gate.delivered_at || '').replace(' ', 'T').slice(0, 16);
+          ['supplier_gate_pass_number', 'bilty_number', 'vehicle_number', 'driver_name', 'driver_phone', 'notes'].forEach(field => {
+            this.form[field] = this.gate[field] || '';
+          });
+        }
+      })
         .catch(error => this.toast(this.errorMessage(error, 'Could not load the Gate Pass.'), 'danger'));
     },
     applyMetadata(data) {
@@ -293,6 +329,21 @@ export default {
     save() {
       const validationError = this.validateForm();
       if (validationError) { this.toast(validationError); return; }
+
+      this.$swal({
+        title: 'Are you sure?',
+        text: 'Do you want to save this gate pass?',
+        type: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#3085d6',
+        cancelButtonColor: '#d33',
+        confirmButtonText: 'Yes, save it',
+        cancelButtonText: 'Cancel'
+      }).then(result => {
+        if (result.value) this.submitGatePass();
+      });
+    },
+    submitGatePass() {
       const items = this.lines.filter(line => Number(line.delivered_quantity) > 0).map(line => this.direct ? {
         product_id: line.product_id, product_variant_id: line.product_variant_id, unit_id: line.unit_id,
         delivered_quantity: line.delivered_quantity, accepted_quantity: line.delivered_quantity, rejected_quantity: 0
@@ -308,6 +359,28 @@ export default {
       this.saving = true;
       axios.post('procurement/gate-passes', formData).then(() => { this.$router.push('/app/procurement/gate-passes'); })
         .catch(error => this.toast(this.errorMessage(error, 'Could not record the Gate Pass.'), 'danger')).finally(() => { this.saving = false; });
+    },
+    updateGatePass() {
+      if (!this.form.delivered_at) { this.toast('Delivery date/time is required.'); return; }
+      this.$swal({
+        title: 'Are you sure?',
+        text: 'Do you want to update this gate pass?',
+        type: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#3085d6',
+        cancelButtonColor: '#d33',
+        confirmButtonText: 'Yes, update it',
+        cancelButtonText: 'Cancel'
+      }).then(result => {
+        if (!result.value) return;
+        const fields = ['delivered_at', 'supplier_gate_pass_number', 'bilty_number', 'vehicle_number', 'driver_name', 'driver_phone', 'notes'];
+        const payload = fields.reduce((data, field) => ({ ...data, [field]: this.form[field] || null }), {});
+        this.saving = true;
+        axios.put('procurement/gate-passes/' + this.gate.id, payload)
+          .then(() => { this.$router.push('/app/procurement/gate-passes/' + this.gate.id); })
+          .catch(error => this.toast(this.errorMessage(error, 'Could not update the Gate Pass.'), 'danger'))
+          .finally(() => { this.saving = false; });
+      });
     },
     confirm() {
       axios.post('procurement/gate-passes/' + this.gate.id + '/confirm').then(this.loadGate)
