@@ -121,6 +121,10 @@
                       <span :class="getPaymentBadgeClass(purchase.payment_status)">{{purchase.payment_status}}</span>
                     </td>
                   </tr>
+                  <tr v-if="purchase.payment_due_date">
+                    <td class="invoice-meta-label">Payment Due Date:</td>
+                    <td class="invoice-meta-value">{{formatDisplayDate(purchase.payment_due_date)}} ({{purchase.payment_due_days}} days)</td>
+                  </tr>
                 </table>
               </td>
             </tr>

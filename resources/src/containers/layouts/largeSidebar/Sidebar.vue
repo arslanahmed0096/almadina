@@ -2302,6 +2302,16 @@
             class="nav-item"
             v-if="currentUserPermissions && currentUserPermissions.includes('Reports_suppliers')"
           >
+            <router-link class :to="{ name: 'supplier_aging_report' }">
+              <lucide-icon class="nav-icon" name="calendar-clock" />
+              <span class="item-name">Supplier Aging Report</span>
+            </router-link>
+          </li>
+
+          <li
+            class="nav-item"
+            v-if="currentUserPermissions && currentUserPermissions.includes('Reports_suppliers')"
+          >
             <router-link class :to="{ name: 'supplier_year_comparison_report' }">
               <lucide-icon class="nav-icon" name="bar-chart-3" />
               <span class="item-name">Supplier Sales &amp; Payments</span>

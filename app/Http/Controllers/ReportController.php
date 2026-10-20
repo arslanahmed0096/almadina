@@ -6,6 +6,7 @@ use App\Exports\BranchYearComparisonExport;
 use App\Exports\SupplierStatementExport;
 use App\Exports\SupplierYearComparisonExport;
 use App\Services\Reports\BranchYearComparisonService;
+use App\Services\Reports\SupplierAgingReportService;
 use App\Services\Reports\SupplierYearComparisonService;
 use Illuminate\Support\Facades\Schema;
 use App\Models\Account;
@@ -1516,6 +1517,32 @@ class ReportController extends BaseController
             'supplier_id' => ['nullable', 'integer', 'exists:providers,id'],
             'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
         ]);
+    }
+
+    public function supplierAging(Request $request, SupplierAgingReportService $service)
+    {
+        $this->authorizeForUser($request->user('api'), 'Reports_suppliers', Provider::class);
+        $request->merge([
+            'month' => $request->input('month', now()->format('Y-m')),
+            'as_of' => $request->input('as_of', now()->toDateString()),
+            'overdue_days' => $request->input('overdue_days', 40),
+        ]);
+        $filters = $request->validate([
+            'month' => ['required', 'date_format:Y-m'],
+            'as_of' => ['required', 'date_format:Y-m-d'],
+            'overdue_days' => ['required', 'integer', 'between:1,3650'],
+            'supplier_id' => ['nullable', 'integer', 'exists:providers,id'],
+            'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
+        ]);
+
+        return response()->json($service->generate(
+            $request->user('api'),
+            $filters['month'],
+            Carbon::createFromFormat('Y-m-d', $filters['as_of']),
+            (int) $filters['overdue_days'],
+            isset($filters['supplier_id']) ? (int) $filters['supplier_id'] : null,
+            isset($filters['warehouse_id']) ? (int) $filters['warehouse_id'] : null
+        ));
     }
 
     public function branchYearComparison(Request $request, BranchYearComparisonService $service)

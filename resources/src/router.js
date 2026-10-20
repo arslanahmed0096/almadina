@@ -2593,6 +2593,15 @@ const baseRoutes = [
                             )
                     },
                     {
+                        name: "supplier_aging_report",
+                        path: "supplier_aging_report",
+                        component: () =>
+                            import(
+                                /* webpackChunkName: "supplier_aging_report" */
+                                "./views/app/pages/reports/Supplier_Aging_Report"
+                            )
+                    },
+                    {
                         name: "supplier_year_comparison_report",
                         path: "supplier_year_comparison",
                         component: () =>

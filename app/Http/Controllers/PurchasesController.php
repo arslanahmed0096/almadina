@@ -350,8 +350,10 @@ class PurchasesController extends BaseController
         $this->authorizeForUser($request->user('api'), 'create', Purchase::class);
 
         request()->validate([
+            'date' => 'required|date',
             'supplier_id' => 'required',
             'warehouse_id' => 'required',
+            'payment_due_days' => 'required|integer|in:5,10,15,20,30',
             'sales_tax_invoice_no' => 'nullable|string|max:100',
             'delivery_note_no' => 'nullable|string|max:100',
             'gate_pass_ids' => 'nullable|array|max:100',
@@ -376,6 +378,10 @@ class PurchasesController extends BaseController
             $order = new Purchase;
 
             $order->date = $request->date;
+            $order->payment_due_days = (int) $request->payment_due_days;
+            $order->payment_due_date = Carbon::parse($request->date)
+                ->addDays($order->payment_due_days)
+                ->toDateString();
             $order->time = now()->toTimeString();
             $order->Ref = $this->getNumberOrder();
             $order->sales_tax_invoice_no = $request->sales_tax_invoice_no;
@@ -719,9 +725,11 @@ class PurchasesController extends BaseController
         }
         $this->authorizeForUser($request->user('api'), 'update', Purchase::class);
 
-        request()->validate([
-            'warehouse_id' => 'required',
-            'supplier_id' => 'required',
+       request()->validate([
+           'warehouse_id' => 'required',
+            'date' => 'required|date',
+            'payment_due_days' => 'required|integer|in:5,10,15,20,30',
+           'supplier_id' => 'required',
             'sales_tax_invoice_no' => 'nullable|string|max:100',
             'delivery_note_no' => 'nullable|string|max:100',
         ]);
@@ -894,9 +902,11 @@ class PurchasesController extends BaseController
                     $payment_statut = 'unpaid';
                 }
 
-                $current_Purchase->update([
-                    'date' => $request['date'],
-                    'sales_tax_invoice_no' => $request->input('sales_tax_invoice_no', $current_Purchase->sales_tax_invoice_no),
+           $current_Purchase->update([
+               'date' => $request['date'],
+                'payment_due_days' => (int) $request['payment_due_days'],
+                'payment_due_date' => Carbon::parse($request['date'])->addDays((int) $request['payment_due_days'])->toDateString(),
+               'sales_tax_invoice_no' => $request->input('sales_tax_invoice_no', $current_Purchase->sales_tax_invoice_no),
                     'delivery_note_no' => $request->input('delivery_note_no', $current_Purchase->delivery_note_no),
                     'provider_id' => $request['supplier_id'],
                     'warehouse_id' => $request['warehouse_id'],
@@ -955,8 +965,9 @@ class PurchasesController extends BaseController
         $validated = $request->validate([
             'date' => 'required|date',
             'supplier_id' => 'required|integer',
-            'warehouse_id' => 'required|integer',
-            'sales_tax_invoice_no' => 'nullable|string|max:100',
+           'warehouse_id' => 'required|integer',
+            'payment_due_days' => 'required|integer|in:5,10,15,20,30',
+           'sales_tax_invoice_no' => 'nullable|string|max:100',
             'delivery_note_no' => 'nullable|string|max:100',
             'details' => 'required|array|min:1',
             'details.*.id' => 'required|integer',
@@ -1003,9 +1014,11 @@ class PurchasesController extends BaseController
             $grandTotal = (float) $request->input('GrandTotal', 0);
             $due = $grandTotal - (float) $purchase->paid_amount;
             $paymentStatus = $due <= 0 ? 'paid' : ($due < $grandTotal ? 'partial' : 'unpaid');
-            $purchase->update([
-                'date' => $request->date,
-                'sales_tax_invoice_no' => $request->input('sales_tax_invoice_no'),
+           $purchase->update([
+               'date' => $request->date,
+                'payment_due_days' => (int) $request->payment_due_days,
+                'payment_due_date' => Carbon::parse($request->date)->addDays((int) $request->payment_due_days)->toDateString(),
+               'sales_tax_invoice_no' => $request->input('sales_tax_invoice_no'),
                 'delivery_note_no' => $request->input('delivery_note_no'),
                 'notes' => $request->input('notes'),
                 'tax_rate' => $request->input('tax_rate', 0),
@@ -1342,6 +1355,8 @@ class PurchasesController extends BaseController
         $purchase_data['paid_amount'] = number_format($purchase->paid_amount, 2, '.', '');
         $purchase_data['due'] = number_format($purchase_data['GrandTotal'] - $purchase_data['paid_amount'], 2, '.', '');
         $purchase_data['payment_status'] = $purchase->payment_statut;
+        $purchase_data['payment_due_days'] = (int) ($purchase->payment_due_days ?: 15);
+        $purchase_data['payment_due_date'] = optional($purchase->payment_due_date)->format('Y-m-d');
         $purchase_data = array_merge($purchase_data, $this->purchaseProcurementReferences($purchase));
 
         if (PurchaseReturn::where('purchase_id', $id)->where('deleted_at', '=', null)->exists()) {
@@ -1881,6 +1896,8 @@ class PurchasesController extends BaseController
             }
 
             $purchase['date'] = $Purchase_data->date;
+            $purchase['payment_due_days'] = (int) ($Purchase_data->payment_due_days ?: 15);
+            $purchase['payment_due_date'] = optional($Purchase_data->payment_due_date)->format('Y-m-d');
             $purchase['sales_tax_invoice_no'] = $Purchase_data->sales_tax_invoice_no;
             $purchase['delivery_note_no'] = $Purchase_data->delivery_note_no;
             $purchase['tax_rate'] = $Purchase_data->tax_rate;

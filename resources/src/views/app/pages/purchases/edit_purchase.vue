@@ -38,9 +38,15 @@
                         id="OrderTax-feedback"
                       >{{ validationContext.errors[0] }}</b-form-invalid-feedback>
                     </b-form-group>
-                  </validation-provider>
-                </b-col>
-                <!-- Supplier -->
+             </validation-provider>
+             </b-col>
+              <b-col lg="4" md="4" sm="12" class="mb-3">
+                <b-form-group label="Allowed Credit Days *">
+                  <b-form-select v-model.number="purchase.payment_due_days" :options="paymentDueDayOptions" />
+                  <small class="text-muted">Invoice due date: {{ paymentDueDatePreview }}</small>
+                </b-form-group>
+              </b-col>
+             <!-- Supplier -->
                 <b-col lg="4" md="4" sm="12" class="mb-3">
                   <validation-provider name="Supplier" :rules="{ required: true}">
                     <b-form-group slot-scope="{ valid, errors }" :label="$t('Supplier') + ' ' + '*'">
@@ -694,11 +700,12 @@ export default {
       details: [],
       detail: {},
       purchases: [],
-      purchase: {
-        id: "",
-        statut: "",
-        date: "",
-        notes: "",
+       purchase: {
+         id: "",
+         statut: "",
+         date: "",
+          payment_due_days: 15,
+         notes: "",
         supplier_id: "",
         warehouse_id: "",
         sales_tax_invoice_no: "",
@@ -741,10 +748,21 @@ export default {
       }
     };
   },
-  computed: {
-    ...mapGetters(["currentUserPermissions","currentUser"]),
+ computed: {
+   ...mapGetters(["currentUserPermissions","currentUser"]),
+    paymentDueDayOptions() {
+      return [5, 10, 15, 20, 30].map(days => ({ value: days, text: `${days} days` }));
+    },
+    paymentDueDatePreview() {
+      const date = String(this.purchase.date || '');
+      const days = Number(this.purchase.payment_due_days);
+      if (!date || !days) return '-';
+      const dueDate = new Date(`${date}T12:00:00`);
+      dueDate.setDate(dueDate.getDate() + days);
+      return dueDate.toISOString().slice(0, 10);
+    },
 
-    // Only validate lines that are visible & not marked for deletion
+   // Only validate lines that are visible & not marked for deletion
     activeBatchTrackedDetails() {
       if (!Array.isArray(this.details)) return [];
       return this.details.filter(d =>
@@ -1315,9 +1333,10 @@ export default {
         NProgress.set(0.1);
         let id = this.$route.params.id;
         axios
-          .put(`purchases/${id}`, {
-            date: this.purchase.date,
-            supplier_id: this.purchase.supplier_id,
+         .put(`purchases/${id}`, {
+           date: this.purchase.date,
+            payment_due_days: this.purchase.payment_due_days,
+           supplier_id: this.purchase.supplier_id,
             warehouse_id: this.purchase.warehouse_id,
             sales_tax_invoice_no: this.purchase.sales_tax_invoice_no || null,
             delivery_note_no: this.purchase.delivery_note_no || null,
@@ -1406,9 +1425,10 @@ export default {
       let id = this.$route.params.id;
       axios
         .get(`purchases/${id}/edit`)
-        .then(response => {
-          this.purchase = response.data.purchase;
-          this.details = response.data.details;
+       .then(response => {
+         this.purchase = response.data.purchase;
+          this.purchase.payment_due_days = Number(this.purchase.payment_due_days || 15);
+         this.details = response.data.details;
           this.suppliers = response.data.suppliers;
           this.warehouses = response.data.warehouses;
           this.linked_gate_passes = response.data.gate_passes || [];

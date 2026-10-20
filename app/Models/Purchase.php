@@ -13,7 +13,7 @@ class Purchase extends Model
         'supplier_invoice_id', 'invoice_tax_type', 'inventory_already_received', 'posting_status', 'purchase_source',
         'provider_id', 'warehouse_id', 'GrandTotal', 'time',
         'discount', 'shipping', 'statut', 'notes', 'TaxNet', 'withholding_tax', 'tax_rate', 'paid_amount',
-        'payment_statut', 'created_at', 'updated_at', 'deleted_at',
+        'payment_statut', 'payment_due_days', 'payment_due_date', 'created_at', 'updated_at', 'deleted_at',
     ];
 
     protected $casts = [
@@ -27,6 +27,8 @@ class Purchase extends Model
         'withholding_tax' => 'double',
         'tax_rate' => 'double',
         'paid_amount' => 'double',
+        'payment_due_days' => 'integer',
+        'payment_due_date' => 'date:Y-m-d',
         'inventory_already_received' => 'boolean',
     ];
 
