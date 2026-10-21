@@ -18,7 +18,8 @@ class SupplierAgingReportService
         Carbon $asOf,
         int $overdueDays = 40,
         ?int $supplierId = null,
-        ?int $warehouseId = null
+        ?int $warehouseId = null,
+        bool $includeOptions = true
     ): array {
         $hasAllWarehouses = $user->isSuperAdmin() || (bool) $user->is_all_warehouses;
         $accessibleWarehouseIds = $hasAllWarehouses
@@ -132,9 +133,13 @@ class SupplierAgingReportService
                 'month_collection' => round((float) $rows->sum('month_collection'), 2),
                 'overdue_amount' => round((float) $rows->sum('overdue_amount'), 2),
             ],
-            'suppliers' => Provider::whereNull('deleted_at')->orderBy('name')->get(['id', 'name']),
-            'branches' => Warehouse::whereNull('deleted_at')
-                ->whereIn('id', $accessibleWarehouseIds)->orderBy('name')->get(['id', 'name']),
+            'suppliers' => $includeOptions
+                ? Provider::whereNull('deleted_at')->orderBy('name')->get(['id', 'name'])
+                : [],
+            'branches' => $includeOptions
+                ? Warehouse::whereNull('deleted_at')
+                    ->whereIn('id', $accessibleWarehouseIds)->orderBy('name')->get(['id', 'name'])
+                : [],
         ];
     }
 

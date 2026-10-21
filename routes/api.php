@@ -319,6 +319,8 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
     Route::get('report/stock_adjustment', 'ReportController@stockAdjustmentReport');
     Route::get('report/top_suppliers', 'ReportController@topSuppliersReport');
     Route::get('report/supplier_aging', 'ReportController@supplierAging');
+    Route::get('report/supplier_aging/pdf', 'ReportController@exportSupplierAgingPdf');
+    Route::get('report/supplier_aging/excel', 'ReportController@exportSupplierAgingExcel');
     Route::get('report/supplier_year_comparison', 'ReportController@supplierYearComparison');
     Route::get('report/supplier_year_comparison_excel', 'ReportController@exportSupplierYearComparison');
     Route::get('report/branch_year_comparison', 'ReportController@branchYearComparison');

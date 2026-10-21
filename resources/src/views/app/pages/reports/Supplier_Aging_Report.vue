@@ -26,17 +26,25 @@
           <v-select v-model='filters.warehouse_id' :options='branches' label='name' :reduce='item => item.id' placeholder='All branches' />
         </b-col>
         <b-col lg='2' md='4' class='mb-2 text-md-right'>
-          <b-button variant='primary' class='mr-2' :disabled='loading' @click='loadReport'>
-            <lucide-icon name='refresh-cw' class='mr-1' /> Load
-          </b-button>
-          <b-button variant='outline-secondary' :disabled='loading || !report' @click='printReport'>
-            <lucide-icon name='printer' class='mr-1' /> Print
-          </b-button>
+          <div class='action-grid'>
+            <b-button size='sm' variant='primary' :disabled='loading || exporting' @click='loadReport'>
+              <lucide-icon name='refresh-cw' class='mr-1' /> Load
+            </b-button>
+            <b-button size='sm' variant='outline-secondary' :disabled='loading || exporting || !report' @click='printReport'>
+              <lucide-icon name='printer' class='mr-1' /> Print
+            </b-button>
+            <b-button size='sm' variant='danger' :disabled='loading || exporting || !report' @click='exportPdf'>
+              <lucide-icon name='file-text' class='mr-1' /> PDF
+            </b-button>
+            <b-button size='sm' variant='success' :disabled='loading || exporting || !report' @click='exportExcel'>
+              <lucide-icon name='table' class='mr-1' /> Excel
+            </b-button>
+          </div>
         </b-col>
       </b-row>
     </b-card>
 
-    <div v-if='loading' class='loading_page spinner spinner-primary mr-3'></div>
+    <div v-if='loading && !report' class='loading_page spinner spinner-primary mr-3'></div>
     <b-alert v-else-if='error' show variant='danger'>{{ error }}</b-alert>
     <div v-else-if='report' class='aging-print-area'>
       <h2 class='report-title'>
@@ -140,6 +148,8 @@ export default {
   data() {
     return {
       loading: false,
+      exporting: false,
+      optionsLoaded: false,
       error: '',
       report: null,
       suppliers: [],
@@ -173,22 +183,30 @@ export default {
         ? moment().format('YYYY-MM-DD')
         : selected.endOf('month').format('YYYY-MM-DD');
     },
+    filterParams(includeOptions) {
+      const params = {
+        month: this.filters.month,
+        as_of: this.filters.as_of,
+        overdue_days: this.filters.overdue_days,
+        include_options: includeOptions ? 1 : 0
+      };
+      if (this.filters.supplier_id) params.supplier_id = this.filters.supplier_id;
+      if (this.filters.warehouse_id) params.warehouse_id = this.filters.warehouse_id;
+      return params;
+    },
     async loadReport() {
       this.loading = true;
       this.error = '';
       NProgress.start();
       try {
-        const params = {
-          month: this.filters.month,
-          as_of: this.filters.as_of,
-          overdue_days: this.filters.overdue_days
-        };
-        if (this.filters.supplier_id) params.supplier_id = this.filters.supplier_id;
-        if (this.filters.warehouse_id) params.warehouse_id = this.filters.warehouse_id;
+        const params = this.filterParams(!this.optionsLoaded);
         const response = await axios.get('report/supplier_aging', { params });
         this.report = response.data;
-        this.suppliers = response.data.suppliers || [];
-        this.branches = response.data.branches || [];
+        if (!this.optionsLoaded) {
+          this.suppliers = response.data.suppliers || [];
+          this.branches = response.data.branches || [];
+          this.optionsLoaded = true;
+        }
       } catch (error) {
         const data = error.response && error.response.data;
         this.error = (data && (data.message || data.error)) || 'Unable to load the supplier aging report.';
@@ -208,6 +226,36 @@ export default {
     },
     printReport() {
       window.print();
+    },
+    exportPdf() {
+      return this.downloadExport('report/supplier_aging/pdf', 'pdf');
+    },
+    exportExcel() {
+      return this.downloadExport('report/supplier_aging/excel', 'xlsx');
+    },
+    async downloadExport(endpoint, extension) {
+      this.exporting = true;
+      this.error = '';
+      NProgress.start();
+      try {
+        const response = await axios.get(endpoint, {
+          params: this.filterParams(false),
+          responseType: 'blob'
+        });
+        const blob = new Blob([response.data], { type: response.headers['content-type'] });
+        const link = document.createElement('a');
+        link.href = window.URL.createObjectURL(blob);
+        link.download = 'supplier-aging-' + this.filters.month + '-' + this.filters.as_of + '.' + extension;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.setTimeout(() => window.URL.revokeObjectURL(link.href), 1000);
+      } catch (error) {
+        this.error = 'Unable to export the supplier aging report.';
+      } finally {
+        this.exporting = false;
+        NProgress.done();
+      }
     }
   }
 };
@@ -220,6 +268,19 @@ export default {
   font-weight: 700;
   margin-bottom: 5px;
   text-transform: uppercase;
+}
+
+.action-grid {
+  display: grid;
+  gap: 5px;
+  grid-template-columns: repeat(2, minmax(72px, 1fr));
+}
+
+.action-grid .btn {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  white-space: nowrap;
 }
 
 .aging-print-area {

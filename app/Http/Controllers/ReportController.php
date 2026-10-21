@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Exports\BranchYearComparisonExport;
+use App\Exports\SupplierAgingExport;
 use App\Exports\SupplierStatementExport;
 use App\Exports\SupplierYearComparisonExport;
 use App\Services\Reports\BranchYearComparisonService;
@@ -1522,27 +1523,70 @@ class ReportController extends BaseController
     public function supplierAging(Request $request, SupplierAgingReportService $service)
     {
         $this->authorizeForUser($request->user('api'), 'Reports_suppliers', Provider::class);
+        $filters = $this->validateSupplierAging($request);
+
+        return response()->json($this->supplierAgingData(
+            $request, $service, $filters, $request->boolean('include_options', true)
+        ));
+    }
+
+    public function exportSupplierAgingPdf(Request $request, SupplierAgingReportService $service)
+    {
+        $this->authorizeForUser($request->user('api'), 'Reports_suppliers', Provider::class);
+        $filters = $this->validateSupplierAging($request);
+        $report = $this->supplierAgingData($request, $service, $filters, false);
+
+        return \PDF::loadView('reports.supplier_aging', compact('report'))
+            ->setPaper('a4', 'landscape')
+            ->download("supplier-aging-{$filters['month']}-{$filters['as_of']}.pdf");
+    }
+
+    public function exportSupplierAgingExcel(Request $request, SupplierAgingReportService $service)
+    {
+        $this->authorizeForUser($request->user('api'), 'Reports_suppliers', Provider::class);
+        $filters = $this->validateSupplierAging($request);
+        $report = $this->supplierAgingData($request, $service, $filters, false);
+
+        return Excel::download(
+            new SupplierAgingExport($report),
+            "supplier-aging-{$filters['month']}-{$filters['as_of']}.xlsx"
+        );
+    }
+
+    private function validateSupplierAging(Request $request): array
+    {
         $request->merge([
             'month' => $request->input('month', now()->format('Y-m')),
             'as_of' => $request->input('as_of', now()->toDateString()),
             'overdue_days' => $request->input('overdue_days', 40),
+            'include_options' => $request->input('include_options', true),
         ]);
-        $filters = $request->validate([
+
+        return $request->validate([
             'month' => ['required', 'date_format:Y-m'],
             'as_of' => ['required', 'date_format:Y-m-d'],
             'overdue_days' => ['required', 'integer', 'between:1,3650'],
             'supplier_id' => ['nullable', 'integer', 'exists:providers,id'],
             'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
+            'include_options' => ['required', 'boolean'],
         ]);
+    }
 
-        return response()->json($service->generate(
+    private function supplierAgingData(
+        Request $request,
+        SupplierAgingReportService $service,
+        array $filters,
+        bool $includeOptions
+    ): array {
+        return $service->generate(
             $request->user('api'),
             $filters['month'],
             Carbon::createFromFormat('Y-m-d', $filters['as_of']),
             (int) $filters['overdue_days'],
             isset($filters['supplier_id']) ? (int) $filters['supplier_id'] : null,
-            isset($filters['warehouse_id']) ? (int) $filters['warehouse_id'] : null
-        ));
+            isset($filters['warehouse_id']) ? (int) $filters['warehouse_id'] : null,
+            $includeOptions
+        );
     }
 
     public function branchYearComparison(Request $request, BranchYearComparisonService $service)
