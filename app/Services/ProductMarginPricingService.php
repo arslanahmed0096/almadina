@@ -179,10 +179,12 @@ class ProductMarginPricingService
                     $matches = $isVariant
                         ? (int) $line->product_variant_id === (int) $product->id
                         : (int) $line->product_id === (int) $product->id && ! $line->product_variant_id;
-                    if (! $matches || (float) $line->total <= 0) {
+                    $lineCost = (float) $line->cost;
+                    $originalQuantity = (float) $line->quantity;
+                    if (! $matches || $lineCost <= 0 || $originalQuantity <= 0) {
                         continue;
                     }
-                    $lineQuantity = (float) $line->quantity;
+                    $lineQuantity = $originalQuantity;
                     $unit = $units->get($line->purchase_unit_id);
                     if ($unit && (float) $unit->operator_value > 0) {
                         $lineQuantity = $unit->operator === '/'
@@ -192,7 +194,10 @@ class ProductMarginPricingService
                     if ($lineQuantity <= 0) {
                         continue;
                     }
-                    $amount += (float) $line->total;
+                    // PurchaseDetail.cost is the supplier/RB price entered for one
+                    // selected purchase unit. The line total also contains trade
+                    // discount and GST, so it must not be used as the margin base.
+                    $amount += $lineCost * $originalQuantity;
                     $quantity += $lineQuantity;
                 }
                 if ($quantity > 0) {
@@ -208,8 +213,7 @@ class ProductMarginPricingService
     public function syncPurchase(Purchase $purchase): void
     {
         $lines = PurchaseDetail::where('purchase_id', $purchase->id)->get();
-        $lineSum = (float) $lines->sum('total');
-        if ($lineSum <= 0 || (float) $purchase->GrandTotal <= 0) {
+        if ($lines->isEmpty()) {
             return;
         }
 
@@ -218,14 +222,16 @@ class ProductMarginPricingService
 
         $allocations = [];
         foreach ($lines as $line) {
-            $quantity = (float) $line->quantity;
+            $originalQuantity = (float) $line->quantity;
+            $quantity = $originalQuantity;
             $unit = $units->get($line->purchase_unit_id);
             if ($unit && (float) $unit->operator_value > 0) {
                 $quantity = $unit->operator === '/'
                     ? $quantity / (float) $unit->operator_value
                     : $quantity * (float) $unit->operator_value;
             }
-            if ($quantity <= 0 || (float) $line->total <= 0) {
+            $unitCost = (float) $line->cost;
+            if ($quantity <= 0 || $unitCost <= 0) {
                 continue;
             }
 
@@ -238,9 +244,11 @@ class ProductMarginPricingService
             if (! isset($allocations[$key])) {
                 $allocations[$key] = ['id' => $id, 'variant' => $isVariant, 'amount' => 0, 'quantity' => 0];
             }
-            // Purchase Price is this product line's Grand Total per base unit,
-            // never the Grand Total of every product on the invoice.
-            $allocations[$key]['amount'] += (float) $line->total;
+            // The entered cost is per selected purchase unit. Multiply it by the
+            // original line quantity, then divide the grouped amount by the
+            // converted base-unit quantity. Do not use line.total because it
+            // includes purchase discounts and GST.
+            $allocations[$key]['amount'] += $unitCost * $originalQuantity;
             $allocations[$key]['quantity'] += $quantity;
         }
 

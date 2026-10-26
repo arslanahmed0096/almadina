@@ -2737,6 +2737,7 @@ class PurchasesController extends BaseController
 
             $purchase_data->GrandTotal = $total_without_discount + $TaxNet + $purchase_data->shipping;
             $purchase_data->save();
+            app(\App\Services\ProductMarginPricingService::class)->syncPurchase($purchase_data);
 
         }, 10);
 

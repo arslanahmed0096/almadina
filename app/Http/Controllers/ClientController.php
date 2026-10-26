@@ -1337,6 +1337,8 @@ class ClientController extends BaseController
                 'product_name' => trim(($product->name ?? 'Deleted product').($variant ? ' - '.$variant->name : '')),
                 'product_code' => (string) ($variant->code ?? $product->code ?? ''),
                 'quantity' => (float) $detail->quantity,
+                'rate' => (float) $detail->price,
+                'line_amount' => (float) $detail->total,
                 'shipment_status' => $status,
                 'shipment_ref' => (string) ($shipment->Ref ?? ''),
                 'shipped_at' => $shipmentItem && $shipmentItem->shipped_at

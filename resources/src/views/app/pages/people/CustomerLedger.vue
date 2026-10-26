@@ -130,10 +130,12 @@
               </template>
               <template #cell(items)="{ item }">
                 <div v-if="item.items && item.items.length" class="sale-items">
+                  <div class="sale-items-heading">Products Purchased</div>
                   <div v-for="line in item.items" :key="line.sale_detail_id" class="sale-item-line">
                     <div class="sale-item-name">{{ line.product_name }}</div>
                     <div class="sale-item-meta">
-                      <span v-if="line.product_code">{{ line.product_code }} | </span>{{ quantityText(line.quantity) }}
+                      <span v-if="line.product_code">Model/Code: {{ line.product_code }} | </span>
+                      {{ quantityText(line.quantity) }} × {{ money(line.rate) }} = <strong>{{ money(line.line_amount) }}</strong>
                       <b-badge class="ml-1" :variant="shipmentBadge(line.shipment_status)">{{ shipmentLabel(line.shipment_status) }}</b-badge>
                     </div>
                   </div>
@@ -629,6 +631,7 @@ export default {
 ::v-deep .table-modern td, ::v-deep .table-modern th { vertical-align: middle; }
 ::v-deep .badge { font-weight: 600; letter-spacing: .2px; }
 .sale-items { min-width: 260px; }
+.sale-items-heading { color:#6b21a8; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.35px; margin-bottom:2px; }
 .sale-item-line { padding: 5px 0; border-bottom: 1px solid #eef2f7; }
 .sale-item-line:last-child { border-bottom: 0; }
 .sale-item-name { color: #1f2937; font-weight: 600; }

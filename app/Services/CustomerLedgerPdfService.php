@@ -79,6 +79,7 @@ class CustomerLedgerPdfService
 
                 return [
                     'name' => $name,
+                    'code' => (string) ($variant->code ?? $product->code ?? ''),
                     'unit' => (string) ($unitNames[$detail->sale_unit_id] ?? ''),
                     'quantity' => (float) $detail->quantity,
                     'rate' => (float) $detail->price,
@@ -109,6 +110,7 @@ class CustomerLedgerPdfService
             $lines = $return->details->map(function ($detail) use ($unitNames) {
                 return [
                     'name' => (string) ($detail->product->name ?? 'Deleted product'),
+                    'code' => (string) ($detail->product->code ?? ''),
                     'unit' => (string) ($unitNames[$detail->sale_unit_id] ?? ''),
                     'quantity' => (float) $detail->quantity,
                     'rate' => (float) $detail->price,
@@ -135,15 +137,7 @@ class CustomerLedgerPdfService
             ]);
         }
 
-        foreach ($salePayments as $payment) {
-            $narration = 'Payment received, applied to '.$payment->target_sale_ref;
-            if ($payment->allocation_reference) {
-                $narration .= '; allocation '.$payment->allocation_reference
-                    .' from '.$payment->source_sale_ref
-                    .' ('.($payment->allocation_type === 'previous' ? 'previous invoice' : 'current invoice').')';
-            }
-            $entries->push($this->paymentEntry($payment, 'Receipt', $narration, false));
-        }
+        $entries = $entries->concat($this->salePaymentEntries($salePayments));
 
         foreach ($openingPayments as $payment) {
             $entries->push($this->paymentEntry(
@@ -174,6 +168,7 @@ class CustomerLedgerPdfService
             $totalDebit = round($totalDebit + $entry['debit'], 2);
             $totalCredit = round($totalCredit + $entry['credit'], 2);
             $balance = round($balance + $entry['debit'] - $entry['credit'], 2);
+            $entry['net_amount'] = round($entry['debit'] + $entry['credit'], 2);
             $entry['balance'] = $balance;
             return $entry;
         });
@@ -191,9 +186,75 @@ class CustomerLedgerPdfService
         ];
     }
 
-    private function paymentEntry(object $payment, string $type, string $narration, bool $debit): array
+    private function salePaymentEntries(Collection $payments): Collection
     {
-        $amount = round((float) $payment->montant, 2);
+        $entries = collect();
+
+        $payments
+            ->filter(fn ($payment) => empty($payment->allocation_reference))
+            ->each(function ($payment) use ($entries) {
+                $entries->push($this->paymentEntry(
+                    $payment,
+                    'Receipt',
+                    'Payment received, applied to '.$payment->target_sale_ref,
+                    false
+                ));
+            });
+
+        $payments
+            ->filter(fn ($payment) => ! empty($payment->allocation_reference))
+            ->groupBy('allocation_reference')
+            ->each(function (Collection $group, string $reference) use ($entries) {
+                $ordered = $group->sortBy([
+                    ['allocation_sequence', 'asc'],
+                    ['id', 'asc'],
+                ])->values();
+                $first = $ordered->first();
+                if ($ordered->count() === 1) {
+                    $entries->push($this->paymentEntry(
+                        $first,
+                        'Receipt',
+                        'Payment received, applied to '.$first->target_sale_ref,
+                        false
+                    ));
+
+                    return;
+                }
+
+                $total = round((float) $ordered->sum('montant'), 2);
+                $invoiceCount = $ordered->pluck('target_sale_ref')->filter()->unique()->count();
+                $entry = $this->paymentEntry(
+                    $first,
+                    'Receipt',
+                    'Payment received and allocated across '.$invoiceCount.' invoice'
+                        .($invoiceCount === 1 ? '' : 's'),
+                    false,
+                    $total
+                );
+                $entry['ref'] = $reference;
+                $entry['allocations'] = $ordered->map(function ($payment) {
+                    return [
+                        'invoice_ref' => (string) $payment->target_sale_ref,
+                        'receipt_ref' => (string) $payment->Ref,
+                        'amount' => round((float) $payment->montant, 2),
+                        'allocation_type' => (string) $payment->allocation_type,
+                    ];
+                })->all();
+                $entries->push($entry);
+            });
+
+        return $entries;
+    }
+
+    private function paymentEntry(
+        object $payment,
+        string $type,
+        string $narration,
+        bool $debit,
+        ?float $amountOverride = null
+    ): array
+    {
+        $amount = round($amountOverride ?? (float) $payment->montant, 2);
 
         return [
             'date' => $payment->date ?: $payment->created_at,
@@ -212,6 +273,7 @@ class CustomerLedgerPdfService
             'discount_method' => '2',
             'tax' => 0.0,
             'shipping' => 0.0,
+            'allocations' => [],
         ];
     }
 }
