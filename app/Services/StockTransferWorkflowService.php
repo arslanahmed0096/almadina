@@ -215,6 +215,7 @@ class StockTransferWorkflowService
 
             $this->dispatchBatches($locked);
             $this->record($locked, $user, $previous, Transfer::WORKFLOW_DISPATCHED, 'dispatch', $note, [], (int) $locked->from_warehouse_id);
+            app(StockTransferLedgerService::class)->postTransfer($locked, $user);
             $this->notifyWarehouse($locked, (int) $locked->to_warehouse_id, 'transfer_view', 'dispatched',
                 "Stock request {$locked->Ref} was dispatched.");
 
@@ -325,6 +326,7 @@ class StockTransferWorkflowService
             ]);
             $this->dispatchBatches($locked);
             $this->record($locked, $user, $previous, Transfer::WORKFLOW_IN_TRANSIT, 'transfer_dispatched', $note, ['driver_id' => $driver->id], (int) $locked->from_warehouse_id);
+            app(StockTransferLedgerService::class)->postTransfer($locked, $user);
             $this->notifyWarehouse($locked, (int) $locked->to_warehouse_id, 'transfer_view', 'dispatched',
                 "Incoming stock transfer {$locked->Ref} from {$locked->from_warehouse?->name} is on the way. Driver: {$driver->firstname} {$driver->lastname}.");
 
@@ -466,6 +468,7 @@ class StockTransferWorkflowService
             $this->record($locked->transfer, $user, Transfer::WORKFLOW_RETURN_IN_TRANSIT, Transfer::WORKFLOW_RETURN_RECEIVED, 'return_received', $note, ['return_reference' => $locked->reference], (int) $locked->to_warehouse_id);
             $locked->transfer->update(['workflow_status' => Transfer::WORKFLOW_COMPLETED, 'statut' => 'completed']);
             $this->record($locked->transfer, $user, Transfer::WORKFLOW_RETURN_RECEIVED, Transfer::WORKFLOW_COMPLETED, 'transfer_completed', null, [], (int) $locked->to_warehouse_id);
+            app(StockTransferLedgerService::class)->postReturnCredit($locked, $user);
             $this->notifyWarehouse($locked->transfer, (int) $locked->from_warehouse_id, 'transfer_view', 'return_received', "Return {$locked->reference} was received; transfer {$locked->transfer->Ref} is complete.");
             return $locked->fresh('details');
         }, 10);

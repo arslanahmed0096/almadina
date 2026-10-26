@@ -480,6 +480,11 @@
                           </td>
                         </tr>
                         </template>
+                        <tr v-if="details.length" class="font-weight-bold bg-light">
+                          <td colspan="4" class="text-right">Total Quantity</td>
+                          <td>{{ formatNumber(totalQuantity, 2) }}</td>
+                          <td colspan="5"></td>
+                        </tr>
                       </tbody>
                     </table>
                   </div>
@@ -1346,6 +1351,14 @@ export default {
 
   computed: {
     ...mapGetters(["currentUserPermissions","currentUser"]),
+
+    totalQuantity() {
+      return (this.details || []).reduce((total, detail) => {
+        if (!detail || detail.del === 1 || detail.no_unit === 0) return total;
+        const quantity = Number(detail.quantity);
+        return total + (Number.isFinite(quantity) ? quantity : 0);
+      }, 0);
+    },
 
     hasManagedTaxes() {
       return Array.isArray(this.managedTaxPreview.summary) && this.managedTaxPreview.summary.length > 0;
@@ -2558,6 +2571,17 @@ export default {
 
     SearchProduct(result, weight = null) {
       this.product = {};
+      const isInventorySale = this.isStockCheckRequired && result.product_type !== 'is_service';
+      const availableStock = Number(result.qte_sale || 0);
+
+      if (isInventorySale && (availableStock <= 0 || (weight !== null && Number(weight) > availableStock))) {
+        this.makeToast("warning", this.$t("LowStock"), this.$t("Warning"));
+        this.search_input = '';
+        if (this.$refs.product_autocomplete) this.$refs.product_autocomplete.value = "";
+        this.product_filter = [];
+        return;
+      }
+
       if (
         this.details.length > 0 &&
         this.details.some(detail => detail.code === result.code)
@@ -2579,9 +2603,7 @@ export default {
              if (weight !== null) {
               this.product.quantity = weight; // Assign extracted weight
             } else {
-              this.product.quantity = this.sale.transaction_type === 'order'
-                ? 1
-                : (result.qte_sale < 1 ? result.qte_sale : 1);
+              this.product.quantity = this.sale.transaction_type === 'order' ? 1 : Math.min(1, availableStock);
             }
 
           }
@@ -2934,6 +2956,15 @@ export default {
 
     //----------------------------------------- Add Product to order list -------------------------\\
     add_product() {
+      if (
+        this.isStockCheckRequired &&
+        this.product.product_type !== 'is_service' &&
+        (Number(this.product.stock) <= 0 || Number(this.product.quantity) <= 0 || Number(this.product.quantity) > Number(this.product.stock))
+      ) {
+        this.makeToast("warning", this.$t("LowStock"), this.$t("Warning"));
+        return;
+      }
+
       if (this.details.length > 0) {
         this.Last_Detail_id();
       } else if (this.details.length === 0) {
@@ -3095,15 +3126,16 @@ export default {
     Verified_Qty(detail, id) {
       for (var i = 0; i < this.details.length; i++) {
         if (this.details[i].detail_id === id) {
-          if (isNaN(detail.quantity)) {
-            this.details[i].quantity = detail.stock;
-          }
-
-          if (this.isStockCheckRequired && detail.quantity > detail.stock) {
+          const quantity = Number(detail.quantity);
+          const stock = Number(detail.stock);
+          if (!Number.isFinite(quantity) || quantity <= 0) {
+            this.makeToast("warning", this.$t("AddQuantity"), this.$t("Warning"));
+            this.details[i].quantity = this.isStockCheckRequired ? Math.min(1, Math.max(0, stock)) : 1;
+          } else if (this.isStockCheckRequired && (stock <= 0 || quantity > stock)) {
             this.makeToast("warning", this.$t("LowStock"), this.$t("Warning"));
-            this.details[i].quantity = detail.stock;
+            this.details[i].quantity = Math.max(0, stock);
           } else {
-            this.details[i].quantity = detail.quantity;
+            this.details[i].quantity = quantity;
           }
         }
       }
@@ -3241,10 +3273,12 @@ export default {
       } else {
         var count = 0;
         for (var i = 0; i < this.details.length; i++) {
-          const overStock = this.isStockCheckRequired && this.details[i].quantity > this.details[i].stock;
+          const quantity = Number(this.details[i].quantity);
+          const stock = Number(this.details[i].stock);
+          const invalidQuantity = !Number.isFinite(quantity) || quantity <= 0;
+          const overStock = this.isStockCheckRequired && (stock <= 0 || quantity > stock);
           if (
-            this.details[i].quantity == "" ||
-            this.details[i].quantity === 0 ||
+            invalidQuantity ||
             overStock
           ) {
             count += 1;

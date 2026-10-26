@@ -332,6 +332,11 @@
                           </td>
                         </tr>
                         </template>
+                        <tr v-if="details.length" class="font-weight-bold bg-light">
+                          <td colspan="4" class="text-right">Total Quantity</td>
+                          <td>{{ formatNumber(totalQuantity, 2) }}</td>
+                          <td colspan="5"></td>
+                        </tr>
                       </tbody>
                     </table>
                   </div>
@@ -829,6 +834,14 @@ export default {
 
   computed: {
     ...mapGetters(["currentUserPermissions","currentUser"]),
+
+    totalQuantity() {
+      return (this.details || []).reduce((total, detail) => {
+        if (!detail || detail.del === 1 || detail.no_unit === 0) return total;
+        const quantity = Number(detail.quantity);
+        return total + (Number.isFinite(quantity) ? quantity : 0);
+      }, 0);
+    },
 
     // Simple validity check for points_to_convert (same behavior as create_sale)
     pointsInputValid() {

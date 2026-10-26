@@ -37,6 +37,26 @@ class GatePassController extends Controller
         $gatePassIds = $page->getCollection()->pluck('id')->filter()->unique()->values();
         $remainingByOrder = collect();
         $invoiceableByGatePass = $gatePassIds->mapWithKeys(fn ($id) => [$id => false]);
+        $supplierInvoiceQuantity = DB::table('supplier_invoice_items as invoice_items')
+            ->join('supplier_invoices as invoices', 'invoices.id', '=', 'invoice_items.supplier_invoice_id')
+            ->join('gate_pass_items as items', 'items.id', '=', 'invoice_items.gate_pass_item_id')
+            ->whereIn('items.gate_pass_id', $gatePassIds)
+            ->where('invoices.status', '<>', 'cancelled')
+            ->selectRaw('items.gate_pass_id, SUM(invoice_items.quantity) AS quantity')
+            ->groupBy('items.gate_pass_id')
+            ->pluck('quantity', 'items.gate_pass_id');
+        $purchaseInvoiceQuantity = DB::table('purchase_gate_pass_items as allocations')
+            ->join('purchases', 'purchases.id', '=', 'allocations.purchase_id')
+            ->join('gate_pass_items as items', 'items.id', '=', 'allocations.gate_pass_item_id')
+            ->whereIn('items.gate_pass_id', $gatePassIds)
+            ->whereNull('purchases.deleted_at')
+            ->where('purchases.posting_status', '<>', 'cancelled')
+            ->selectRaw('items.gate_pass_id, SUM(allocations.quantity) AS quantity')
+            ->groupBy('items.gate_pass_id')
+            ->pluck('quantity', 'items.gate_pass_id');
+        $invoicedByGatePass = $gatePassIds->mapWithKeys(fn ($id) => [
+            $id => (float) ($supplierInvoiceQuantity[$id] ?? 0) + (float) ($purchaseInvoiceQuantity[$id] ?? 0),
+        ]);
         if ($purchaseOrderIds->isNotEmpty()) {
             $orderItems = DB::table('purchase_order_items')
                 ->whereIn('purchase_order_id', $purchaseOrderIds)
@@ -103,11 +123,24 @@ class GatePassController extends Controller
             }
         }
         $canDelete = $request->user('api')->isSuperAdmin();
-        $page->getCollection()->transform(function ($gatePass) use ($remainingByOrder, $invoiceableByGatePass, $canDelete) {
+        $page->getCollection()->transform(function ($gatePass) use ($remainingByOrder, $invoiceableByGatePass, $invoicedByGatePass, $canDelete) {
+            $accepted = max(0, (float) ($gatePass->accepted_quantity ?? 0));
+            $invoiced = max(0, (float) ($invoicedByGatePass[$gatePass->id] ?? 0));
+            $invoiceStatus = 'pending_invoice';
+            if (in_array($gatePass->status, ['cancelled', 'rejected'], true)) {
+                $invoiceStatus = 'not_applicable';
+            } elseif ($invoiced > 0 && ($accepted <= 0 || $invoiced + 0.000001 >= $accepted)) {
+                $invoiceStatus = 'completed_invoice';
+            } elseif ($invoiced > 0) {
+                $invoiceStatus = 'partial_invoice_received';
+            }
+
             $gatePass->setAttribute(
                 'po_remaining_quantity',
                 $gatePass->purchase_order_id ? (float) ($remainingByOrder[$gatePass->purchase_order_id] ?? 0) : null
             );
+            $gatePass->setAttribute('invoiced_quantity', $invoiced);
+            $gatePass->setAttribute('invoice_status', $invoiceStatus);
             $gatePass->setAttribute('can_invoice', ! $gatePass->purchase_order_id || (bool) ($invoiceableByGatePass[$gatePass->id] ?? false));
             $gatePass->setAttribute('can_edit', $canDelete);
             $gatePass->setAttribute('can_delete', $canDelete);

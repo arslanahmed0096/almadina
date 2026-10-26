@@ -162,6 +162,11 @@
                 </tr>
             </thead>
             <tbody>
+                @php
+                    $totalQuantity = collect($details)->sum(function ($detail) {
+                        return (float) ($detail['quantity'] ?? 0);
+                    });
+                @endphp
                 @foreach($details as $d)
                 <tr>
                     <td>{{ $d['name'] }}</td>
@@ -171,6 +176,11 @@
                     <td>{{ number_format($d['total'], 2) }}</td>
                 </tr>
                 @endforeach
+                <tr style="background:#eef2ff;border-top:2px solid #1a56db;font-weight:700;">
+                    <td style="text-align:right;">{{ __('pdf.total_quantity') }}</td>
+                    <td style="text-align:center;color:#1a56db;">{{ rtrim(rtrim(number_format($totalQuantity, 2, '.', ''), '0'), '.') }}</td>
+                    <td colspan="3"></td>
+                </tr>
             </tbody>
         </table>
 

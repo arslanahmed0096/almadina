@@ -192,6 +192,9 @@
         <tbody>
             @php
                 $rowIndex = 0;
+                $totalQuantity = collect($details)->sum(function ($detail) {
+                    return (float) ($detail['quantity'] ?? 0);
+                });
                 $pdfDateFormat = $setting['date_format'] ?? 'YYYY-MM-DD';
                 $phpBatchDateFormat = str_replace(['YYYY', 'MM', 'DD'], ['Y', 'm', 'd'], $pdfDateFormat);
                 $formatBatchDate = function ($d) use ($phpBatchDateFormat) {
@@ -293,6 +296,11 @@
             @endif
             @php $rowIndex++; @endphp
             @endforeach
+            <tr style="background: #eef2ff; border-top: 2px solid #1a56db;">
+                <td colspan="2" style="padding: 6px 5px; text-align: right; font-size: 8.5pt; font-weight: bold; color: #1f2937;">{{ __('pdf.total_quantity') }}</td>
+                <td style="padding: 6px 5px; text-align: right; font-size: 9pt; font-weight: bold; color: #1a56db;">{{ rtrim(rtrim(number_format($totalQuantity, 2, '.', ''), '0'), '.') }}</td>
+                <td colspan="3"></td>
+            </tr>
         </tbody>
     </table>
 

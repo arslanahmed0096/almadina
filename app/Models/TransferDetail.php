@@ -10,7 +10,7 @@ class TransferDetail extends Model
 
     protected $fillable = [
         'id', 'transfer_id', 'quantity', 'purchase_unit_id', 'product_id', 'total', 'product_variant_id',
-        'cost', 'TaxNet', 'discount', 'discount_method', 'tax_method',
+        'cost', 'unit_transfer_price', 'transfer_total', 'TaxNet', 'discount', 'discount_method', 'tax_method',
         'requested_quantity', 'approved_quantity', 'dispatched_quantity', 'received_quantity',
         'decision_status', 'response_reason', 'requested_batches',
         'accepted_quantity', 'rejected_quantity', 'rejection_reason_code', 'rejection_note',
@@ -20,6 +20,8 @@ class TransferDetail extends Model
     protected $casts = [
         'total' => 'double',
         'cost' => 'double',
+        'unit_transfer_price' => 'double',
+        'transfer_total' => 'double',
         'TaxNet' => 'double',
         'discount' => 'double',
         'quantity' => 'double',

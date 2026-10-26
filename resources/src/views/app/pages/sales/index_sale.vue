@@ -962,6 +962,11 @@
                   </td>
                 </tr>
 
+                <tr style="border-top:1px solid #ddd;">
+                  <td colspan="3" class="total">Total Quantity</td>
+                  <td style="text-align:right;" class="total">{{ formatNumber(invoiceTotalQuantity, 2) }}</td>
+                </tr>
+
                 <!-- Subtotal (before tax/discount/shipping) -->
                 <tr style="margin-top:10px">
                   <td colspan="3" class="total">{{$t('pos.Subtotal')}}</td>
@@ -1176,6 +1181,11 @@
                     {{formatNumber(detail_invoice.total,2)}}
                   </td>
                 </tr>
+                <tr style="border-top:1px solid #ddd;">
+                  <td class="total">Total Quantity</td>
+                  <td style="text-align:center" class="total">{{ formatNumber(invoiceTotalQuantity, 2) }}</td>
+                  <td colspan="2"></td>
+                </tr>
               </tbody>
             </table>
 
@@ -1379,6 +1389,10 @@
                     {{ formatPriceWithSymbol(invoice_pos.symbol, detail_invoice.total, 2) }}
                   </td>
                 </tr>
+                <tr style="border-top:1px solid #ddd;">
+                  <td colspan="2" class="total">Total Quantity</td>
+                  <td style="text-align:right" class="total">{{ formatNumber(invoiceTotalQuantity, 2) }}</td>
+                </tr>
               </tbody>
             </table>
 
@@ -1580,6 +1594,11 @@
                   <td style="text-align:center">{{formatNumber(detail_invoice.quantity,2)}} {{detail_invoice.unit_sale}}</td>
                   <td style="text-align:center">{{ formatPriceDisplay(detail_invoice.total/detail_invoice.quantity,2) }}</td>
                   <td style="text-align:right">{{ formatPriceDisplay(detail_invoice.total,2) }}</td>
+                </tr>
+                <tr style="border-top:1px dashed #000;">
+                  <td class="total">Total Quantity</td>
+                  <td style="text-align:center" class="total">{{ formatNumber(invoiceTotalQuantity, 2) }}</td>
+                  <td colspan="2"></td>
                 </tr>
               </tbody>
             </table>
@@ -1943,6 +1962,14 @@ export default {
   },
   computed: {
     ...mapGetters(["currentUserPermissions", "currentUser"]),
+
+    invoiceTotalQuantity() {
+      const details = (this.invoice_pos && Array.isArray(this.invoice_pos.details)) ? this.invoice_pos.details : [];
+      return details.reduce((total, detail) => {
+        const quantity = Number(detail && detail.quantity);
+        return total + (Number.isFinite(quantity) ? quantity : 0);
+      }, 0);
+    },
 
     selectedPaymentMethod() {
       return this.payment_methods.find(method => String(method.id) === String(this.payment.payment_method_id)) || null;

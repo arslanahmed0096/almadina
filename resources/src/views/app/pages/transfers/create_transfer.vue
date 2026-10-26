@@ -108,6 +108,12 @@
                   </validation-provider>
                 </b-col>
 
+                <b-col v-if="isExternalDestination" md="12" class="mb-3">
+                  <b-alert show variant="info" class="mb-0">
+                    <strong>External transfer:</strong> {{ selectedDestination.stock_transfer_company ? selectedDestination.stock_transfer_company.name : 'assigned company' }} will be charged when this transfer is dispatched. Available advances are applied automatically.
+                  </b-alert>
+                </b-col>
+
                  <!-- Product -->
                  <b-col md="12" class="mb-5">
                   <h6>{{$t('ProductName')}}</h6>
@@ -139,6 +145,7 @@
                           <th scope="col">#</th>
                           <th scope="col">{{$t('ProductName')}}</th>
                           <th v-if="canViewTransferPrice" scope="col">{{$t('Net_Unit_Cost')}}</th>
+                          <th v-if="canViewTransferPrice && isExternalDestination" scope="col">Transfer Price</th>
                           <th scope="col">{{$t('CurrentStock')}}</th>
                           <th scope="col">{{$t('Qty')}}</th>
                           <th v-if="canViewTransferPrice" scope="col">{{$t('Discount')}}</th>
@@ -151,7 +158,7 @@
                       </thead>
                       <tbody>
                         <tr v-if="details.length <=0">
-                          <td :colspan="canViewTransferPrice ? 9 : 5">{{$t('NodataAvailable')}}</td>
+                          <td :colspan="canViewTransferPrice ? (isExternalDestination ? 10 : 9) : 5">{{$t('NodataAvailable')}}</td>
                         </tr>
                         <template v-for="detail in details">
                         <tr :key="'r-' + detail.detail_id">
@@ -169,6 +176,9 @@
                             </div>
                           </td>
                           <td v-if="canViewTransferPrice">{{currentUser.currency}} {{formatNumber(detail.Net_cost, 3)}}</td>
+                          <td v-if="canViewTransferPrice && isExternalDestination" style="min-width:130px">
+                            <b-form-input v-model.number="detail.unit_transfer_price" type="number" min="0.01" step="0.01" size="sm" required />
+                          </td>
                           <td>
                             <span
                               class="badge badge-outline-warning"
@@ -207,7 +217,7 @@
                         </tr>
 
                         <tr v-if="detail.is_imei" :key="'serial-' + detail.detail_id">
-                          <td :colspan="canViewTransferPrice ? 9 : 5" class="bg-light">
+                          <td :colspan="canViewTransferPrice ? (isExternalDestination ? 10 : 9) : 5" class="bg-light">
                             <b-form-group label="Serial / IMEI numbers" class="mb-0">
                               <b-form-textarea v-model="detail.identifiers_text" rows="2" placeholder="Enter one serial/IMEI per line or separate them with commas"></b-form-textarea>
                               <small class="text-muted">Required: {{ Number(detail.quantity) || 0 }} unique identifier(s).</small>
@@ -217,7 +227,7 @@
 
                         <!-- Batch picker row for batch-tracked products -->
                         <tr v-if="detail.is_batch_tracked" :key="'b-' + detail.detail_id" style="background: transparent;">
-                          <td :colspan="canViewTransferPrice ? 9 : 5" style="padding: 0; border-top: 0;">
+                          <td :colspan="canViewTransferPrice ? (isExternalDestination ? 10 : 9) : 5" style="padding: 0; border-top: 0;">
                             <div style="margin: 6px 8px 14px 8px; border: 1px solid #e0e7ff; border-radius: 10px; overflow: visible; background: #f8faff;">
                               <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; background: #4f46e5; color: #fff; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; border-radius: 10px 10px 0 0;">
                                 <div style="display: flex; align-items: center; gap: 8px;">
@@ -718,6 +728,7 @@ export default {
         fix_cost:"",
         Net_cost: "",
         Unit_cost: "",
+        unit_transfer_price: "",
         Total_cost: "",
         subtotal: "",
         product_id: "",
@@ -738,6 +749,14 @@ export default {
 
     canViewTransferPrice() {
       return this.currentUserPermissions && this.currentUserPermissions.includes("transfer_price_view");
+    },
+
+    selectedDestination() {
+      return (this.to_warehouses || []).find(warehouse => Number(warehouse.id) === Number(this.transfer.to_warehouse)) || {};
+    },
+
+    isExternalDestination() {
+      return this.selectedDestination.ownership_type === 'external';
     },
 
     destinationWarehouses() {
@@ -1556,6 +1575,7 @@ export default {
         this.product.name = response.data.name;
         this.product.Net_cost = response.data.Net_cost;
         this.product.Unit_cost = response.data.Unit_cost;
+        this.product.unit_transfer_price = response.data.Unit_cost;
         this.product.taxe = response.data.tax_cost;
         this.product.tax_method = response.data.tax_method;
         this.product.tax_percent = response.data.tax_percent;

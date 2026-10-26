@@ -972,6 +972,19 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
     Route::post('transfer-returns/{id}/dispatch', 'TransferController@dispatchReturn');
     Route::post('transfer-returns/{id}/receive', 'TransferController@receiveReturn');
     Route::get('batches_for_transfer/{product_id}/{warehouse_id}/{variant_id?}', 'TransferController@batches_for_transfer');
+    Route::get('stock-transfer-ledger', 'StockTransferLedgerController@index');
+    Route::get('stock-transfer-ledger/meta', 'StockTransferLedgerController@meta');
+    Route::get('stock-transfer-ledger/summary', 'StockTransferLedgerController@summary');
+    Route::get('stock-transfer-ledger/entries', 'StockTransferLedgerController@ledger');
+    Route::get('stock-transfer-ledger/payments', 'StockTransferLedgerController@payments');
+    Route::get('stock-transfer-ledger/export/excel', 'StockTransferLedgerController@exportExcel');
+    Route::get('stock-transfer-ledger/export/pdf', 'StockTransferLedgerController@exportPdf');
+    Route::get('stock-transfer-ledger/{id}', 'StockTransferLedgerController@detail')->whereNumber('id');
+    Route::post('stock-transfer-ledger/payments', 'StockTransferLedgerController@storePayment');
+    Route::post('stock-transfer-ledger/payments/{id}/allocate', 'StockTransferLedgerController@allocatePayment');
+    Route::post('stock-transfer-ledger/companies', 'StockTransferLedgerController@storeCompany');
+    Route::put('stock-transfer-ledger/companies/{id}', 'StockTransferLedgerController@updateCompany');
+    Route::put('stock-transfer-ledger/warehouses/{id}/ownership', 'StockTransferLedgerController@assignWarehouse');
 
     // ------------------------------- Users --------------------------\\
     // ------------------------------------------------------------------\\

@@ -956,6 +956,12 @@
               <span class="item-name">{{$t('ListTransfers')}}</span>
             </router-link>
           </li>
+          <li class="nav-item" v-if="currentUserPermissions && (currentUserPermissions.includes('stock_transfer_ledger_view') || currentUserPermissions.includes('transfer_view'))">
+            <router-link class to="/app/transfers/ledger">
+              <lucide-icon class="nav-icon" name="book-open" />
+              <span class="item-name">Stock Transfer Ledger</span>
+            </router-link>
+          </li>
         </ul>
 
         <ul
@@ -2303,7 +2309,7 @@
             v-if="currentUserPermissions && currentUserPermissions.includes('Reports_suppliers')"
           >
             <router-link class :to="{ name: 'supplier_aging_report' }">
-              <lucide-icon class="nav-icon" name="calendar-clock" />
+              <lucide-icon class="nav-icon" name="clock" />
               <span class="item-name">Supplier Aging Report</span>
             </router-link>
           </li>

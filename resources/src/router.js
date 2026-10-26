@@ -386,6 +386,14 @@ const baseRoutes = [
                             import(
                                 /* webpackChunkName: "detail_transfer" */ "./views/app/pages/transfers/detail_transfer"
                             )
+                    },
+                    {
+                        name: "stock_transfer_ledger",
+                        path: "ledger",
+                        component: () =>
+                            import(
+                                /* webpackChunkName: "stock_transfer_ledger" */ "./views/app/pages/transfers/stock_transfer_ledger"
+                            )
                     }
                 ]
             },

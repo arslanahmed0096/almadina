@@ -6,6 +6,7 @@ use App\Models\Product;
 use App\Models\product_warehouse;
 use App\Models\ProductVariant;
 use App\Models\Warehouse;
+use App\Models\StockTransferCompany;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
@@ -61,6 +62,8 @@ class WarehouseController extends Controller
 
         request()->validate([
             'name' => 'required',
+            'ownership_type' => 'nullable|in:internal,external',
+            'stock_transfer_company_id' => 'nullable|required_if:ownership_type,external|exists:stock_transfer_companies,id',
         ]);
 
         \DB::transaction(function () use ($request) {
@@ -72,6 +75,8 @@ class WarehouseController extends Controller
             $Warehouse->city = $request['city'];
             $Warehouse->zip = $request['zip'];
             $Warehouse->email = $request['email'];
+            $Warehouse->ownership_type = $request->input('ownership_type', 'internal');
+            $Warehouse->stock_transfer_company_id = $Warehouse->ownership_type === 'external' ? $request['stock_transfer_company_id'] : null;
             $Warehouse->save();
 
             $products = Product::where('deleted_at', '=', null)->get(['id', 'type']);
@@ -127,6 +132,8 @@ class WarehouseController extends Controller
 
         request()->validate([
             'name' => 'required',
+            'ownership_type' => 'nullable|in:internal,external',
+            'stock_transfer_company_id' => 'nullable|required_if:ownership_type,external|exists:stock_transfer_companies,id',
         ]);
 
         Warehouse::whereId($id)->update([
@@ -136,6 +143,8 @@ class WarehouseController extends Controller
             'city' => $request['city'],
             'zip' => $request['zip'],
             'email' => $request['email'],
+            'ownership_type' => $request->input('ownership_type', 'internal'),
+            'stock_transfer_company_id' => $request->input('ownership_type', 'internal') === 'external' ? $request['stock_transfer_company_id'] : null,
         ]);
 
         return response()->json(['success' => true]);
@@ -190,7 +199,7 @@ class WarehouseController extends Controller
 
     public function Get_Warehouses()
     {
-        $Warehouses = Warehouse::where('deleted_at', '=', null)->get();
+        $Warehouses = Warehouse::with('stockTransferCompany:id,name')->where('deleted_at', '=', null)->get();
 
         return response()->json($Warehouses);
     }

@@ -614,6 +614,60 @@ class ProcurementWorkflowTest extends TestCase
         $this->assertSame(0.0, $completedProgress['totals']['remaining']);
     }
 
+    public function test_listings_expose_gate_pass_and_supplier_invoice_progress_statuses(): void
+    {
+        [$order] = $this->singleLineOrder(10);
+        $this->actingAs($this->user, 'api');
+
+        $this->getJson('/api/procurement/purchase-orders?limit=20')
+            ->assertOk()
+            ->assertJsonPath('data.0.gate_pass_status', 'pending_gate_pass');
+
+        $firstGatePass = app(GatePassService::class)->create($order, [
+            'delivered_at' => now(),
+            'items' => [[
+                'purchase_order_item_id' => $order->items[0]->id,
+                'delivered_quantity' => 4,
+                'accepted_quantity' => 4,
+            ]],
+        ], $this->user);
+        app(GatePassService::class)->confirm($firstGatePass, $this->user);
+
+        $this->getJson('/api/procurement/purchase-orders?limit=20')
+            ->assertOk()
+            ->assertJsonPath('data.0.gate_pass_status', 'partial_gate_pass');
+        $this->getJson('/api/procurement/gate-passes?limit=20')
+            ->assertOk()
+            ->assertJsonPath('data.0.invoice_status', 'pending_invoice')
+            ->assertJsonPath('data.0.invoiced_quantity', 0);
+
+        $this->invoice($firstGatePass, 'STATUS-PARTIAL', 2);
+        $this->getJson('/api/procurement/gate-passes?limit=20')
+            ->assertOk()
+            ->assertJsonPath('data.0.invoice_status', 'partial_invoice_received')
+            ->assertJsonPath('data.0.invoiced_quantity', 2);
+
+        $this->invoice($firstGatePass, 'STATUS-COMPLETE', 2);
+        $this->getJson('/api/procurement/gate-passes?limit=20')
+            ->assertOk()
+            ->assertJsonPath('data.0.invoice_status', 'completed_invoice')
+            ->assertJsonPath('data.0.invoiced_quantity', 4);
+
+        $secondGatePass = app(GatePassService::class)->create($order->fresh('items'), [
+            'delivered_at' => now()->addMinute(),
+            'items' => [[
+                'purchase_order_item_id' => $order->items[0]->id,
+                'delivered_quantity' => 6,
+                'accepted_quantity' => 6,
+            ]],
+        ], $this->user);
+        app(GatePassService::class)->confirm($secondGatePass, $this->user);
+
+        $this->getJson('/api/procurement/purchase-orders?limit=20')
+            ->assertOk()
+            ->assertJsonPath('data.0.gate_pass_status', 'gate_pass_received');
+    }
+
     public function test_gate_pass_invoice_quantity_above_order_revises_po_without_adding_stock(): void
     {
         [$po, $orderedProduct] = $this->singleLineOrder(16);

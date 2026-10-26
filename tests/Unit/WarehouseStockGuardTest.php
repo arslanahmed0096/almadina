@@ -88,6 +88,40 @@ class WarehouseStockGuardTest extends TestCase
         }
     }
 
+    public function test_sale_is_rejected_when_selected_warehouse_stock_is_already_negative(): void
+    {
+        DB::table('product_warehouse')->insert([
+            'product_id' => 1,
+            'product_variant_id' => null,
+            'warehouse_id' => 1,
+            'qte' => -11,
+        ]);
+
+        $this->expectException(ValidationException::class);
+        app(WarehouseStockGuard::class)->assertSaleAvailable(1, [[
+            'product_id' => 1,
+            'sale_unit_id' => 1,
+            'quantity' => 1,
+        ]]);
+    }
+
+    public function test_sale_is_rejected_when_line_quantity_is_not_positive(): void
+    {
+        DB::table('product_warehouse')->insert([
+            'product_id' => 1,
+            'product_variant_id' => null,
+            'warehouse_id' => 1,
+            'qte' => 10,
+        ]);
+
+        $this->expectException(ValidationException::class);
+        app(WarehouseStockGuard::class)->assertSaleAvailable(1, [[
+            'product_id' => 1,
+            'sale_unit_id' => 1,
+            'quantity' => 0,
+        ]]);
+    }
+
     public function test_sale_is_rejected_when_combined_duplicate_lines_exceed_stock(): void
     {
         DB::table('product_warehouse')->insert([

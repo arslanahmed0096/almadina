@@ -216,7 +216,12 @@
             </tr>
         </thead>
         <tbody>
-            @php $rowIndex = 0; @endphp
+            @php
+                $rowIndex = 0;
+                $totalQuantity = collect($details)->sum(function ($detail) {
+                    return (float) ($detail['quantity'] ?? 0);
+                });
+            @endphp
             @foreach ($details as $detail)
             <tr style="border-bottom: 1px solid #e5e7eb; background: {{$rowIndex % 2 == 0 ? '#ffffff' : '#f9fafb'}};">
                 <td style="padding: 5px; vertical-align: top;">
@@ -234,6 +239,11 @@
             </tr>
             @php $rowIndex++; @endphp
             @endforeach
+            <tr style="background: #eef2ff; border-top: 2px solid #1a56db;">
+                <td colspan="2" style="padding: 6px 5px; text-align: right; font-size: 8.5pt; font-weight: bold; color: #1f2937;">{{ __('pdf.total_quantity') }}</td>
+                <td style="padding: 6px 5px; text-align: right; font-size: 9pt; font-weight: bold; color: #1a56db;">{{ rtrim(rtrim(number_format($totalQuantity, 2, '.', ''), '0'), '.') }}</td>
+                <td colspan="3"></td>
+            </tr>
         </tbody>
     </table>
 

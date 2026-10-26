@@ -188,6 +188,14 @@ class TransferController extends BaseController
         $createdTransfer = \DB::transaction(function () use ($request, $validated) {
             $order = new Transfer;
 
+            $destination = Warehouse::with('stockTransferCompany')->whereNull('deleted_at')
+                ->findOrFail($validated['transfer']['to_warehouse']);
+            if ($destination->ownership_type === 'external' && ! $destination->stock_transfer_company_id) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'transfer.to_warehouse' => ['The external destination warehouse must be assigned to a company.'],
+                ]);
+            }
+
             $order->date = $validated['transfer']['date'];
             $order->time = now()->format('H:i:s');
             $order->Ref = $this->getNumberOrder();
@@ -195,6 +203,8 @@ class TransferController extends BaseController
             $order->to_warehouse_id = $validated['transfer']['to_warehouse'];
             $order->required_date = $validated['transfer']['required_date'] ?? null;
             $order->transfer_type = $validated['transfer']['transfer_type'];
+            $order->ownership_type = $destination->ownership_type === 'external' ? 'external' : 'internal';
+            $order->stock_transfer_company_id = $order->ownership_type === 'external' ? $destination->stock_transfer_company_id : null;
             $order->items = count($validated['details']);
             $order->tax_rate = (float) $request->input('transfer.tax_rate', 0);
             $order->TaxNet = (float) $request->input('transfer.TaxNet', 0);
@@ -204,6 +214,10 @@ class TransferController extends BaseController
             $order->notes = $validated['transfer']['notes'] ?? null;
             $order->request_note = $validated['transfer']['notes'] ?? null;
             $order->GrandTotal = (float) ($validated['GrandTotal'] ?? 0);
+            $order->transfer_value = collect($validated['details'])->sum(function ($detail) {
+                return (float) $detail['quantity'] * (float) ($detail['unit_transfer_price'] ?? $detail['Unit_cost'] ?? 0);
+            });
+            $order->payment_status = $order->ownership_type === 'external' ? 'unpaid' : 'not_applicable';
             $order->user_id = Auth::user()->id;
             $order->driver_id = $validated['transfer']['driver_id'] ?? null;
             $order->vehicle_details = $validated['transfer']['vehicle_details'] ?? null;
@@ -228,6 +242,8 @@ class TransferController extends BaseController
                     'product_id' => $value['product_id'],
                     'product_variant_id' => $value['product_variant_id'] ?? null,
                     'cost' => (float) ($value['Unit_cost'] ?? 0),
+                    'unit_transfer_price' => (float) ($value['unit_transfer_price'] ?? $value['Unit_cost'] ?? 0),
+                    'transfer_total' => (float) $value['quantity'] * (float) ($value['unit_transfer_price'] ?? $value['Unit_cost'] ?? 0),
                     'TaxNet' => (float) ($value['tax_percent'] ?? 0),
                     'tax_method' => $value['tax_method'] ?? '1',
                     'discount' => (float) ($value['discount'] ?? 0),
@@ -599,6 +615,11 @@ class TransferController extends BaseController
                     $TransDetail['product_id'] = $product_detail['product_id'];
                     $TransDetail['product_variant_id'] = $product_detail['product_variant_id'];
                     $TransDetail['cost'] = $product_detail['Unit_cost'];
+                    $existingPrice = ! empty($product_detail['id'])
+                        ? optional(TransferDetail::find($product_detail['id']))->unit_transfer_price
+                        : null;
+                    $TransDetail['unit_transfer_price'] = (float) ($product_detail['unit_transfer_price'] ?? $existingPrice ?? $product_detail['Unit_cost']);
+                    $TransDetail['transfer_total'] = (float) $product_detail['quantity'] * $TransDetail['unit_transfer_price'];
                     $TransDetail['TaxNet'] = $product_detail['tax_percent'];
                     $TransDetail['tax_method'] = $product_detail['tax_method'];
                     $TransDetail['discount'] = $product_detail['discount'];
@@ -617,6 +638,10 @@ class TransferController extends BaseController
                 }
             }
 
+            $destination = Warehouse::whereNull('deleted_at')->findOrFail($Trans['to_warehouse']);
+            if ($destination->ownership_type === 'external' && ! $destination->stock_transfer_company_id) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['transfer.to_warehouse' => ['The external destination warehouse must be assigned to a company.']]);
+            }
             $current_Transfer->update([
                 'to_warehouse_id' => $Trans['to_warehouse'],
                 'from_warehouse_id' => $Trans['from_warehouse'],
@@ -624,6 +649,8 @@ class TransferController extends BaseController
                 'notes' => $Trans['notes'] ?? null,
                 'request_note' => $Trans['notes'] ?? null,
                 'transfer_type' => $Trans['transfer_type'],
+                'ownership_type' => $destination->ownership_type === 'external' ? 'external' : 'internal',
+                'stock_transfer_company_id' => $destination->ownership_type === 'external' ? $destination->stock_transfer_company_id : null,
                 'required_date' => $Trans['required_date'] ?? null,
                 'driver_id' => $Trans['driver_id'] ?? null,
                 'vehicle_details' => $Trans['vehicle_details'] ?? null,
@@ -637,6 +664,8 @@ class TransferController extends BaseController
                 'discount' => $Trans['discount'] ? $Trans['discount'] : 0,
                 'shipping' => $Trans['shipping'] ? $Trans['shipping'] : 0,
                 'GrandTotal' => $request['GrandTotal'],
+                'transfer_value' => round((float) TransferDetail::where('transfer_id', $id)->sum('transfer_total'), 4),
+                'payment_status' => $destination->ownership_type === 'external' ? 'unpaid' : 'not_applicable',
             ]);
 
             // Pharmacy: re-apply per-batch movements now that TransferDetail rows exist.
@@ -1304,6 +1333,8 @@ class TransferController extends BaseController
             'acknowledger', 'driver', 'histories.performer', 'transferReturn.details.product', 'transferReturn.driver',
             'transferReturn.fromWarehouse', 'transferReturn.toWarehouse',
             'stockMovements.warehouse',
+            'stockTransferCompany:id,name', 'paymentAllocations.payment:id,reference,payment_date,amount',
+            'ledgerEntries' => fn ($query) => $query->orderBy('entry_date')->orderBy('id'),
         ])
             ->where('deleted_at', '=', null)
             ->findOrFail($id);
@@ -1323,6 +1354,16 @@ class TransferController extends BaseController
         $transfer['approval_status'] = $Transfer_data->approval_status;
         $transfer['workflow_status'] = $Transfer_data->workflow_status ?: $Transfer_data->statut;
         $transfer['transfer_type'] = $Transfer_data->transfer_type ?: 'direct_transfer';
+        $transfer['ownership_type'] = $Transfer_data->ownership_type ?: 'internal';
+        $transfer['company'] = optional($Transfer_data->stockTransferCompany)->name;
+        $transfer['transfer_value'] = (float) $Transfer_data->transfer_value;
+        $transfer['previous_outstanding'] = (float) $Transfer_data->previous_outstanding;
+        $transfer['advance_applied'] = (float) $Transfer_data->advance_applied;
+        $transfer['paid_amount'] = (float) $Transfer_data->paid_amount;
+        $transfer['outstanding_balance'] = (float) $Transfer_data->outstanding_balance;
+        $transfer['payment_status'] = $Transfer_data->payment_status;
+        $transfer['payment_allocations'] = $Transfer_data->paymentAllocations;
+        $transfer['financial_entries'] = $Transfer_data->ledgerEntries;
         $transfer['request_note'] = $Transfer_data->request_note ?: $Transfer_data->notes;
         $transfer['response_note'] = $Transfer_data->response_note;
         $transfer['acknowledgement_note'] = $Transfer_data->acknowledgement_note;
@@ -1550,7 +1591,7 @@ class TransferController extends BaseController
             $warehouses = Warehouse::whereNull('deleted_at')
                 ->whereIn('id', $assignedWarehouseIds)
                 ->orderBy('name')
-                ->get(['id', 'name']);
+                ->get(['id', 'name', 'ownership_type', 'stock_transfer_company_id']);
             $sourceLocked = $warehouses->count() === 1;
             $assignedSourceWarehouseId = $sourceLocked
                 ? optional($warehouses->first())->id
@@ -1558,14 +1599,15 @@ class TransferController extends BaseController
         } else {
             $warehouses = Warehouse::whereNull('deleted_at')
                 ->orderBy('name')
-                ->get(['id', 'name']);
+                ->get(['id', 'name', 'ownership_type', 'stock_transfer_company_id']);
             $assignedSourceWarehouseId = null;
         }
 
         $to_warehouses = Warehouse::whereNull('deleted_at')
+            ->with('stockTransferCompany:id,name')
             ->when($assignedSourceWarehouseId, fn ($query) => $query->where('id', '!=', $assignedSourceWarehouseId))
             ->orderBy('name')
-            ->get(['id', 'name']);
+            ->get(['id', 'name', 'ownership_type', 'stock_transfer_company_id']);
 
         $drivers = Employee::with('designation:id,designation')
             ->whereNull('deleted_at')

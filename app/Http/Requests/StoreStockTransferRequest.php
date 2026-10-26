@@ -28,10 +28,13 @@ class StoreStockTransferRequest extends FormRequest
             'details.*.product_variant_id' => 'nullable|integer',
             'details.*.purchase_unit_id' => 'nullable|integer',
             'details.*.quantity' => 'required|numeric|gt:0',
+            'details.*.Unit_cost' => 'nullable|numeric|min:0',
+            'details.*.unit_transfer_price' => 'nullable|numeric|min:0',
             'details.*.batches' => 'nullable|array',
             'details.*.identifiers' => 'nullable|array',
             'details.*.identifiers.*' => 'string|max:191',
             'GrandTotal' => 'nullable|numeric',
+            'transfer.auto_apply_advance' => 'nullable|boolean',
         ];
     }
 

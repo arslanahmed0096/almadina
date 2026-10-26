@@ -43,8 +43,21 @@ class PurchaseOrderController extends Controller
         $page = $query->latest('id')->paginate(min(100, max(1, (int) $request->get('limit', 20))));
         $page->getCollection()->transform(function ($order) {
             $totals = $this->progress->progress($order)['totals'];
+            $ordered = (float) ($totals['ordered'] ?? 0);
+            $received = (float) ($totals['received'] ?? 0);
+            $gatePassStatus = 'pending_gate_pass';
 
-            return $order->setAttribute('progress', $totals);
+            if ($order->status === PurchaseOrderStatus::Cancelled->value) {
+                $gatePassStatus = 'cancelled';
+            } elseif ($received > 0 && ($ordered <= 0 || $received + 0.000001 >= $ordered)) {
+                $gatePassStatus = 'gate_pass_received';
+            } elseif ($received > 0) {
+                $gatePassStatus = 'partial_gate_pass';
+            }
+
+            return $order
+                ->setAttribute('progress', $totals)
+                ->setAttribute('gate_pass_status', $gatePassStatus);
         });
 
         return response()->json($page);

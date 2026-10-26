@@ -153,6 +153,19 @@
             </b-col>
           </b-row>
 
+          <b-card v-if="transfer.ownership_type === 'external'" class="mt-4 border-left-primary shadow-sm">
+            <h5 class="font-weight-bold mb-3"><lucide-icon class="mr-2" name="book-open" />External Transfer Financials</h5>
+            <b-row>
+              <b-col md="2"><small class="text-muted">Company</small><div class="font-weight-bold">{{ transfer.company }}</div></b-col>
+              <b-col md="2"><small class="text-muted">Previous outstanding</small><div>{{ formatNumber(transfer.previous_outstanding, 2) }}</div></b-col>
+              <b-col md="2"><small class="text-muted">Transfer value</small><div>{{ formatNumber(transfer.transfer_value, 2) }}</div></b-col>
+              <b-col md="2"><small class="text-muted">Advance applied</small><div class="text-success">{{ formatNumber(transfer.advance_applied, 2) }}</div></b-col>
+              <b-col md="2"><small class="text-muted">Total allocated</small><div class="text-success">{{ formatNumber(transfer.paid_amount, 2) }}</div></b-col>
+              <b-col md="2"><small class="text-muted">Remaining</small><div class="text-danger font-weight-bold">{{ formatNumber(transfer.outstanding_balance, 2) }}</div></b-col>
+            </b-row>
+            <div class="mt-3"><b-badge :variant="transfer.payment_status === 'paid' ? 'success' : transfer.payment_status === 'partially_paid' ? 'warning' : 'danger'">{{ workflowLabel(transfer.payment_status) }}</b-badge></div>
+          </b-card>
+
           <b-row class="mt-4">
             <b-col md="12">
               <h5 class="font-weight-bold mb-3"><lucide-icon class="mr-2" name="clipboard-list" />Stock Request Decision</h5>

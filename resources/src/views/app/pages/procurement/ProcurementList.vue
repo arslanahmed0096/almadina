@@ -12,7 +12,13 @@
           <thead><tr><th v-for="column in columns" :key="column.key">{{ column.label }}</th><th>Actions</th></tr></thead>
           <tbody>
             <tr v-for="row in rows" :key="row.id">
-              <td v-for="column in columns" :key="column.key"><span v-if="column.key === 'status'" class="badge badge-light-primary">{{ label(value(row, column.key)) }}</span><span v-else>{{ value(row, column.key) }}</span></td>
+              <td v-for="column in columns" :key="column.key">
+                <span
+                  v-if="isStatusColumn(column.key)"
+                  :class="['badge', 'badge-light-' + badgeVariant(value(row, column.key))]"
+                >{{ label(value(row, column.key)) }}</span>
+                <span v-else>{{ value(row, column.key) }}</span>
+              </td>
               <td class="action-icons">
                 <router-link class="btn btn-sm btn-outline-primary action-icon" :to="detailUrl(row)" title="View" aria-label="View"><lucide-icon name="eye" /></router-link>
                 <router-link
@@ -67,13 +73,15 @@ export default {
         orders: [
           { key: 'number', label: 'PO Number' }, { key: 'order_date', label: 'Date' }, { key: 'provider.name', label: 'Supplier' },
           { key: 'warehouse.name', label: 'Destination' }, { key: 'progress.ordered', label: 'Ordered' }, { key: 'progress.received', label: 'Received' },
-          { key: 'progress.remaining', label: 'Remaining' }, { key: 'progress.invoiced', label: 'Invoiced' }, { key: 'status', label: 'Status' }
+          { key: 'gate_pass_status', label: 'Gate Pass Status' }, { key: 'progress.remaining', label: 'Remaining' },
+          { key: 'progress.invoiced', label: 'Invoiced' }, { key: 'status', label: 'PO Status' }
         ],
         gates: [
           { key: 'number', label: 'Gate Pass' }, { key: 'supplier_gate_pass_number', label: 'Supplier GP' }, { key: 'purchase_order.number', label: 'PO Number' },
           { key: 'provider.name', label: 'Supplier' }, { key: 'delivered_at', label: 'Delivery' }, { key: 'vehicle_number', label: 'Vehicle' },
           { key: 'bilty_number', label: 'Bilty' }, { key: 'accepted_quantity', label: 'Accepted' },
-          { key: 'po_remaining_quantity', label: 'PO Remaining' }, { key: 'status', label: 'Status' }
+          { key: 'po_remaining_quantity', label: 'PO Remaining' }, { key: 'invoice_status', label: 'Invoice Status' },
+          { key: 'status', label: 'Gate Pass Status' }
         ],
         invoices: [
           { key: 'supplier_invoice_number', label: 'Supplier Invoice' }, { key: 'provider.name', label: 'Supplier' }, { key: 'purchase_order.number', label: 'PO Number' },
@@ -108,6 +116,15 @@ export default {
       return result ?? '-';
     },
     label(value) { return String(value || '').replaceAll('_', ' ').replace(/\b\w/g, char => char.toUpperCase()); },
+    isStatusColumn(key) { return ['status', 'gate_pass_status', 'invoice_status'].includes(key); },
+    badgeVariant(value) {
+      const status = String(value || '').toLowerCase();
+      if (status.includes('cancelled') || status === 'rejected' || status === 'not applicable') return 'secondary';
+      if (status.includes('partial')) return 'info';
+      if (status.includes('pending') || status === 'draft' || status === 'issued') return 'warning';
+      if (status.includes('received') || status.includes('completed') || status === 'accepted' || status === 'posted') return 'success';
+      return 'primary';
+    },
     async deleteGatePass(row) {
       const confirmed = await this.$bvModal.msgBoxConfirm(
         `Delete Gate Pass ${row.number}? This action cannot be undone.`,

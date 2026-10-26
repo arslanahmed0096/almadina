@@ -111,10 +111,27 @@ class WarehouseStockGuard
 
         foreach ($details as $index => $detail) {
             $productId = (int) ($detail['product_id'] ?? 0);
-            $quantity = (float) ($detail['quantity'] ?? $detail['qty'] ?? 0);
+            $rawQuantity = $detail['quantity'] ?? $detail['qty'] ?? null;
+            $quantity = is_numeric($rawQuantity) ? (float) $rawQuantity : NAN;
             $product = $products->get($productId);
 
-            if (! $product || $quantity <= 0 || $product->type === 'is_service') {
+            if (! $product) {
+                $action = $operation === 'sale' ? 'Sale' : 'Transfer';
+                $this->throwStockValidationException(
+                    (int) $index,
+                    $action.' not allowed: one or more selected products are invalid or unavailable.'
+                );
+            }
+
+            if (! is_finite($quantity) || $quantity <= 0) {
+                $action = $operation === 'sale' ? 'Sale' : 'Transfer';
+                $this->throwStockValidationException(
+                    (int) $index,
+                    $action.' not allowed: product quantity must be greater than zero.'
+                );
+            }
+
+            if ($product->type === 'is_service') {
                 continue;
             }
 

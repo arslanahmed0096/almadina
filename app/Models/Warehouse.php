@@ -9,7 +9,7 @@ class Warehouse extends Model
     protected $dates = ['deleted_at'];
 
     protected $fillable = [
-        'name', 'mobile', 'country', 'city', 'email', 'zip',
+        'name', 'mobile', 'country', 'city', 'email', 'zip', 'ownership_type', 'stock_transfer_company_id',
     ];
 
     public function assignedUsers()
@@ -25,5 +25,10 @@ class Warehouse extends Model
     public function targetAllocations()
     {
         return $this->hasMany(SupplierTargetAllocation::class);
+    }
+
+    public function stockTransferCompany()
+    {
+        return $this->belongsTo(StockTransferCompany::class, 'stock_transfer_company_id');
     }
 }

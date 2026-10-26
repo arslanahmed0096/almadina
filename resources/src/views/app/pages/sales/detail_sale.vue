@@ -265,6 +265,10 @@
               <td class="invoice-summary-spacer"></td>
               <td class="invoice-summary-cell">
                 <table class="invoice-summary-table">
+                  <tr class="invoice-summary-row">
+                    <td class="invoice-summary-label">Total Quantity:</td>
+                    <td class="invoice-summary-value">{{ formatNumber(totalQuantity, 2) }}</td>
+                  </tr>
                   <tr class="invoice-summary-row-alt">
                     <td class="invoice-summary-label">Subtotal:</td>
                     <td class="invoice-summary-value">{{ formatPriceWithSymbol(currentUser.currency, invoiceSubtotal, 2) }}</td>
@@ -359,6 +363,14 @@ import Util from "../../../../utils/index";
 export default {
   computed: {
     ...mapGetters(["currentUserPermissions", "currentUser"]),
+
+    totalQuantity() {
+      const details = Array.isArray(this.details) ? this.details : [];
+      return details.reduce((total, detail) => {
+        const quantity = Number(detail && detail.quantity);
+        return total + (Number.isFinite(quantity) ? quantity : 0);
+      }, 0);
+    },
 
     // Sum of line totals before order-level tax/discount/shipping
     invoiceSubtotal() {

@@ -331,16 +331,34 @@ export default {
       if (validationError) { this.toast(validationError); return; }
 
       this.$swal({
-        title: 'Are you sure?',
-        text: 'Do you want to save this gate pass?',
-        type: 'warning',
+        title: 'Save Gate Pass?',
+        text: 'Save this gate pass now, or continue adding products?',
+        type: 'question',
         showCancelButton: true,
-        confirmButtonColor: '#3085d6',
-        cancelButtonColor: '#d33',
-        confirmButtonText: 'Yes, save it',
-        cancelButtonText: 'Cancel'
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        confirmButtonColor: '#6f2dbd',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Save Gate Pass',
+        cancelButtonText: 'Add More Products'
       }).then(result => {
-        if (result.value) this.submitGatePass();
+        if (result.value) {
+          this.submitGatePass();
+          return;
+        }
+        this.focusGatePassProductEntry();
+      });
+    },
+    focusGatePassProductEntry() {
+      this.$nextTick(() => {
+        const input = this.$refs.product_autocomplete;
+        if (input && !input.disabled) {
+          input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          input.focus();
+          return;
+        }
+        const table = this.$el.querySelector('.table-responsive');
+        if (table) table.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     },
     submitGatePass() {

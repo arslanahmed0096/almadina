@@ -542,6 +542,40 @@ export default {
         return;
       }
 
+      this.$swal({
+        title: 'Save Purchase Order?',
+        text: 'Save this Purchase Order now, or continue adding products?',
+        type: 'question',
+        showCancelButton: true,
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        confirmButtonColor: '#6f2dbd',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Save Purchase Order',
+        cancelButtonText: 'Add More Products'
+      }).then(result => {
+        if (result.value) {
+          this.submitPurchaseOrder();
+          return;
+        }
+        this.focusProductEntry();
+      });
+    },
+
+    focusProductEntry() {
+      this.$nextTick(() => {
+        const input = this.$refs.product_autocomplete;
+        if (input && !input.disabled) {
+          input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          input.focus();
+          return;
+        }
+        const table = this.$el.querySelector('.table-responsive');
+        if (table) table.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    },
+
+    submitPurchaseOrder() {
       this.saving = true;
       const payload = {
         ...this.form,

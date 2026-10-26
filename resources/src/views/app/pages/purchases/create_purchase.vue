@@ -571,6 +571,11 @@
                           </td>
                         </tr>
                         </template>
+                        <tr v-if="details.length" class="font-weight-bold bg-light">
+                          <td class="text-right">Total Quantity</td>
+                          <td class="purchase-quantity-column">{{ formatNumber(totalQuantity, 2) }}</td>
+                          <td colspan="10"></td>
+                        </tr>
                       </tbody>
                     </table>
                   </div>
@@ -984,6 +989,13 @@ export default {
   },
  computed: {
    ...mapGetters(["currentUserPermissions","currentUser"]),
+    totalQuantity() {
+      return (this.details || []).reduce((total, detail) => {
+        if (!detail || detail.del === 1 || detail.no_unit === 0) return total;
+        const quantity = Number(detail.quantity);
+        return total + (Number.isFinite(quantity) ? quantity : 0);
+      }, 0);
+    },
     paymentDueDayOptions() {
       return [5, 10, 15, 20, 30].map(days => ({ value: days, text: `${days} days` }));
     },
@@ -1073,10 +1085,46 @@ export default {
             this.$t("Failed")
           );
         } else {
-          this.Create_Purchase();
+          this.promptPurchaseSaveChoice();
         }
       }).catch(() => {
         this.SubmitProcessing = false;
+      });
+    },
+
+    promptPurchaseSaveChoice() {
+      this.SubmitProcessing = false;
+      this.$swal({
+        title: 'Save Purchase Invoice?',
+        text: 'Save this invoice now, or continue adding products?',
+        type: 'question',
+        showCancelButton: true,
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        confirmButtonColor: '#6f2dbd',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Save Invoice',
+        cancelButtonText: 'Add More Products'
+      }).then(result => {
+        if (result.value) {
+          this.SubmitProcessing = true;
+          this.Create_Purchase();
+          return;
+        }
+        this.focusPurchaseProductEntry();
+      });
+    },
+
+    focusPurchaseProductEntry() {
+      this.$nextTick(() => {
+        const input = this.$refs.product_autocomplete;
+        if (input && !input.disabled) {
+          input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          input.focus();
+          return;
+        }
+        const table = this.$el.querySelector('.purchase-products-table');
+        if (table) table.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     },
     //---Submit Validation Update Detail

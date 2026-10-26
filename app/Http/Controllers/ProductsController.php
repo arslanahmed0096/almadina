@@ -2302,10 +2302,19 @@ class ProductsController extends BaseController
                         }
 
                         if ($request->stock == '1' && $request->product_service == '1') {
-                            return $query->where('qte', '>', 0)->orWhere('manage_stock', false);
+                            // A sale search may include services, but inventory products
+                            // must always have positive warehouse stock. The previous
+                            // `orWhere(manage_stock, ...)` clauses accidentally returned
+                            // zero and negative stock rows for almost every product.
+                            return $query->where(function ($stockQuery) {
+                                $stockQuery->where('qte', '>', 0)
+                                    ->orWhereHas('product', function ($productQuery) {
+                                        $productQuery->where('type', 'is_service');
+                                    });
+                            });
 
                         } elseif ($request->stock == '1' && $request->product_service == '0') {
-                            return $query->where('qte', '>', 0)->orWhere('manage_stock', true);
+                            return $query->where('qte', '>', 0);
 
                         } else {
                             return $query->where('manage_stock', true);
