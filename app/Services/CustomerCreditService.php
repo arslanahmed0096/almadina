@@ -79,7 +79,25 @@ class CustomerCreditService
             ->get(['GrandTotal', 'paid_amount']);
         $returnDue = (float) $returns->sum(fn ($return) => max(0, (float) $return->GrandTotal - (float) $return->paid_amount));
 
-        return max(0, round($base - $returnDue, 2));
+        $exchangeCredit = 0.0;
+        if (Schema::hasTable('sale_exchanges')) {
+            $exchangeReturn = DB::table('sale_exchanges')
+                ->join('sale_returns', 'sale_returns.id', '=', 'sale_exchanges.sale_return_id')
+                ->join('sales as original_sales', 'original_sales.id', '=', 'sale_exchanges.original_sale_id')
+                ->where('sale_exchanges.replacement_sale_id', $sale->id)
+                ->where('sale_exchanges.status', 'completed')
+                ->whereNull('sale_returns.deleted_at')
+                ->first(['sale_returns.GrandTotal', 'sale_returns.paid_amount', 'original_sales.paid_amount as original_paid_amount']);
+
+            if ($exchangeReturn) {
+                $exchangeCredit = min(
+                    max(0, (float) $exchangeReturn->GrandTotal - (float) $exchangeReturn->paid_amount),
+                    max(0, (float) $exchangeReturn->original_paid_amount)
+                );
+            }
+        }
+
+        return max(0, round($base - $returnDue - $exchangeCredit, 2));
     }
 
     public function creditUsage(Client $client, ?Sale $excludeSale = null): float

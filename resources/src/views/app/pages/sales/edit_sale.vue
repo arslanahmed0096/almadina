@@ -117,8 +117,24 @@
                   <!-- Product -->
                 <b-col md="12" class="mb-5">
                   <h6>{{$t('ProductName')}}</h6>
+                  <b-alert
+                    v-if="replacementTargetDetailId !== null"
+                    show
+                    variant="info"
+                    class="d-flex align-items-center justify-content-between"
+                  >
+                    <span>
+                      Select the replacement product above for
+                      <strong>{{ replacementTargetName }}</strong>.
+                      The original and new products will be saved in the order history.
+                    </span>
+                    <b-button size="sm" variant="outline-secondary" @click="cancelProductReplacement">Cancel</b-button>
+                  </b-alert>
+                  <b-alert v-if="!itemsEditable" show variant="warning">
+                    Shipment has started. Order products are locked; use the sales return workflow for delivered items.
+                  </b-alert>
                  
-                  <div id="autocomplete" class="autocomplete">
+                  <div v-if="itemsEditable" id="autocomplete" class="autocomplete">
                     <div class="input-with-icon">
                       <img src="/assets_setup/scan.png" alt="Scan" class="scan-icon" @click="showModal">
                     <input 
@@ -197,7 +213,7 @@
                                 </b-input-group-prepend>
                                 <input
                                   class="form-control"
-                                  @keyup="Verified_Qty(detail,detail.detail_id)"
+                                  @input="Verified_Qty(detail,detail.detail_id)"
                                   :min="0.00"
                                   :max="sale.transaction_type === 'order' ? null : detail.stock"
                                   v-model.number="detail.quantity"
@@ -217,8 +233,18 @@
                           <td>{{currentUser.currency}} {{formatNumber(detail.taxe * detail.quantity , 2)}}</td>
                           <td>{{currentUser.currency}} {{detail.subtotal.toFixed(2)}}</td>
                           <td v-show="detail.no_unit !== 0 || detail.product_type == 'is_service'">
-                            <lucide-icon class="text-25 text-success cursor-pointer" name="pencil" v-if="currentUserPermissions && currentUserPermissions.includes('edit_product_sale')" @click="Modal_Updat_Detail(detail)" />
-                            <lucide-icon class="text-25 text-danger cursor-pointer" name="x" @click="delete_Product_Detail(detail.detail_id)" />
+                            <lucide-icon class="text-25 text-success cursor-pointer" name="pencil" v-if="itemsEditable && currentUserPermissions && currentUserPermissions.includes('edit_product_sale')" @click="Modal_Updat_Detail(detail)" />
+                            <lucide-icon
+                              v-if="itemsEditable && sale.transaction_type === 'order'"
+                              class="text-25 text-primary cursor-pointer"
+                              name="refresh-cw"
+                              title="Change product"
+                              @click="beginProductReplacement(detail)"
+                            />
+                            <lucide-icon v-if="itemsEditable" class="text-25 text-danger cursor-pointer" name="x" title="Remove product" @click="delete_Product_Detail(detail.detail_id)" />
+                            <div v-if="detail.replaced_from_name" class="text-muted mt-1" style="font-size: 11px;">
+                              Changed from <strong>{{ detail.replaced_from_name }}</strong>
+                            </div>
                           </td>
                         </tr>
 
@@ -333,7 +359,12 @@
                         </tr>
                         </template>
                         <tr v-if="details.length" class="font-weight-bold bg-light">
-                          <td colspan="4" class="text-right">Total Quantity</td>
+                          <td colspan="4" class="text-right">Total Items</td>
+                          <td>{{ totalItems }}</td>
+                          <td colspan="5"></td>
+                        </tr>
+                        <tr v-if="details.length" class="font-weight-bold bg-light">
+                          <td colspan="4" class="text-right">Total Item Qty</td>
                           <td>{{ formatNumber(totalQuantity, 2) }}</td>
                           <td colspan="5"></td>
                         </tr>
@@ -761,6 +792,9 @@ export default {
       sales_agents: [],
       products: [],
       details: [],
+      itemsEditable: true,
+      replacementTargetDetailId: null,
+      replacementTargetName: "",
       detail: {},
       sales: [],
       showPointsSection: false,
@@ -835,9 +869,13 @@ export default {
   computed: {
     ...mapGetters(["currentUserPermissions","currentUser"]),
 
+    totalItems() {
+      return (this.details || []).filter(detail => detail && detail.del !== 1).length;
+    },
+
     totalQuantity() {
       return (this.details || []).reduce((total, detail) => {
-        if (!detail || detail.del === 1 || detail.no_unit === 0) return total;
+        if (!detail || detail.del === 1) return total;
         const quantity = Number(detail.quantity);
         return total + (Number.isFinite(quantity) ? quantity : 0);
       }, 0);
@@ -1149,12 +1187,22 @@ export default {
 
     SearchProduct(result, weight = null) {
         this.product = {};
+        const replacementTarget = this.replacementTargetDetailId !== null
+          ? this.details.find(detail => detail.detail_id === this.replacementTargetDetailId)
+          : null;
         if (
           this.details.length > 0 &&
-          this.details.some(detail => detail.code === result.code)
+          this.details.some(detail => detail.code === result.code && (!replacementTarget || detail.detail_id !== replacementTarget.detail_id))
         ) {
           this.makeToast("warning", this.$t("AlreadyAdd"), this.$t("Warning"));
         } else {
+
+          if (replacementTarget &&
+              Number(replacementTarget.product_id) === Number(result.id) &&
+              Number(replacementTarget.product_variant_id || 0) === Number(result.product_variant_id || 0)) {
+            this.makeToast("warning", "Please select a different product.", this.$t("Warning"));
+            return;
+          }
 
             if( result.product_type =='is_service'){
               this.product.quantity = 1;
@@ -1207,6 +1255,7 @@ export default {
       this.sale.transaction_type = transactionType;
       this.search_input = '';
       this.product_filter = [];
+      if (transactionType !== 'order') this.cancelProductReplacement();
 
       if (transactionType === 'order') {
         this.sale.statut = 'ordered';
@@ -1242,6 +1291,27 @@ export default {
 
     //----------------------------------------- Add Product to order list -------------------------\\
     add_product() {
+      if (this.replacementTargetDetailId !== null) {
+        const index = this.details.findIndex(detail => detail.detail_id === this.replacementTargetDetailId);
+        if (index !== -1) {
+          const original = this.details[index];
+          this.product.id = original.id;
+          this.product.detail_id = original.detail_id;
+          this.product.quantity = Number(original.quantity) > 0 ? Number(original.quantity) : 1;
+          this.product.qte_copy = 0;
+          this.product.etat = "new";
+          this.product.replaced_from_name = original.replaced_from_name || original.name;
+          this.$set(this.details, index, this.product);
+          this.cancelProductReplacement();
+
+          if (this.product.is_imei) {
+            this.Modal_Updat_Detail(this.product);
+          }
+
+          return;
+        }
+      }
+
       if (this.details.length > 0) {
         this.Last_Detail_id();
       } else if (this.details.length === 0) {
@@ -1253,6 +1323,20 @@ export default {
       if(this.product.is_imei){
         this.Modal_Updat_Detail(this.product);
       }
+    },
+
+    beginProductReplacement(detail) {
+      if (!this.itemsEditable || this.sale.transaction_type !== 'order') return;
+      this.replacementTargetDetailId = detail.detail_id;
+      this.replacementTargetName = detail.name;
+      this.$nextTick(() => {
+        if (this.$refs.product_autocomplete) this.$refs.product_autocomplete.focus();
+      });
+    },
+
+    cancelProductReplacement() {
+      this.replacementTargetDetailId = null;
+      this.replacementTargetName = "";
     },
 
     //----------------------------------------- Batch handling -------------------------\\
@@ -1455,28 +1539,28 @@ export default {
     Verified_Qty(detail, id) {
       for (var i = 0; i < this.details.length; i++) {
         if (this.details[i].detail_id === id) {
-          if (isNaN(detail.quantity)) {
-            this.details[i].quantity = detail.qte_copy;
+          let quantity = Number(detail.quantity);
+          if (!Number.isFinite(quantity) || quantity <= 0) {
+            quantity = Number(detail.qte_copy) || 1;
           }
 
-          if (this.sale.transaction_type !== 'order' && detail.etat == "new" && detail.quantity > detail.stock) {
+          if (this.sale.transaction_type !== 'order' && detail.etat == "new" && quantity > Number(detail.stock)) {
             this.makeToast("warning", this.$t("LowStock"), this.$t("Warning"));
-            this.details[i].quantity = detail.stock;
+            quantity = Math.max(0, Number(detail.stock) || 0);
           } else if (
             this.sale.transaction_type !== 'order' &&
             detail.etat == "current" &&
-            detail.quantity > detail.stock + detail.qte_copy
+            quantity > (Number(detail.stock) || 0) + (Number(detail.qte_copy) || 0)
           ) {
             this.makeToast("warning", this.$t("LowStock"), this.$t("Warning"));
-            this.details[i].quantity = detail.qte_copy;
-          } else {
-            this.details[i].quantity = detail.quantity;
+            quantity = Number(detail.qte_copy) || 1;
           }
+          this.$set(this.details[i], 'quantity', quantity);
+          this.Calcul_Total();
+          this.$forceUpdate();
+          return;
         }
       }
-
-      this.$forceUpdate();
-      this.Calcul_Total();
     },
 
     //-----------------------------------increment QTY ------------------------------\\
@@ -1484,21 +1568,23 @@ export default {
     increment(detail, id) {
       for (var i = 0; i < this.details.length; i++) {
         if (this.details[i].detail_id == id) {
-          if (this.sale.transaction_type !== 'order' && detail.etat == "new" && detail.quantity + 1 > detail.stock) {
+          const nextQuantity = (Number(this.details[i].quantity) || 0) + 1;
+          if (this.sale.transaction_type !== 'order' && detail.etat == "new" && nextQuantity > Number(detail.stock)) {
             this.makeToast("warning", this.$t("LowStock"), this.$t("Warning"));
           } else if (
             this.sale.transaction_type !== 'order' &&
             detail.etat == "current" &&
-            detail.quantity + 1 > detail.stock + detail.qte_copy
+            nextQuantity > (Number(detail.stock) || 0) + (Number(detail.qte_copy) || 0)
           ) {
             this.makeToast("warning", this.$t("LowStock"), this.$t("Warning"));
           } else {
-            this.formatNumber(this.details[i].quantity++, 2);
+            this.$set(this.details[i], 'quantity', nextQuantity);
+            this.Calcul_Total();
+            this.$forceUpdate();
           }
+          return;
         }
       }
-      this.$forceUpdate();
-      this.Calcul_Total();
     },
 
     //-----------------------------------decrement QTY ------------------------------\\
@@ -1506,8 +1592,9 @@ export default {
     decrement(detail, id) {
       for (var i = 0; i < this.details.length; i++) {
         if (this.details[i].detail_id == id) {
-          if (detail.quantity - 1 > 0) {
-            if (this.sale.transaction_type !== 'order' && detail.etat == "new" && detail.quantity - 1 > detail.stock) {
+          const nextQuantity = (Number(this.details[i].quantity) || 1) - 1;
+          if (nextQuantity > 0) {
+            if (this.sale.transaction_type !== 'order' && detail.etat == "new" && nextQuantity > Number(detail.stock)) {
               this.makeToast(
                 "warning",
                 this.$t("LowStock"),
@@ -1516,7 +1603,7 @@ export default {
             } else if (
               this.sale.transaction_type !== 'order' &&
               detail.etat == "current" &&
-              detail.quantity - 1 > detail.stock + detail.qte_copy
+              nextQuantity > (Number(detail.stock) || 0) + (Number(detail.qte_copy) || 0)
             ) {
               this.makeToast(
                 "warning",
@@ -1524,13 +1611,14 @@ export default {
                 this.$t("Warning")
               );
             } else {
-              this.formatNumber(this.details[i].quantity--, 2);
+              this.$set(this.details[i], 'quantity', nextQuantity);
+              this.Calcul_Total();
+              this.$forceUpdate();
             }
           }
+          return;
         }
       }
-      this.$forceUpdate();
-      this.Calcul_Total();
     },
 
     //---------- keyup OrderTax
@@ -1769,6 +1857,7 @@ export default {
     delete_Product_Detail(id) {
       for (var i = 0; i < this.details.length; i++) {
         if (id === this.details[i].detail_id) {
+          if (this.replacementTargetDetailId === id) this.cancelProductReplacement();
           this.details.splice(i, 1);
           this.Calcul_Total();
         }
@@ -1876,7 +1965,12 @@ export default {
           })
           .catch(error => {
             NProgress.done();
-            this.makeToast("danger", this.$t("InvalidData"), this.$t("Failed"));
+            const response = error && error.response && error.response.data ? error.response.data : {};
+            const detailErrors = response.errors && response.errors.details;
+            const message = Array.isArray(detailErrors) && detailErrors.length
+              ? detailErrors[0]
+              : (response.message || this.$t("InvalidData"));
+            this.makeToast("danger", message, this.$t("Failed"));
             this.SubmitProcessing = false;
           });
       } else {
@@ -1941,9 +2035,10 @@ export default {
         this.add_product();
         this.Calcul_Total();
         if (this.product.is_batch_tracked) {
-          const last = this.details[this.details.length - 1];
-          if (last) {
-            this.fetch_batches_for_detail(last);
+          const addedOrReplaced = this.details.find(detail => detail === this.product)
+            || this.details[this.details.length - 1];
+          if (addedOrReplaced) {
+            this.fetch_batches_for_detail(addedOrReplaced);
           }
         }
       });
@@ -1979,6 +2074,7 @@ export default {
           };
 
           this.details = response.data.details;
+          this.itemsEditable = response.data.items_editable !== false;
           this.clients = response.data.clients;
           this.warehouses = response.data.warehouses;
           this.sales_agents = response.data.sales_agents || [];

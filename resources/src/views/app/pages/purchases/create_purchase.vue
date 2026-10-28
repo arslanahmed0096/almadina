@@ -572,7 +572,12 @@
                         </tr>
                         </template>
                         <tr v-if="details.length" class="font-weight-bold bg-light">
-                          <td class="text-right">Total Quantity</td>
+                          <td class="text-right">Total Items</td>
+                          <td class="purchase-quantity-column">{{ totalItems }}</td>
+                          <td colspan="10"></td>
+                        </tr>
+                        <tr v-if="details.length" class="font-weight-bold bg-light">
+                          <td class="text-right">Total Item Qty</td>
                           <td class="purchase-quantity-column">{{ formatNumber(totalQuantity, 2) }}</td>
                           <td colspan="10"></td>
                         </tr>
@@ -989,9 +994,12 @@ export default {
   },
  computed: {
    ...mapGetters(["currentUserPermissions","currentUser"]),
+    totalItems() {
+      return (this.details || []).filter(detail => detail && detail.del !== 1).length;
+    },
     totalQuantity() {
       return (this.details || []).reduce((total, detail) => {
-        if (!detail || detail.del === 1 || detail.no_unit === 0) return total;
+        if (!detail || detail.del === 1) return total;
         const quantity = Number(detail.quantity);
         return total + (Number.isFinite(quantity) ? quantity : 0);
       }, 0);
@@ -1581,15 +1589,18 @@ export default {
     Verified_Qty(detail, id) {
       for (var i = 0; i < this.details.length; i++) {
         if (this.details[i].detail_id == id) {
-          if (isNaN(detail.quantity)) {
-            this.details[i].quantity = 1;
+          let quantity = Number(detail.quantity);
+          if (!Number.isFinite(quantity) || quantity <= 0) {
+            quantity = 1;
           }
-          if (this.isGatePassDetail(detail) && !this.canAddInvoiceExcess && Number(detail.quantity) > Number(detail.gate_pass_max_quantity)) {
-            this.details[i].quantity = Number(detail.gate_pass_max_quantity);
+          if (this.isGatePassDetail(detail) && !this.canAddInvoiceExcess && quantity > Number(detail.gate_pass_max_quantity)) {
+            quantity = Number(detail.gate_pass_max_quantity);
             this.makeToast('warning', `Quantity cannot exceed the remaining Gate Pass quantity of ${detail.gate_pass_max_quantity}.`, this.$t('Warning'));
           }
+          this.$set(this.details[i], 'quantity', quantity);
           this.Calcul_Total();
           this.$forceUpdate();
+          return;
         }
       }
     },
@@ -1599,15 +1610,17 @@ export default {
     increment(detail, id) {
       for (var i = 0; i < this.details.length; i++) {
         if (this.details[i].detail_id == id) {
-          if (this.isGatePassDetail(detail) && !this.canAddInvoiceExcess && Number(this.details[i].quantity) + 1 > Number(detail.gate_pass_max_quantity)) {
+          const nextQuantity = (Number(this.details[i].quantity) || 0) + 1;
+          if (this.isGatePassDetail(detail) && !this.canAddInvoiceExcess && nextQuantity > Number(detail.gate_pass_max_quantity)) {
             this.makeToast('warning', `Quantity cannot exceed the remaining Gate Pass quantity of ${detail.gate_pass_max_quantity}.`, this.$t('Warning'));
             return;
           }
-          this.formatNumber(this.details[i].quantity++, 2);
+          this.$set(this.details[i], 'quantity', nextQuantity);
+          this.Calcul_Total();
+          this.$forceUpdate();
+          return;
         }
       }
-      this.$forceUpdate();
-      this.Calcul_Total();
     },
 
     //-----------------------------------decrement QTY ------------------------------\\
@@ -1615,13 +1628,15 @@ export default {
     decrement(detail, id) {
       for (var i = 0; i < this.details.length; i++) {
         if (this.details[i].detail_id == id) {
-          if (detail.quantity - 1 > 0) {
-            this.formatNumber(this.details[i].quantity--, 2);
+          const nextQuantity = (Number(this.details[i].quantity) || 1) - 1;
+          if (nextQuantity > 0) {
+            this.$set(this.details[i], 'quantity', nextQuantity);
+            this.Calcul_Total();
+            this.$forceUpdate();
           }
+          return;
         }
       }
-      this.$forceUpdate();
-      this.Calcul_Total();
     },
 
     //------------------------------Formetted Numbers -------------------------\\

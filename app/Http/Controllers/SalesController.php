@@ -7,6 +7,7 @@ use App\Services\BatchService;
 use App\Services\CustomerBalanceService;
 use App\Services\CustomerCreditService;
 use App\Services\PaymentAccountService;
+use App\Services\SaleItemChangeService;
 use App\Services\SaleReturnEligibilityService;
 use App\Services\WarehouseStockGuard;
 use App\Models\Account;
@@ -24,6 +25,7 @@ use App\Models\Role;
 use App\Models\Sale;
 use App\Models\SalesAgent;
 use App\Models\SaleDetail;
+use App\Models\SaleExchange;
 use App\Models\SaleReturn;
 use App\Models\Setting;
 use App\Models\Shipment;
@@ -108,7 +110,7 @@ class SalesController extends BaseController
         $data = [];
 
         // Check If User Has Permission View  All Records
-        $Sales = Sale::with('facture', 'client', 'warehouse', 'user', 'details:id,sale_id', 'details.shipmentItem:id,sale_detail_id')
+        $Sales = Sale::with('facture', 'client', 'warehouse', 'user', 'details:id,sale_id,quantity', 'details.shipmentItem:id,sale_detail_id')
             ->where('deleted_at', '=', null)
             ->where(function ($query) use ($view_records) {
                 if (! $view_records) {
@@ -180,6 +182,7 @@ class SalesController extends BaseController
             $item['shipping_status'] = $Sale['shipping_status'];
             $item['discount'] = $Sale['discount'];
             $item['shipping'] = $Sale['shipping'];
+            $item['total_quantity'] = round((float) $Sale->details->sum('quantity'), 3);
             $item['warehouse_name'] = $Sale['warehouse']['name'];
             $item['client_id'] = $Sale['client']['id'];
             $item['client_name'] = $Sale['client']['name'];
@@ -189,15 +192,18 @@ class SalesController extends BaseController
             $item['client_adr'] = $Sale['client']['adresse'];
             $item['GrandTotal'] = number_format($Sale['GrandTotal'], 2, '.', '');
             $item['paid_amount'] = number_format($Sale['paid_amount'], 2, '.', '');
-            $item['due'] = number_format($item['GrandTotal'] - $item['paid_amount'], 2, '.', '');
             $item['opening_balance'] = number_format($customerBalance['opening_balance'], 2, '.', '');
             $item['customer_invoice_due'] = number_format($customerBalance['invoice_due'], 2, '.', '');
             $item['customer_return_due'] = number_format($customerBalance['return_due'], 2, '.', '');
             $item['customer_total_due'] = number_format($customerBalance['total_due'], 2, '.', '');
             $item['payment_status'] = $Sale['payment_statut'];
             $item['credit_days'] = $Sale->credit_days;
-            $item['credit_due_date'] = optional($Sale->credit_due_date)->format('Y-m-d');
-            $item['outstanding_amount'] = number_format($creditService->outstandingForSale($Sale), 2, '.', '');
+            $outstandingAmount = $creditService->outstandingForSale($Sale);
+            $item['due'] = number_format($outstandingAmount, 2, '.', '');
+            $item['credit_due_date'] = $outstandingAmount > 0.009
+                ? optional($Sale->credit_due_date)->format('Y-m-d')
+                : null;
+            $item['outstanding_amount'] = number_format($outstandingAmount, 2, '.', '');
             $item['credit_status'] = $creditService->creditStatus($Sale);
             $item['has_delivered_items'] = app(SaleReturnEligibilityService::class)->hasDeliveredItems($Sale);
 
@@ -260,6 +266,7 @@ class SalesController extends BaseController
             'payment.amount' => 'nullable|numeric|min:0',
             'payment.payment_method_id' => 'nullable|integer|exists:payment_methods,id',
             'payment.account_id' => 'nullable|integer|exists:accounts,id',
+            'exchange_id' => 'nullable|integer|exists:sale_exchanges,id',
         ]);
 
         $this->assertProductsSelectable($request->user('api'), $request->input('details', []));
@@ -269,6 +276,35 @@ class SalesController extends BaseController
         $sale = \DB::transaction(function () use ($request, $transactionType, $creditService) {
             $helpers = new helpers;
             $clientForCredit = Client::whereKey($request->client_id)->lockForUpdate()->firstOrFail();
+            $exchange = null;
+            $exchangeCredit = 0.0;
+            $exchangeReturnValue = 0.0;
+            if ($request->filled('exchange_id')) {
+                $exchange = SaleExchange::with('saleReturn')
+                    ->whereKey($request->exchange_id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                if ($exchange->status !== 'awaiting_replacement' || $exchange->replacement_sale_id) {
+                    throw ValidationException::withMessages([
+                        'exchange_id' => ['This exchange already has a replacement sale.'],
+                    ]);
+                }
+                if ((int) $exchange->client_id !== (int) $request->client_id
+                    || (int) $exchange->warehouse_id !== (int) $request->warehouse_id) {
+                    throw ValidationException::withMessages([
+                        'exchange_id' => ['The replacement must use the same customer and warehouse as the returned sale.'],
+                    ]);
+                }
+                if ($transactionType !== 'sale' || $request->input('statut') !== 'completed') {
+                    throw ValidationException::withMessages([
+                        'exchange_id' => ['An exchange replacement must be saved as a completed sale.'],
+                    ]);
+                }
+
+                $exchangeCredit = $exchange->availableCredit();
+                $exchangeReturnValue = $exchange->returnValue();
+            }
             if ($transactionType === 'sale' && $request->input('statut') === 'completed') {
                 app(WarehouseStockGuard::class)->assertSaleAvailable(
                     (int) $request->warehouse_id,
@@ -293,7 +329,26 @@ class SalesController extends BaseController
                 return max(0, (float) $sale->GrandTotal - (float) $sale->paid_amount);
             }), 2);
             $previousBalance = round($openingBalance + $previousInvoiceBalance, 2);
-            $maximumPayment = round($previousBalance + $grandTotal, 2);
+            $paymentAllocatedToOriginalSale = 0.0;
+            if ($exchange) {
+                $paymentForPreviousInvoices = max(0, $requestedPayment - $openingBalance);
+                foreach ($previousSales as $previousSale) {
+                    if ($paymentForPreviousInvoices <= 0.009) {
+                        break;
+                    }
+
+                    $previousDue = max(0, (float) $previousSale->GrandTotal - (float) $previousSale->paid_amount);
+                    $allocatedAmount = min($paymentForPreviousInvoices, $previousDue);
+                    if ((int) $previousSale->id === (int) $exchange->original_sale_id) {
+                        $paymentAllocatedToOriginalSale = $allocatedAmount;
+                    }
+                    $paymentForPreviousInvoices = max(0, $paymentForPreviousInvoices - $allocatedAmount);
+                }
+            }
+            $exchangeCreditAfterPayment = $exchange
+                ? $exchange->creditAfterPayment($paymentAllocatedToOriginalSale)
+                : 0.0;
+            $maximumPayment = round(max(0, $previousBalance + $grandTotal - $exchangeCreditAfterPayment), 2);
 
             if ($paymentStatus !== 'pending' && $requestedPayment <= 0) {
                 throw ValidationException::withMessages([
@@ -421,8 +476,15 @@ class SalesController extends BaseController
             }
 
             // Credit eligibility is evaluated after previous invoices are settled.
+            // A payment allocated to the original invoice can increase the portion of
+            // its return that is available as exchange credit, so refresh it here.
+            if ($exchange) {
+                $exchange->unsetRelation('originalSale');
+                $exchange->unsetRelation('saleReturn');
+                $exchangeCredit = $exchange->availableCredit();
+            }
             $requestedCredit = $transactionType === 'sale'
-                ? max(0, round($grandTotal - $currentSalePayment, 2))
+                ? max(0, round($grandTotal - $currentSalePayment - $exchangeCredit, 2))
                 : 0.0;
             $creditResult = $creditService->assertEligible($clientForCredit, $requestedCredit);
             $appliedCreditDays = $request->filled('credit_days')
@@ -456,6 +518,13 @@ class SalesController extends BaseController
                     ->addDays($appliedCreditDays)->toDateString();
             }
             $order->save();
+
+            if ($exchange) {
+                $exchange->update([
+                    'replacement_sale_id' => $order->id,
+                    'status' => 'completed',
+                ]);
+            }
 
             if ($previousAllocationPaymentIds) {
                 PaymentSale::whereIn('id', $previousAllocationPaymentIds)->update([
@@ -634,6 +703,19 @@ class SalesController extends BaseController
                 'discount_from_points' => $order_discount_from_points,
             ]);
 
+            if ($exchange) {
+                $order->refresh();
+                $effectiveSettlement = min(
+                    (float) $order->GrandTotal,
+                    (float) $order->paid_amount + $exchangeCredit
+                );
+                $order->update([
+                    'payment_statut' => $effectiveSettlement + 0.009 >= (float) $order->GrandTotal
+                        ? 'paid'
+                        : ($effectiveSettlement > 0.009 ? 'partial' : 'unpaid'),
+                ]);
+            }
+
             if ($order->statut === 'completed') {
                 app(\App\Services\CommissionService::class)->calculateForSale($order);
             }
@@ -759,7 +841,9 @@ class SalesController extends BaseController
                     // Check If User->id === Sale->id
                     $this->authorizeForUser($request->user('api'), 'check_record', $current_Sale);
                 }
-                $old_sale_details = SaleDetail::where('sale_id', $id)->get();
+                $old_sale_details = SaleDetail::with(['product', 'productVariant'])
+                    ->where('sale_id', $id)
+                    ->get();
                 $new_sale_details = $request['details'];
 
                 // Once fulfillment has started, shipped commercial lines are immutable
@@ -1135,6 +1219,19 @@ class SalesController extends BaseController
                     'earned_points' => $new_earned,
                     'discount_from_points' => $request['discount_from_points'],
                 ]);
+
+                // Keep an immutable product-level history for order changes. Reusing a
+                // detail ID means a deliberate replacement; missing/new IDs are recorded
+                // as removals/additions. Quantity and price-only edits are not included.
+                $updatedSaleDetails = SaleDetail::with(['product', 'productVariant'])
+                    ->where('sale_id', $id)
+                    ->get();
+                app(SaleItemChangeService::class)->recordDifferences(
+                    $current_Sale,
+                    $old_sale_details,
+                    $updatedSaleDetails,
+                    $request->user('api')
+                );
 
                 app(\App\Services\Tax\TransactionTaxService::class)
                     ->snapshotSale($current_Sale->fresh(), array_values($new_sale_details), $request->user('api'));
@@ -1618,6 +1715,7 @@ class SalesController extends BaseController
             ? trim((string) $sale_data->salesAgent->phone)
             : null;
         $sale_details['discount_from_points'] = $sale_data->discount_from_points ?? 0;
+        $sale_details['has_delivered_items'] = app(SaleReturnEligibilityService::class)->hasDeliveredItems($sale_data);
 
         if (SaleReturn::where('sale_id', $id)->where('deleted_at', '=', null)->exists()) {
             $sellReturn = SaleReturn::where('sale_id', $id)->where('deleted_at', '=', null)->first();
@@ -1625,6 +1723,68 @@ class SalesController extends BaseController
             $sale_details['sale_has_return'] = 'yes';
         } else {
             $sale_details['sale_has_return'] = 'no';
+        }
+
+        $itemChanges = app(SaleItemChangeService::class)->present(
+            $sale_data->itemChanges()->with('user')->get()
+        );
+        $exchangeRecord = SaleExchange::with([
+            'originalSale:id,Ref,paid_amount',
+            'saleReturn:id,Ref,GrandTotal,paid_amount',
+            'saleReturn.details.product:id,name,code',
+            'replacementSale:id,Ref,GrandTotal',
+            'replacementSale.details.product:id,name,code',
+            'replacementSale.details.productVariant:id,name,code',
+            'creator:id,firstname,lastname,username',
+        ])
+            ->where('original_sale_id', $sale_data->id)
+            ->orWhere('replacement_sale_id', $sale_data->id)
+            ->latest('id')
+            ->first();
+        $exchange = null;
+        if ($exchangeRecord) {
+            $returnCredit = $exchangeRecord->availableCredit();
+            $replacementTotal = (float) ($exchangeRecord->replacementSale?->GrandTotal ?? 0);
+            $creator = $exchangeRecord->creator;
+            $creatorName = $creator ? trim((string) ($creator->firstname.' '.$creator->lastname)) : '';
+            $exchange = [
+                'id' => $exchangeRecord->id,
+                'status' => $exchangeRecord->status,
+                'role' => (int) $exchangeRecord->original_sale_id === (int) $sale_data->id ? 'original' : 'replacement',
+                'original_sale_id' => $exchangeRecord->original_sale_id,
+                'original_sale_ref' => $exchangeRecord->originalSale?->Ref,
+                'sale_return_id' => $exchangeRecord->sale_return_id,
+                'sale_return_ref' => $exchangeRecord->saleReturn?->Ref,
+                'replacement_sale_id' => $exchangeRecord->replacement_sale_id,
+                'replacement_sale_ref' => $exchangeRecord->replacementSale?->Ref,
+                'return_credit' => $returnCredit,
+                'replacement_total' => $replacementTotal,
+                'difference' => round($replacementTotal - $returnCredit, 2),
+                'returned_items' => $exchangeRecord->saleReturn?->details->map(fn ($detail) => [
+                    'name' => $detail->product?->name ?? 'Unknown product',
+                    'code' => $detail->product?->code ?? '',
+                    'quantity' => (float) $detail->quantity,
+                ])->values()->all() ?? [],
+                'replacement_items' => $exchangeRecord->replacementSale?->details->map(fn ($detail) => [
+                    'name' => $detail->productVariant
+                        ? '['.$detail->productVariant->name.'] '.($detail->product?->name ?? '')
+                        : ($detail->product?->name ?? 'Unknown product'),
+                    'code' => $detail->productVariant?->code ?? $detail->product?->code ?? '',
+                    'quantity' => (float) $detail->quantity,
+                ])->values()->all() ?? [],
+                'created_by' => $creatorName !== '' ? $creatorName : ($creator?->username ?? 'System'),
+                'created_at' => optional($exchangeRecord->created_at)->toIso8601String(),
+            ];
+            if ($exchange['role'] === 'replacement') {
+                $effectivePaid = min(
+                    (float) $sale_data->GrandTotal,
+                    (float) $sale_data->paid_amount + $returnCredit
+                );
+                $sale_details['paid_amount'] = number_format($effectivePaid, 2, '.', '');
+                $sale_details['payment_status'] = $effectivePaid + 0.009 >= (float) $sale_data->GrandTotal
+                    ? 'paid'
+                    : ($effectivePaid > 0.009 ? 'partial' : 'unpaid');
+            }
         }
 
         // Preload existing batch pivots for this sale's details (pharmacy/batch module).
@@ -1698,6 +1858,8 @@ class SalesController extends BaseController
             'details' => $details,
             'sale' => $sale_details,
             'company' => $company,
+            'item_changes' => $itemChanges,
+            'exchange' => $exchange,
             'taxes' => \App\Models\TransactionTaxSnapshot::where('transaction_type', $sale_data->is_pos ? 'pos' : 'sale_invoice')->where('transaction_id', $id)->orderBy('priority')->get(),
         ]);
 
@@ -2899,6 +3061,34 @@ class SalesController extends BaseController
             })
             ->values()
             ->take(20);
+        $exchangeContext = null;
+        if ($request->filled('exchange_id')) {
+            $exchange = SaleExchange::with(['originalSale:id,Ref,paid_amount', 'saleReturn:id,Ref,GrandTotal,paid_amount'])
+                ->whereKey($request->exchange_id)
+                ->where('status', 'awaiting_replacement')
+                ->firstOrFail();
+
+            if (! $user_auth->is_all_warehouses && ! in_array((int) $exchange->warehouse_id, $warehouses->pluck('id')->map(fn ($id) => (int) $id)->all(), true)) {
+                abort(403, 'You are not allowed to complete this exchange for its warehouse.');
+            }
+
+            $exchangeClient = Client::whereNull('deleted_at')->findOrFail($exchange->client_id, ['id', 'name', 'phone']);
+            if (! $clients->contains('id', $exchangeClient->id)) {
+                $clients->prepend($exchangeClient);
+            }
+
+            $exchangeContext = [
+                'id' => $exchange->id,
+                'original_sale_id' => $exchange->original_sale_id,
+                'original_sale_ref' => $exchange->originalSale?->Ref,
+                'sale_return_id' => $exchange->sale_return_id,
+                'sale_return_ref' => $exchange->saleReturn?->Ref,
+                'client_id' => $exchange->client_id,
+                'warehouse_id' => $exchange->warehouse_id,
+                'credit' => $exchange->availableCredit(),
+                'return_value' => $exchange->returnValue(),
+            ];
+        }
         $accounts = Account::where('deleted_at', '=', null)->get(['id', 'account_name', 'account_num', 'account_type']);
         $payment_methods = PaymentMethod::whereNull('deleted_at')->get(['id', 'name']);
         $sales_agents = SalesAgent::where('deleted_at', '=', null)->get(['id', 'name']);
@@ -2913,6 +3103,7 @@ class SalesController extends BaseController
             'accounts' => $accounts,
             'payment_methods' => $payment_methods,
             'point_to_amount_rate' => $settings->point_to_amount_rate,
+            'exchange' => $exchangeContext,
         ]);
 
     }
@@ -3121,6 +3312,8 @@ class SalesController extends BaseController
             $clients = Client::where('deleted_at', '=', null)->get(['id', 'name', 'phone']);
             $sales_agents = SalesAgent::where('deleted_at', '=', null)->get(['id', 'name']);
             $settings = Setting::where('deleted_at', '=', null)->first();
+            $itemsEditable = ! Schema::hasTable('shipment_items')
+                || ! ShipmentItem::whereIn('sale_detail_id', $Sale_data['details']->pluck('id'))->exists();
 
             return response()->json([
                 'details' => $details,
@@ -3130,6 +3323,7 @@ class SalesController extends BaseController
                 'sales_agents' => $sales_agents,
                 'discount_from_points' => $Sale_data->discount_from_points,
                 'point_to_amount_rate' => $settings->point_to_amount_rate,
+                'items_editable' => $itemsEditable,
             ]);
         }
 

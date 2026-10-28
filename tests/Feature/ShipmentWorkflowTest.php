@@ -179,6 +179,40 @@ class ShipmentWorkflowTest extends TestCase
         ]]);
     }
 
+    public function test_return_details_use_the_original_sale_price_and_tax_instead_of_submitted_values(): void
+    {
+        [$sale, $detailIds] = $this->seedSale([100], 100, 100, 0);
+        DB::table('sales')->where('id', $sale->id)->update(['statut' => 'completed']);
+        DB::table('sale_details')->where('id', $detailIds[0])->update([
+            'price' => 100,
+            'TaxNet' => 5,
+            'tax_method' => '1',
+            'discount' => 10,
+            'discount_method' => '1',
+        ]);
+
+        $validated = app(SaleReturnEligibilityService::class)
+            ->validateDetails($sale->fresh()->load('details'), [[
+                'id' => $detailIds[0],
+                'product_id' => 1,
+                'product_variant_id' => null,
+                'sale_unit_id' => null,
+                'quantity' => 1,
+                'Unit_price' => 1,
+                'tax_percent' => 100,
+                'tax_method' => '2',
+                'discount' => 0,
+                'discount_Method' => '2',
+                'subtotal' => 999,
+            ]])
+            ->first();
+
+        $this->assertSame(100.0, $validated['Unit_price']);
+        $this->assertSame(5.0, $validated['tax_percent']);
+        $this->assertSame(10.0, $validated['discount']);
+        $this->assertSame(94.5, $validated['subtotal']);
+    }
+
     public function test_existing_return_quantity_cannot_be_returned_again(): void
     {
         [$sale, $detailIds] = $this->seedSale([6000], 6000, 6000, 0);
@@ -443,6 +477,12 @@ class ShipmentWorkflowTest extends TestCase
             $table->unsignedInteger('sale_unit_id')->nullable();
             $table->decimal('quantity', 15, 2);
             $table->decimal('total', 15, 2);
+            $table->decimal('price', 15, 2)->default(0);
+            $table->decimal('TaxNet', 8, 2)->default(0);
+            $table->string('tax_method')->default('1');
+            $table->decimal('discount', 8, 2)->default(0);
+            $table->string('discount_method')->default('2');
+            $table->string('imei_number')->nullable();
             $table->timestamps();
         });
         Schema::create('sale_returns', function (Blueprint $table) {

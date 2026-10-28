@@ -1,6 +1,6 @@
 <template>
   <div class="main-content">
-    <breadcumb :page="$t('CreateSaleReturn')" :folder="$t('ListReturns')"/>
+    <breadcumb :page="isExchange ? 'Exchange Product' : $t('CreateSaleReturn')" :folder="$t('ListReturns')"/>
     <div v-if="isLoading" class="loading_page spinner spinner-primary mr-3"></div>
 
     <validation-observer ref="create_sale_return" v-if="!isLoading">
@@ -9,6 +9,11 @@
           <b-col lg="12" md="12" sm="12">
             <b-card>
               <b-row>
+                <b-col v-if="isExchange" md="12">
+                  <b-alert show variant="info">
+                    <strong>Exchange step 1 of 2:</strong> select the product being returned. No cash refund is issued now; its value will be applied to the replacement sale in step 2.
+                  </b-alert>
+                </b-col>
                  <!-- date  -->
                 <b-col lg="4" md="4" sm="12" class="mb-3">
                   <validation-provider
@@ -49,6 +54,7 @@
                         :class="{'is-invalid': !!errors.length}"
                         :state="errors[0] ? false : (valid ? true : null)"
                         v-model="sale_return.statut"
+                        :disabled="isExchange"
                         :reduce="label => label.value"
                         :placeholder="$t('Choose_Status')"
                         :options="
@@ -180,7 +186,7 @@
                   </table>
                 </div>
 
-                <b-col md="12" class="mb-3">
+                <b-col v-if="!isExchange" md="12" class="mb-3">
                   <b-card class="border" title="Refund Amount">
                     <b-alert variant="info" show>
                       Record how the customer is refunded. The combined refund can be partial, but cannot exceed the Sale Return total.
@@ -242,7 +248,7 @@
                 </b-col>
 
                  <!-- Order Tax  -->
-                <b-col lg="4" md="4" sm="12" class="mb-3">
+                <b-col v-if="!isExchange" lg="4" md="4" sm="12" class="mb-3">
                   <validation-provider
                     name="Order Tax"
                     :rules="{ regex: /^\d*\.?\d*$/}"
@@ -266,7 +272,7 @@
                 </b-col>
 
                 <!-- Discount -->
-                <b-col lg="4" md="4" sm="12" class="mb-3">
+                <b-col v-if="!isExchange" lg="4" md="4" sm="12" class="mb-3">
                   <validation-provider
                     name="Discount"
                     :rules="{ regex: /^\d*\.?\d*$/}"
@@ -290,7 +296,7 @@
                 </b-col>
 
                 <!-- Shipping  -->
-                <b-col lg="4" md="4" sm="12" class="mb-3">
+                <b-col v-if="!isExchange" lg="4" md="4" sm="12" class="mb-3">
                   <validation-provider
                     name="Shipping"
                     :rules="{ regex: /^\d*\.?\d*$/}"
@@ -325,7 +331,7 @@
                 </b-col>
                 <b-col md="12">
                   <b-form-group>
-                    <b-button variant="primary" @click="Submit_sale_return" :disabled="SubmitProcessing"><lucide-icon class="me-2 font-weight-bold" name="check" /> {{$t('submit')}}</b-button>
+                    <b-button variant="primary" @click="Submit_sale_return" :disabled="SubmitProcessing"><lucide-icon class="me-2 font-weight-bold" name="check" /> {{ isExchange ? 'Continue to Replacement Sale' : $t('submit') }}</b-button>
                      <div v-once class="typo__p" v-if="SubmitProcessing">
                       <div class="spinner sm spinner-primary mt-3"></div>
                     </div>
@@ -383,6 +389,9 @@ export default {
 
   computed: {
     ...mapGetters(["currentUser"]),
+    isExchange() {
+      return String(this.$route.query.exchange || '') === '1';
+    },
     bankAccountOptions() {
       return this.accountOptionsForType('bank');
     },
@@ -671,6 +680,7 @@ export default {
             refund_cash_account_id: this.sale_return.refund_cash_account_id || null,
             refund_bank_account_id: this.sale_return.refund_bank_account_id || null,
             refund_easypaisa_account_id: this.sale_return.refund_easypaisa_account_id || null,
+            is_exchange: this.isExchange,
             details: this.details
           })
           .then(response => {
@@ -681,13 +691,23 @@ export default {
               this.$t("Success")
             );
 
-             this.SubmitProcessing = false;
-            this.$router.push({ name: "index_sale_return" });
+            this.SubmitProcessing = false;
+            if (this.isExchange && response.data && response.data.exchange_id) {
+              this.$router.push({ name: "store_sale", query: { exchange_id: response.data.exchange_id } });
+            } else {
+              this.$router.push({ name: "index_sale_return" });
+            }
           })
           .catch(error => {
             NProgress.done();
-            this.makeToast("danger", this.$t("InvalidData"), this.$t("Failed"));
-             this.SubmitProcessing = false;
+            const data = error && error.response && error.response.data ? error.response.data : {};
+            const errors = data.errors || {};
+            const firstKey = Object.keys(errors)[0];
+            const message = firstKey && Array.isArray(errors[firstKey])
+              ? errors[firstKey][0]
+              : (data.message || this.$t("InvalidData"));
+            this.makeToast("danger", message, this.$t("Failed"));
+            this.SubmitProcessing = false;
           });
       }
     },
@@ -710,6 +730,7 @@ export default {
           this.$set(this.sale_return, 'refund_bank_account_id', null);
           this.$set(this.sale_return, 'refund_easypaisa_account_id', null);
           this.sale_return.date = new Date().toISOString().slice(0, 10);
+          if (this.isExchange) this.sale_return.statut = 'received';
           this.Calcul_Total();
           this.isLoading = false;
         })

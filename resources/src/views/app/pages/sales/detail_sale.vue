@@ -17,6 +17,16 @@
                 <lucide-icon name="chevron-left" />
                 <span>{{$t('Back')}}</span>
               </router-link>
+
+              <router-link
+                v-if="currentUserPermissions && currentUserPermissions.includes('Sale_Returns_add') && currentUserPermissions.includes('Sales_add') && sale.sale_has_return == 'no' && (sale.statut == 'completed' || sale.has_delivered_items)"
+                title="Exchange Product"
+                class="action-btn btn-edit"
+                :to="{ name: 'sale_return', params: { id: $route.params.id }, query: { exchange: 1 } }"
+              >
+                <lucide-icon name="refresh-cw" />
+                <span>Exchange</span>
+              </router-link>
             </div>
 
             <!-- Primary Actions Group -->
@@ -347,6 +357,79 @@
         </div>
       </div>
     </b-card>
+    <b-card v-if="!isLoading && exchange" class="mt-4 no-print">
+      <h5 class="font-weight-bold mb-3">
+        <lucide-icon name="refresh-cw" class="mr-2" />Product Exchange
+      </h5>
+      <div class="mb-3">
+        <div v-for="item in exchange.returned_items || []" :key="'returned-' + item.code" class="text-danger">
+          Returned: <strong>{{ item.name }}</strong> ({{ item.code }}) × {{ formatNumber(item.quantity, 2) }}
+        </div>
+        <div v-for="item in exchange.replacement_items || []" :key="'replacement-' + item.code" class="text-success">
+          Replacement: <strong>{{ item.name }}</strong> ({{ item.code }}) × {{ formatNumber(item.quantity, 2) }}
+        </div>
+      </div>
+      <b-row>
+        <b-col md="4">
+          <small class="text-muted d-block">Original sale</small>
+          <router-link :to="{ name: 'detail_sale', params: { id: exchange.original_sale_id } }">
+            {{ exchange.original_sale_ref }}
+          </router-link>
+        </b-col>
+        <b-col md="4">
+          <small class="text-muted d-block">Returned product credit</small>
+          <router-link :to="{ name: 'detail_sale_return', params: { id: exchange.sale_return_id } }">
+            {{ exchange.sale_return_ref }}
+          </router-link>
+          · {{ formatPriceWithSymbol(currentUser.currency, exchange.return_credit, 2) }}
+        </b-col>
+        <b-col md="4">
+          <small class="text-muted d-block">Replacement sale</small>
+          <router-link v-if="exchange.replacement_sale_id" :to="{ name: 'detail_sale', params: { id: exchange.replacement_sale_id } }">
+            {{ exchange.replacement_sale_ref }}
+          </router-link>
+          <router-link
+            v-else-if="exchange.status === 'awaiting_replacement'"
+            :to="{ name: 'store_sale', query: { exchange_id: exchange.id } }"
+            class="btn btn-sm btn-primary"
+          >
+            Continue exchange
+          </router-link>
+          <span v-else class="text-muted">Exchange cancelled</span>
+        </b-col>
+      </b-row>
+      <div v-if="exchange.replacement_sale_id" class="mt-3 font-weight-bold">
+        <span v-if="exchange.difference > 0">Customer paid/owes difference: {{ formatPriceWithSymbol(currentUser.currency, exchange.difference, 2) }}</span>
+        <span v-else-if="exchange.difference < 0">Remaining customer credit: {{ formatPriceWithSymbol(currentUser.currency, Math.abs(exchange.difference), 2) }}</span>
+        <span v-else>Even exchange — no price difference.</span>
+      </div>
+    </b-card>
+    <b-card v-if="!isLoading && item_changes.length" class="mt-4 no-print">
+      <h5 class="font-weight-bold mb-3">
+        <lucide-icon name="history" class="mr-2" />Order Item Change History
+      </h5>
+      <div
+        v-for="change in item_changes"
+        :key="change.id"
+        class="border-left border-primary pl-3 py-2 mb-3"
+      >
+        <div v-if="change.action === 'product_replaced'">
+          <strong>Product changed:</strong>
+          {{ changeItemLabel(change.old_item) }}
+          <lucide-icon name="arrow-right" class="mx-1" />
+          {{ changeItemLabel(change.new_item) }}
+        </div>
+        <div v-else-if="change.action === 'product_removed'">
+          <strong>Product removed:</strong> {{ changeItemLabel(change.old_item) }}
+        </div>
+        <div v-else>
+          <strong>Product added:</strong> {{ changeItemLabel(change.new_item) }}
+        </div>
+        <small class="text-muted">
+          {{ change.changed_by || 'System' }} · {{ formatChangeDate(change.changed_at) }}
+        </small>
+      </div>
+    </b-card>
   </div>
 </template>
 
@@ -417,6 +500,8 @@ export default {
       isLoading: true,
       sale: {},
       details: [],
+      item_changes: [],
+      exchange: null,
       tax_summary: [],
       variants: [],
       company: {},
@@ -433,6 +518,19 @@ export default {
   },
 
   methods: {
+    changeItemLabel(item) {
+      if (!item) return 'Unknown product';
+      const variant = item.variant ? ` [${item.variant}]` : '';
+      const code = item.code ? ` (${item.code})` : '';
+      return `${item.name || 'Unknown product'}${variant}${code}`;
+    },
+
+    formatChangeDate(value) {
+      if (!value) return '';
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+    },
+
     getCreditBadgeClass(status) {
       if (status === 'Paid') return 'badge badge-outline-success';
       if (status === 'Overdue') return 'badge badge-outline-danger';
@@ -728,6 +826,8 @@ export default {
         .then(response => {
           this.sale = response.data.sale;
           this.details = response.data.details;
+          this.item_changes = response.data.item_changes || [];
+          this.exchange = response.data.exchange || null;
           this.company = response.data.company;
           this.tax_summary = this.summarizeTaxes(response.data.taxes || []);
           this.isLoading = false;

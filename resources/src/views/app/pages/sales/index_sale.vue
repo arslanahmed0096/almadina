@@ -105,6 +105,15 @@
                 </b-dropdown-item>
 
                 <b-dropdown-item
+                  title="Exchange Product"
+                  v-if="currentUserPermissions.includes('Sale_Returns_add') && currentUserPermissions.includes('Sales_add') && props.row.sale_has_return == 'no' && (props.row.statut == 'completed' || props.row.has_delivered_items)"
+                  :to="{ name: 'sale_return', params: { id: props.row.id }, query: { exchange: 1 } }"
+                >
+                  <lucide-icon class="nav-icon font-weight-bold mr-2" name="refresh-cw" />
+                  Exchange Product
+                </b-dropdown-item>
+
+                <b-dropdown-item
                   title="Sell Return"
                   v-if="currentUserPermissions.includes('Sale_Returns_add') && props.row.sale_has_return == 'yes'"
                   :to="'/app/sale_return/edit/'+props.row.salereturn_id+'/'+props.row.id"
@@ -235,6 +244,12 @@
             <span v-else-if="props.row.credit_status == 'Within Due Date'" class="badge badge-outline-info">Within Due Date</span>
             <span v-else class="text-muted">—</span>
           </div>
+          <span v-else-if="props.column.field == 'credit_due_date'">
+            {{ Number(props.row.outstanding_amount || 0) > 0 && props.row.credit_due_date ? props.row.credit_due_date : '-' }}
+          </span>
+          <span v-else-if="props.column.field == 'total_quantity'">
+            <strong>{{ Number(props.row.total_quantity || 0).toLocaleString(undefined, { maximumFractionDigits: 3 }) }}</strong>
+          </span>
           <span v-else-if="props.column.field == 'GrandTotal'">
             {{ formatPriceWithSymbol(currentUser.currency, props.row.GrandTotal, 2) }}
           </span>
@@ -2217,6 +2232,14 @@ export default {
           thClass: "text-left"
         },
         {
+          label: "Total Qty",
+          field: "total_quantity",
+          type: "number",
+          tdClass: "text-right",
+          thClass: "text-right",
+          sortable: false
+        },
+        {
           label: this.$t("Total"),
           field: "GrandTotal",
           tdClass: "text-left",
@@ -2244,7 +2267,7 @@ export default {
           thClass: "text-left"
         },
         {
-          label: "Credit Due Date",
+          label: "Payment Due Date",
           field: "credit_due_date",
           tdClass: "text-left",
           thClass: "text-left",

@@ -104,7 +104,34 @@ class SaleReturnEligibilityService
             }
 
             $seen[$saleDetailId] = true;
-            $positive[$index] = array_merge($detail, ['sale_detail_id' => $saleDetailId]);
+            $price = (float) $sourceDetail->price;
+            $discount = (float) $sourceDetail->discount;
+            $discountNet = (string) $sourceDetail->discount_method === '2'
+                ? $discount
+                : $price * $discount / 100;
+            $taxRate = (float) $sourceDetail->TaxNet;
+            $taxPrice = $taxRate * (($price - $discountNet) / 100);
+            $netPrice = (string) $sourceDetail->tax_method === '1'
+                ? $price - $discountNet
+                : $price - $discountNet - $taxPrice;
+            $lineTax = (string) $sourceDetail->tax_method === '1'
+                ? $taxPrice
+                : $price - $netPrice - $discountNet;
+
+            $positive[$index] = array_merge($detail, [
+                'sale_detail_id' => $saleDetailId,
+                'product_id' => (int) $sourceDetail->product_id,
+                'product_variant_id' => $sourceDetail->product_variant_id,
+                'sale_unit_id' => $sourceDetail->sale_unit_id,
+                'no_unit' => $sourceDetail->sale_unit_id === null ? 0 : 1,
+                'Unit_price' => $price,
+                'tax_percent' => $taxRate,
+                'tax_method' => $sourceDetail->tax_method,
+                'discount' => $discount,
+                'discount_Method' => $sourceDetail->discount_method,
+                'imei_number' => $sourceDetail->imei_number,
+                'subtotal' => round(($netPrice + $lineTax) * $quantity, 2),
+            ]);
         }
 
         return $positive;

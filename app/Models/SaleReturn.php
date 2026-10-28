@@ -62,4 +62,9 @@ class SaleReturn extends Model
     {
         return $this->hasMany('App\Models\PaymentSaleReturns');
     }
+
+    public function exchange()
+    {
+        return $this->hasOne(SaleExchange::class);
+    }
 }

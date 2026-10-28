@@ -234,6 +234,28 @@
         </div>
       </div>
     </b-card>
+    <b-card v-if="!isLoading && exchange" class="mt-4 no-print">
+      <h5 class="font-weight-bold mb-3"><lucide-icon name="refresh-cw" class="mr-2" />Product Exchange</h5>
+      <div v-for="item in exchange.returned_items || []" :key="'returned-' + item.code" class="text-danger mb-1">
+        Returned: <strong>{{ item.name }}</strong> ({{ item.code }}) × {{ formatNumber(item.quantity, 2) }}
+      </div>
+      <div v-for="item in exchange.replacement_items || []" :key="'replacement-' + item.code" class="text-success mb-1">
+        Replacement: <strong>{{ item.name }}</strong> ({{ item.code }}) × {{ formatNumber(item.quantity, 2) }}
+      </div>
+      <p>
+        Original sale:
+        <router-link :to="{ name: 'detail_sale', params: { id: exchange.original_sale_id } }">{{ exchange.original_sale_ref }}</router-link>
+      </p>
+      <p>Return credit: {{ formatPriceWithSymbol(currentUser.currency, exchange.return_credit, 2) }}</p>
+      <p v-if="exchange.replacement_sale_id">
+        Replacement sale:
+        <router-link :to="{ name: 'detail_sale', params: { id: exchange.replacement_sale_id } }">{{ exchange.replacement_sale_ref }}</router-link>
+      </p>
+      <router-link v-else-if="exchange.status === 'awaiting_replacement'" :to="{ name: 'store_sale', query: { exchange_id: exchange.id } }" class="btn btn-primary btn-sm">
+        Continue to Replacement Sale
+      </router-link>
+      <p v-else class="text-muted">Exchange cancelled</p>
+    </b-card>
   </div>
 </template>
 
@@ -257,6 +279,7 @@ export default {
       isLoading: true,
       sale_return: {},
       details: [],
+      exchange: null,
       tax_summary: [],
       company: {},
       email: {},
@@ -378,6 +401,7 @@ export default {
         .then(response => {
           this.sale_return = response.data.sale_Return;
           this.details = response.data.details;
+          this.exchange = response.data.exchange || null;
           this.company = response.data.company;
           this.tax_summary = this.summarizeTaxes(response.data.taxes || []);
           this.isLoading = false;

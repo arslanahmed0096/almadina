@@ -9,6 +9,19 @@
           <b-col lg="12" md="12" sm="12">
             <b-card>
               <b-row>
+                <b-col v-if="exchange" md="12">
+                  <b-alert show variant="info">
+                    <strong>Exchange step 2 of 2:</strong>
+                    select the replacement product. Return {{ exchange.sale_return_ref }} provides
+                    {{ currentUser.currency }} {{ formatNumber(exchange.credit, 2) }} credit.
+                    <span v-if="exchangeDifference > 0" class="ml-1 font-weight-bold">
+                      Customer difference: {{ currentUser.currency }} {{ formatNumber(exchangeDifference, 2) }}.
+                    </span>
+                    <span v-else-if="exchangeDifference < 0" class="ml-1 font-weight-bold">
+                      Remaining customer credit: {{ currentUser.currency }} {{ formatNumber(Math.abs(exchangeDifference), 2) }}.
+                    </span>
+                  </b-alert>
+                </b-col>
 
                 <b-modal hide-footer id="open_scan" size="md" title="Barcode Scanner">
                   <qrcode-scanner
@@ -50,6 +63,7 @@
                           :class="{'is-invalid': !!errors.length}"
                           :state="errors[0] ? false : (valid ? true : null)"
                           v-model="selectedClientId"
+                          :disabled="!!exchange"
                           @input="Selected_customer"
                           @search="SearchCustomers"
                           :reduce="label => label.value"
@@ -58,7 +72,7 @@
                           :placeholder="$t('Choose_Customer')"
                           :options="customerOptions"
                         />
-                        <b-input-group-append v-if="canOpenCustomerModal">
+                        <b-input-group-append v-if="canOpenCustomerModal && !exchange">
                           <b-button
                             variant="primary"
                             @click="Open_Customer_Modal"
@@ -81,7 +95,7 @@
                       <v-select
                         :class="{'is-invalid': !!errors.length}"
                         :state="errors[0] ? false : (valid ? true : null)"
-                        :disabled="details.length > 0"
+                        :disabled="!!exchange || details.length > 0"
                         @input="Selected_Warehouse"
                         v-model="sale.warehouse_id"
                         :reduce="label => label.value"
@@ -117,7 +131,7 @@
                       <v-select
                         :class="{'is-invalid': !!errors.length}"
                         :state="errors[0] ? false : (valid ? true : null)"
-                        :disabled="details.length > 0"
+                        :disabled="!!exchange || details.length > 0"
                         v-model="sale.transaction_type"
                         :reduce="option => option.value"
                         :options="[
@@ -325,7 +339,7 @@
                                 </b-input-group-prepend>
                                 <input
                                   class="form-control"
-                                  @keyup="Verified_Qty(detail,detail.detail_id)"
+                                  @input="Verified_Qty(detail,detail.detail_id)"
                                   :min="0.00"
                                   :max="sale.transaction_type === 'order' ? null : detail.stock"
                                   v-model.number="detail.quantity"
@@ -481,7 +495,12 @@
                         </tr>
                         </template>
                         <tr v-if="details.length" class="font-weight-bold bg-light">
-                          <td colspan="4" class="text-right">Total Quantity</td>
+                          <td colspan="4" class="text-right">Total Items</td>
+                          <td>{{ totalItems }}</td>
+                          <td colspan="5"></td>
+                        </tr>
+                        <tr v-if="details.length" class="font-weight-bold bg-light">
+                          <td colspan="4" class="text-right">Total Item Qty</td>
                           <td>{{ formatNumber(totalQuantity, 2) }}</td>
                           <td colspan="5"></td>
                         </tr>
@@ -1255,6 +1274,7 @@ export default {
         gst_option: 'gst'
       },
       sales: [],
+      exchange: null,
       payment_methods:[],
       payment: {
         status: "pending",
@@ -1352,9 +1372,18 @@ export default {
   computed: {
     ...mapGetters(["currentUserPermissions","currentUser"]),
 
+    exchangeDifference() {
+      if (!this.exchange) return 0;
+      return Number((Number(this.GrandTotal || 0) - Number(this.exchange.credit || 0)).toFixed(2));
+    },
+
+    totalItems() {
+      return (this.details || []).filter(detail => detail && detail.del !== 1).length;
+    },
+
     totalQuantity() {
       return (this.details || []).reduce((total, detail) => {
-        if (!detail || detail.del === 1 || detail.no_unit === 0) return total;
+        if (!detail || detail.del === 1) return total;
         const quantity = Number(detail.quantity);
         return total + (Number.isFinite(quantity) ? quantity : 0);
       }, 0);
@@ -1384,7 +1413,10 @@ export default {
     },
 
     customerGrandTotal() {
-      return Number(this.GrandTotal || 0) + Number(this.selectedClientPreviousBalance || 0);
+      const exchangeCredit = this.exchange
+        ? Math.min(Number(this.exchange.return_value || 0), Number(this.exchange.credit || 0))
+        : 0;
+      return Math.max(0, Number(this.GrandTotal || 0) + Number(this.selectedClientPreviousBalance || 0) - exchangeCredit);
     },
 
     paymentAppliedToPreviousSales() {
@@ -1403,9 +1435,34 @@ export default {
       );
     },
 
+    paymentAppliedToExchangeOriginalSale() {
+      if (!this.exchange || this.payment.status === 'pending') return 0;
+
+      let remaining = Math.max(
+        0,
+        Number(this.payment.amount || 0) - Number(this.selectedClientOpeningBalance || 0)
+      );
+      for (const invoice of this.selectedClientOutstandingSales || []) {
+        const due = Number(invoice.outstanding_amount || 0);
+        if (Number(invoice.id) === Number(this.exchange.original_sale_id)) {
+          return Math.min(remaining, due);
+        }
+        remaining = Math.max(0, remaining - due);
+        if (remaining <= 0.009) break;
+      }
+
+      return 0;
+    },
+
     requestedCreditAmount() {
       if (this.sale.transaction_type !== 'sale' || this.sale.statut !== 'completed') return 0;
-      return Math.max(0, Number(this.GrandTotal || 0) - this.paymentAppliedToCurrentSale);
+      const exchangeCredit = this.exchange
+        ? Math.min(
+            Number(this.exchange.return_value || 0),
+            Number(this.exchange.credit || 0) + this.paymentAppliedToExchangeOriginalSale
+          )
+        : 0;
+      return Math.max(0, Number(this.GrandTotal || 0) - this.paymentAppliedToCurrentSale - exchangeCredit);
     },
 
     canRecordInitialPayment() {
@@ -3130,17 +3187,18 @@ export default {
           const stock = Number(detail.stock);
           if (!Number.isFinite(quantity) || quantity <= 0) {
             this.makeToast("warning", this.$t("AddQuantity"), this.$t("Warning"));
-            this.details[i].quantity = this.isStockCheckRequired ? Math.min(1, Math.max(0, stock)) : 1;
+            this.$set(this.details[i], 'quantity', this.isStockCheckRequired ? Math.min(1, Math.max(0, stock)) : 1);
           } else if (this.isStockCheckRequired && (stock <= 0 || quantity > stock)) {
             this.makeToast("warning", this.$t("LowStock"), this.$t("Warning"));
-            this.details[i].quantity = Math.max(0, stock);
+            this.$set(this.details[i], 'quantity', Math.max(0, stock));
           } else {
-            this.details[i].quantity = quantity;
+            this.$set(this.details[i], 'quantity', quantity);
           }
+          this.CalculTotal();
+          this.$forceUpdate();
+          return;
         }
       }
-      this.$forceUpdate();
-      this.CalculTotal();
     },
 
     //-----------------------------------increment QTY ------------------------------\\
@@ -3148,15 +3206,17 @@ export default {
     increment(detail, id) {
       for (var i = 0; i < this.details.length; i++) {
         if (this.details[i].detail_id == id) {
-          if (this.isStockCheckRequired && detail.quantity + 1 > detail.stock) {
+          const nextQuantity = (Number(this.details[i].quantity) || 0) + 1;
+          if (this.isStockCheckRequired && nextQuantity > Number(detail.stock)) {
             this.makeToast("warning", this.$t("LowStock"), this.$t("Warning"));
           } else {
-            this.formatNumber(this.details[i].quantity++, 2);
+            this.$set(this.details[i], 'quantity', nextQuantity);
+            this.CalculTotal();
+            this.$forceUpdate();
           }
+          return;
         }
       }
-      this.$forceUpdate();
-      this.CalculTotal();
     },
 
     //-----------------------------------decrement QTY ------------------------------\\
@@ -3164,21 +3224,23 @@ export default {
     decrement(detail, id) {
       for (var i = 0; i < this.details.length; i++) {
         if (this.details[i].detail_id == id) {
-          if (detail.quantity - 1 > 0) {
-            if (this.isStockCheckRequired && detail.quantity - 1 > detail.stock) {
+          const nextQuantity = (Number(this.details[i].quantity) || 1) - 1;
+          if (nextQuantity > 0) {
+            if (this.isStockCheckRequired && nextQuantity > Number(detail.stock)) {
               this.makeToast(
                 "warning",
                 this.$t("LowStock"),
                 this.$t("Warning")
               );
             } else {
-              this.formatNumber(this.details[i].quantity--, 2);
+              this.$set(this.details[i], 'quantity', nextQuantity);
+              this.CalculTotal();
+              this.$forceUpdate();
             }
           }
+          return;
         }
       }
-      this.$forceUpdate();
-      this.CalculTotal();
     },
 
     //------------------------------Formetted Numbers -------------------------\\
@@ -3515,6 +3577,7 @@ export default {
               change: this.getPaymentBalance().toFixed(2),
               discount_from_points: this.discount_from_points,
               used_points: this.used_points,
+              exchange_id: this.exchange ? this.exchange.id : null,
             })
             .then(response => {
               this.makeToast(
@@ -3686,8 +3749,9 @@ export default {
 
     //---------------------------------------Get Elements ------------------------------\\
     GetElements() {
+      const exchangeId = this.$route.query.exchange_id;
       axios
-        .get("sales/create")
+        .get("sales/create", { params: exchangeId ? { exchange_id: exchangeId } : {} })
         .then(response => {
           this.setClients(response.data.clients);
           this.warehouses = response.data.warehouses;
@@ -3695,6 +3759,15 @@ export default {
           this.accounts = response.data.accounts;
           this.payment_methods = response.data.payment_methods;
           this.point_to_amount_rate = response.data.point_to_amount_rate;
+          this.exchange = response.data.exchange || null;
+          if (this.exchange) {
+            this.selectedClientId = this.exchange.client_id;
+            this.sale.warehouse_id = this.exchange.warehouse_id;
+            this.sale.transaction_type = 'sale';
+            this.sale.statut = 'completed';
+            this.Selected_customer(this.selectedClientId);
+            this.Selected_Warehouse(this.sale.warehouse_id);
+          }
           this.isLoading = false;
         })
         .catch(response => {

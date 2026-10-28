@@ -12,6 +12,7 @@ use App\Models\ProductVariant;
 use App\Models\Role;
 use App\Models\Sale;
 use App\Models\SaleDetail;
+use App\Models\SaleExchange;
 use App\Models\SaleReturn;
 use App\Models\SaleReturnDetails;
 use App\Models\Setting;
@@ -190,6 +191,7 @@ class SalesReturnController extends BaseController
             'warehouse_id' => 'required',
             'sale_id' => 'required|integer|exists:sales,id',
             'statut' => 'required',
+            'GrandTotal' => 'required|numeric|min:0',
             'details' => 'required|array|min:1',
             'details.*.product_id' => 'required|integer',
             'details.*.quantity' => 'required|numeric|min:0',
@@ -199,9 +201,16 @@ class SalesReturnController extends BaseController
             'refund_cash_account_id' => 'nullable|integer|exists:accounts,id',
             'refund_bank_account_id' => 'nullable|integer|exists:accounts,id',
             'refund_easypaisa_account_id' => 'nullable|integer|exists:accounts,id',
+            'is_exchange' => 'nullable|boolean',
         ]);
 
-        \DB::transaction(function () use ($request) {
+        if ($request->boolean('is_exchange') && $request->input('statut') !== 'received') {
+            throw ValidationException::withMessages([
+                'statut' => ['An exchanged product must be received before the replacement sale is created.'],
+            ]);
+        }
+
+        $result = \DB::transaction(function () use ($request) {
             $sale = Sale::with('details')
                 ->whereNull('deleted_at')
                 ->lockForUpdate()
@@ -222,13 +231,26 @@ class SalesReturnController extends BaseController
                 ->validateDetails($sale, (array) $request->input('details', []))
                 ->values()
                 ->all();
+            $isExchange = $request->boolean('is_exchange');
+            $returnTaxRate = $isExchange ? 0 : (float) $request->input('tax_rate', 0);
+            $returnTaxNet = $isExchange ? 0 : (float) $request->input('TaxNet', 0);
+            $returnDiscount = $isExchange ? 0 : (float) $request->input('discount', 0);
+            $returnShipping = $isExchange ? 0 : (float) $request->input('shipping', 0);
+            $returnTotal = $isExchange
+                ? round(array_sum(array_column($data, 'subtotal')), 2)
+                : (float) $request->GrandTotal;
             $refunds = $request->only([
                 'refund_cash_amount', 'refund_bank_amount', 'refund_easypaisa_amount',
                 'refund_cash_account_id', 'refund_bank_account_id', 'refund_easypaisa_account_id',
             ]);
             $refundService = app(SaleReturnRefundService::class);
             $refundTotal = $refundService->total($refunds);
-            if ($refundTotal > (float) $request->GrandTotal + 0.005) {
+            if ($isExchange && $refundTotal > 0.005) {
+                throw ValidationException::withMessages([
+                    'refunds' => ['Do not issue a refund during an exchange. The return value is applied to the replacement sale.'],
+                ]);
+            }
+            if ($refundTotal > $returnTotal + 0.005) {
                 throw ValidationException::withMessages([
                     'refunds' => ['The combined cash, bank, and EasyPaisa refund cannot exceed the Sale Return total.'],
                 ]);
@@ -242,14 +264,14 @@ class SalesReturnController extends BaseController
             $order->client_id = $request->client_id;
             $order->sale_id = $request->sale_id;
             $order->warehouse_id = $request->warehouse_id;
-            $order->tax_rate = $request->tax_rate;
-            $order->TaxNet = $request->TaxNet;
-            $order->discount = $request->discount;
-            $order->shipping = $request->shipping;
-            $order->GrandTotal = $request->GrandTotal;
+            $order->tax_rate = $returnTaxRate;
+            $order->TaxNet = $returnTaxNet;
+            $order->discount = $returnDiscount;
+            $order->shipping = $returnShipping;
+            $order->GrandTotal = $returnTotal;
             $order->statut = $request->statut;
             $order->paid_amount = $refundTotal;
-            $order->payment_statut = $refundService->paymentStatus((float) $request->GrandTotal, $refundTotal);
+            $order->payment_statut = $refundService->paymentStatus($returnTotal, $refundTotal);
             $order->notes = $request->notes;
             $order->user_id = Auth::user()->id;
 
@@ -330,9 +352,30 @@ class SalesReturnController extends BaseController
             app(\App\Services\BranchCommissionService::class)->reverseForReturn($order->fresh());
 
             $refundService->record($order, $refunds, (int) Auth::id());
+
+            $exchange = null;
+            if ($isExchange) {
+                $exchange = SaleExchange::create([
+                    'original_sale_id' => $sale->id,
+                    'sale_return_id' => $order->id,
+                    'replacement_sale_id' => null,
+                    'client_id' => $sale->client_id,
+                    'warehouse_id' => $sale->warehouse_id,
+                    'created_by' => Auth::id(),
+                    'status' => 'awaiting_replacement',
+                ]);
+            }
+
+            return [
+                'sale_return_id' => $order->id,
+                'exchange_id' => $exchange?->id,
+                'client_id' => $sale->client_id,
+                'warehouse_id' => $sale->warehouse_id,
+                'exchange_credit' => $exchange ? $exchange->availableCredit() : 0,
+            ];
         }, 10);
 
-        return response()->json(['success' => true]);
+        return response()->json(array_merge(['success' => true], $result));
     }
 
     // ------------ Update Return Sale--------------\\
@@ -348,6 +391,12 @@ class SalesReturnController extends BaseController
             // Backward compatibility: If record_view is null, fall back to role permission check
             $view_records = $user->hasRecordView();
             $current_SaleReturn = SaleReturn::findOrFail($id);
+            $exchange = SaleExchange::where('sale_return_id', $id)->lockForUpdate()->first();
+            if ($exchange && ($exchange->replacement_sale_id || $exchange->status === 'completed')) {
+                throw ValidationException::withMessages([
+                    'exchange' => ['This return belongs to a completed product exchange and can no longer be edited.'],
+                ]);
+            }
 
             /**
              * Warehouses restriction
@@ -381,6 +430,14 @@ class SalesReturnController extends BaseController
                 ->validateDetails($sourceSale, (array) $request->input('details', []), $current_SaleReturn->id)
                 ->values()
                 ->all();
+            $returnStatus = $exchange ? 'received' : $request['statut'];
+            $returnTaxRate = $exchange ? 0 : (float) $request['tax_rate'];
+            $returnTaxNet = $exchange ? 0 : (float) $request['TaxNet'];
+            $returnDiscount = $exchange ? 0 : (float) $request['discount'];
+            $returnShipping = $exchange ? 0 : (float) $request['shipping'];
+            $returnTotal = $exchange
+                ? round(array_sum(array_column($new_return_details, 'subtotal')), 2)
+                : (float) $request['GrandTotal'];
             $length = count($new_return_details);
 
             // Get Ids details
@@ -467,7 +524,7 @@ class SalesReturnController extends BaseController
 
                     $unit_prod = Unit::where('id', $product_detail['sale_unit_id'])->first();
 
-                    if ($request['statut'] == 'received') {
+                    if ($returnStatus == 'received') {
 
                         if ($product_detail['product_variant_id'] !== null) {
                             $product_warehouse = product_warehouse::where('deleted_at', '=', null)
@@ -531,7 +588,7 @@ class SalesReturnController extends BaseController
             // Pair input rows with persisted details lockstep; rows skipped above (no_unit==0
             // and not a service) leave gaps that would otherwise misalign indices when
             // BatchService re-keys via collect()->values().
-            if ($batchService->isSupported() && $request['statut'] == 'received') {
+            if ($batchService->isSupported() && $returnStatus == 'received') {
                 $alignedInput = [];
                 $alignedPersisted = [];
                 foreach ($new_return_details as $key => $product_detail) {
@@ -548,24 +605,24 @@ class SalesReturnController extends BaseController
                 );
             }
 
-            $due = $request['GrandTotal'] - $current_SaleReturn->paid_amount;
+            $due = $returnTotal - $current_SaleReturn->paid_amount;
             if ($due === 0.0 || $due < 0.0) {
                 $payment_statut = 'paid';
-            } elseif ($due != $request['GrandTotal']) {
+            } elseif ($due != $returnTotal) {
                 $payment_statut = 'partial';
-            } elseif ($due == $request['GrandTotal']) {
+            } elseif ($due == $returnTotal) {
                 $payment_statut = 'unpaid';
             }
 
             $current_SaleReturn->update([
                 'date' => $request['date'],
                 'notes' => $request['notes'],
-                'statut' => $request['statut'],
-                'tax_rate' => $request['tax_rate'],
-                'TaxNet' => $request['TaxNet'],
-                'discount' => $request['discount'],
-                'shipping' => $request['shipping'],
-                'GrandTotal' => $request['GrandTotal'],
+                'statut' => $returnStatus,
+                'tax_rate' => $returnTaxRate,
+                'TaxNet' => $returnTaxNet,
+                'discount' => $returnDiscount,
+                'shipping' => $returnShipping,
+                'GrandTotal' => $returnTotal,
                 'payment_statut' => $payment_statut,
             ]);
 
@@ -590,6 +647,12 @@ class SalesReturnController extends BaseController
             // Backward compatibility: If record_view is null, fall back to role permission check
             $view_records = $user->hasRecordView();
             $current_SaleReturn = SaleReturn::findOrFail($id);
+            $exchange = SaleExchange::where('sale_return_id', $id)->lockForUpdate()->first();
+            if ($exchange && ($exchange->replacement_sale_id || $exchange->status === 'completed')) {
+                throw ValidationException::withMessages([
+                    'exchange' => ['A return with a completed product exchange cannot be deleted.'],
+                ]);
+            }
 
             /**
              * Warehouses restriction
@@ -618,6 +681,10 @@ class SalesReturnController extends BaseController
             if (! $view_records) {
                 // Check If User->id === current_SaleReturn->id
                 $this->authorizeForUser($request->user('api'), 'check_record', $current_SaleReturn);
+            }
+
+            if ($exchange) {
+                $exchange->update(['status' => 'cancelled']);
             }
 
             // Pharmacy: subtract back the batch credits before deleting the return so the
@@ -722,6 +789,12 @@ class SalesReturnController extends BaseController
             foreach ($selectedIds as $SaleReturn_id) {
 
                 $current_SaleReturn = SaleReturn::findOrFail($SaleReturn_id);
+                $exchange = SaleExchange::where('sale_return_id', $SaleReturn_id)->lockForUpdate()->first();
+                if ($exchange && ($exchange->replacement_sale_id || $exchange->status === 'completed')) {
+                    throw ValidationException::withMessages([
+                        'exchange' => ['A selected return has a completed product exchange and cannot be deleted.'],
+                    ]);
+                }
 
                 /**
                  * Warehouses restriction
@@ -749,6 +822,10 @@ class SalesReturnController extends BaseController
                 if (! $view_records) {
                     // Check If User->id === current_SaleReturn->id
                     $this->authorizeForUser($request->user('api'), 'check_record', $current_SaleReturn);
+                }
+
+                if ($exchange) {
+                    $exchange->update(['status' => 'cancelled']);
                 }
 
                 // Pharmacy: subtract back the batch credits before deleting so the per-batch
@@ -1009,11 +1086,38 @@ class SalesReturnController extends BaseController
         }
 
         $company = Setting::where('deleted_at', '=', null)->first();
+        $exchangeRecord = $Sale_Return->exchange()
+            ->with([
+                'originalSale:id,Ref,paid_amount',
+                'replacementSale:id,Ref,GrandTotal',
+                'replacementSale.details.product:id,name,code',
+                'replacementSale.details.productVariant:id,name,code',
+            ])
+            ->first();
+        $exchange = $exchangeRecord ? [
+            'id' => $exchangeRecord->id,
+            'status' => $exchangeRecord->status,
+            'original_sale_id' => $exchangeRecord->original_sale_id,
+            'original_sale_ref' => $exchangeRecord->originalSale?->Ref,
+            'replacement_sale_id' => $exchangeRecord->replacement_sale_id,
+            'replacement_sale_ref' => $exchangeRecord->replacementSale?->Ref,
+            'return_credit' => $exchangeRecord->availableCredit(),
+            'replacement_total' => (float) ($exchangeRecord->replacementSale?->GrandTotal ?? 0),
+            'returned_items' => $details,
+            'replacement_items' => $exchangeRecord->replacementSale?->details->map(fn ($detail) => [
+                'name' => $detail->productVariant
+                    ? '['.$detail->productVariant->name.'] '.($detail->product?->name ?? '')
+                    : ($detail->product?->name ?? 'Unknown product'),
+                'code' => $detail->productVariant?->code ?? $detail->product?->code ?? '',
+                'quantity' => (float) $detail->quantity,
+            ])->values()->all() ?? [],
+        ] : null;
 
         return response()->json([
             'details' => $details,
             'sale_Return' => $return_details,
             'company' => $company,
+            'exchange' => $exchange,
             'taxes' => \App\Models\TransactionTaxSnapshot::where('transaction_type', 'sale_return')->where('transaction_id', $id)->orderBy('priority')->get(),
         ]);
     }

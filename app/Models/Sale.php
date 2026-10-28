@@ -97,6 +97,21 @@ class Sale extends Model
         return $this->hasMany(Shipment::class)->whereNull('shipments.deleted_at');
     }
 
+    public function itemChanges()
+    {
+        return $this->hasMany(SaleItemChange::class)->latest('created_at');
+    }
+
+    public function exchangeAsOriginal()
+    {
+        return $this->hasOne(SaleExchange::class, 'original_sale_id');
+    }
+
+    public function exchangeAsReplacement()
+    {
+        return $this->hasOne(SaleExchange::class, 'replacement_sale_id');
+    }
+
     protected static function booted()
     {
         static::updating(function ($sale) {
