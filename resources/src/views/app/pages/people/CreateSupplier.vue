@@ -102,6 +102,7 @@
               <b-form-group label="Item categories supplied">
                 <v-select
                   v-model="provider.category_ids"
+                  @input="onCategoriesChanged"
                   multiple
                   :close-on-select="false"
                   :reduce="option => option.value"
@@ -109,6 +110,32 @@
                   placeholder="Choose one or more item categories"
                 />
                 <small class="text-muted">Select the categories of items this supplier provides.</small>
+              </b-form-group>
+            </b-col>
+
+            <b-col md="6" sm="12">
+              <b-form-group label="Supplier credit terms">
+                <b-form-select
+                  v-model="provider.credit_terms_mode"
+                  :options="[
+                    { value: 'invoice', text: 'One credit period per purchase invoice' },
+                    { value: 'category', text: 'Credit period depends on product category' }
+                  ]"
+                />
+              </b-form-group>
+            </b-col>
+            <b-col md="6" sm="12">
+              <b-form-group label="Default credit days">
+                <b-form-select v-model.number="provider.credit_days" :options="creditDayOptions" />
+                <small class="text-muted">Used for invoice-wide terms and categories without a specific period.</small>
+              </b-form-group>
+            </b-col>
+            <b-col v-if="provider.credit_terms_mode === 'category' && provider.category_ids.length" md="12">
+              <b-form-group label="Credit days by supplied category">
+                <div v-for="category in selectedCategories" :key="category.id" class="d-flex align-items-center mb-2">
+                  <span class="flex-grow-1">{{ category.name }}</span>
+                  <b-form-select v-model.number="provider.category_credit_days[category.id]" :options="creditDayOptions" class="category-credit-days" />
+                </div>
               </b-form-group>
             </b-col>
 
@@ -202,6 +229,9 @@ export default {
         strn_number: "",
         ntn_number: "",
         category_ids: [],
+        credit_terms_mode: "invoice",
+        credit_days: 15,
+        category_credit_days: {},
         country: "",
         city: "",
         adresse: "",
@@ -212,6 +242,14 @@ export default {
   },
 
   methods: {
+    onCategoriesChanged(categoryIds) {
+      (categoryIds || []).forEach(categoryId => {
+        if (!this.provider.category_credit_days[categoryId]) {
+          this.$set(this.provider.category_credit_days, categoryId, this.provider.credit_days);
+        }
+      });
+    },
+
     Get_Category_Options() {
       axios
         .get("providers/category-options")
@@ -252,6 +290,9 @@ export default {
         strn_number: this.provider.strn_number,
         ntn_number: this.provider.ntn_number,
         category_ids: this.provider.category_ids,
+        credit_terms_mode: this.provider.credit_terms_mode,
+        credit_days: this.provider.credit_days,
+        category_credit_days: this.provider.category_credit_days,
         country: this.provider.country,
         city: this.provider.city,
         adresse: this.provider.adresse,
@@ -328,6 +369,25 @@ export default {
     },
   },
 
+  computed: {
+    canManageOpeningBalance() {
+      const permissions = this.$store.getters.currentUserPermissions || [];
+      return permissions.includes('supplier_opening_balance');
+    },
+    creditDayOptions() {
+      return [5, 10, 15, 20, 30].map(days => ({ value: days, text: `${days} days` }));
+    },
+    selectedCategories() {
+      return this.categories.filter(category => this.provider.category_ids.includes(category.id));
+    },
+    categoryOptions() {
+      return this.categories.map(category => ({
+        label: category.name,
+        value: category.id
+      }));
+    }
+  },
+
   //----------------------------- Created function-------------------
   created: function() {
     this.Get_Category_Options();
@@ -342,6 +402,9 @@ export default {
       strn_number: "",
       ntn_number: "",
       category_ids: [],
+      credit_terms_mode: "invoice",
+      credit_days: 15,
+      category_credit_days: {},
       country: "",
       city: "",
       adresse: "",
@@ -350,17 +413,5 @@ export default {
     };
   },
 
-  computed: {
-    canManageOpeningBalance() {
-      const permissions = this.$store.getters.currentUserPermissions || [];
-      return permissions.includes('supplier_opening_balance');
-    },
-    categoryOptions() {
-      return this.categories.map(category => ({
-        label: category.name,
-        value: category.id
-      }));
-    }
-  }
 };
 </script>

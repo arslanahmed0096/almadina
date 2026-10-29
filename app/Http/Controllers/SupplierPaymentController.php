@@ -6,11 +6,14 @@ use App\Models\Account;
 use App\Models\PaymentMethod;
 use App\Models\PaymentPurchase;
 use App\Models\Provider;
+use App\Models\ProviderPaymentOpeningBalance;
 use App\Models\Purchase;
 use App\Models\SupplierPayment;
 use App\Models\UserWarehouse;
 use App\Services\PaymentAccountService;
 use App\Services\SupplierPaymentAllocationService;
+use App\Services\SupplierCreditTermsService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +27,7 @@ class SupplierPaymentController extends BaseController
 
         $query = SupplierPayment::with(['provider:id,name', 'paymentMethod:id,name', 'account:id,account_name,account_num', 'user:id,username'])
             ->with(['allocations' => fn ($q) => $q->with('purchase:id,Ref,date,GrandTotal')->whereNull('deleted_at')->orderBy('purchase_id')])
+            ->with('openingBalanceAllocation')
             ->orderByDesc('payment_date')->orderByDesc('id');
 
         if ($request->filled('provider_id')) {
@@ -42,18 +46,38 @@ class SupplierPaymentController extends BaseController
     {
         $this->authorizeForUser($request->user('api'), 'view', PaymentPurchase::class);
         $data = $request->validate(['provider_id' => ['required', 'integer', 'exists:providers,id']]);
+        $provider = Provider::whereNull('deleted_at')->findOrFail((int) $data['provider_id']);
         $purchases = $this->outstandingQuery($request, (int) $data['provider_id'])->get();
+        $creditTerms = app(SupplierCreditTermsService::class);
+        $purchaseBalance = 0;
+        $overdueBalance = 0;
+        $invoices = $purchases->map(function ($purchase) use ($creditTerms, &$purchaseBalance, &$overdueBalance) {
+            $outstanding = round(max(0, (float) $purchase->GrandTotal - (float) $purchase->paid_amount), 2);
+            $purchaseBalance += $outstanding;
+            foreach ($creditTerms->outstanding($purchase, Carbon::today()) as $term) {
+                if (Carbon::parse($term['due_date'])->lt(Carbon::today())) {
+                    $overdueBalance += $term['outstanding'];
+                }
+            }
 
-        return response()->json([
-            'invoices' => $purchases->map(fn ($purchase) => [
+            return [
                 'id' => $purchase->id,
                 'reference' => $purchase->Ref,
                 'date' => $purchase->date,
                 'grand_total' => (float) $purchase->GrandTotal,
                 'paid_amount' => (float) $purchase->paid_amount,
-                'outstanding' => round(max(0, (float) $purchase->GrandTotal - (float) $purchase->paid_amount), 2),
+                'outstanding' => $outstanding,
                 'warehouse' => optional($purchase->warehouse)->name,
-            ])->values(),
+            ];
+        })->values();
+        $openingBalance = round(max(0, (float) $provider->opening_balance), 2);
+
+        return response()->json([
+            'invoices' => $invoices,
+            'opening_balance' => $openingBalance,
+            'purchase_credit_balance' => round($purchaseBalance, 2),
+            'overdue_balance' => round($overdueBalance, 2),
+            'total_outstanding' => round($openingBalance + $purchaseBalance, 2),
         ]);
     }
 
@@ -90,9 +114,15 @@ class SupplierPaymentController extends BaseController
         $account = $accountService->resolve($method, $data['account_id'] ?? null);
 
         $payment = DB::transaction(function () use ($request, $data, $method, $account, $allocationService) {
+            $provider = Provider::whereNull('deleted_at')->lockForUpdate()->findOrFail($data['provider_id']);
             $invoices = $this->outstandingQuery($request, (int) $data['provider_id'])->lockForUpdate()->get();
             $amount = round((float) $data['amount'], 2);
-            $allocationPlan = $allocationService->plan($invoices, $amount);
+            $allocation = $allocationService->planCombined($invoices, $amount, (float) $provider->opening_balance);
+            $openingBalanceAmount = $allocation['opening_balance_amount'];
+            $allocationPlan = $allocation['invoices'];
+            if ($openingBalanceAmount > 0) {
+                $this->authorizeForUser($request->user('api'), 'pay_supplier_due', Provider::class);
+            }
 
             $payment = SupplierPayment::create(array_merge($data, [
                 'reference' => 'SP-'.now()->format('YmdHis').'-'.strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
@@ -100,7 +130,26 @@ class SupplierPaymentController extends BaseController
                 'account_id' => $account?->id,
                 'cheque_status' => $data['cheque_status'] ?? (str_contains(strtolower($method->name), 'cheque') ? 'pending' : null),
                 'status' => 'posted',
+                'opening_balance_amount' => $openingBalanceAmount,
             ]));
+
+            if ($openingBalanceAmount > 0) {
+                $provider->update([
+                    'opening_balance' => round((float) $provider->opening_balance - $openingBalanceAmount, 2),
+                ]);
+                ProviderPaymentOpeningBalance::create([
+                    'provider_id' => $provider->id,
+                    'supplier_payment_id' => $payment->id,
+                    'account_id' => $account?->id,
+                    'Ref' => $payment->reference.'-OB',
+                    'date' => $data['payment_date'],
+                    'payment_method_id' => $method->id,
+                    'montant' => $openingBalanceAmount,
+                    'change' => 0,
+                    'notes' => $data['notes'] ?? null,
+                    'user_id' => Auth::id(),
+                ]);
+            }
 
             $sequence = 1;
             foreach ($allocationPlan as $allocation) {
@@ -132,7 +181,7 @@ class SupplierPaymentController extends BaseController
                 $lockedAccount->update(['balance' => round((float) $lockedAccount->balance - $amount, 2)]);
             }
 
-            return $payment->load(['provider', 'paymentMethod', 'account', 'allocations.purchase']);
+            return $payment->load(['provider', 'paymentMethod', 'account', 'allocations.purchase', 'openingBalanceAllocation']);
         }, 5);
 
         return response()->json(['success' => true, 'payment' => $payment], 201);
@@ -159,6 +208,19 @@ class SupplierPaymentController extends BaseController
                 // posts the payment-purchase reversal journal.
                 $allocation->update(['deleted_at' => now()]);
             }
+            if ((float) $payment->opening_balance_amount > 0) {
+                $provider = Provider::lockForUpdate()->findOrFail($payment->provider_id);
+                $provider->update([
+                    'opening_balance' => round((float) $provider->opening_balance + (float) $payment->opening_balance_amount, 2),
+                ]);
+                $openingAllocation = ProviderPaymentOpeningBalance::where('supplier_payment_id', $payment->id)
+                    ->whereNull('deleted_at')
+                    ->lockForUpdate()
+                    ->first();
+                if ($openingAllocation) {
+                    $openingAllocation->delete();
+                }
+            }
             if ($payment->account_id) {
                 $account = Account::lockForUpdate()->findOrFail($payment->account_id);
                 $account->update(['balance' => round((float) $account->balance + (float) $payment->amount, 2)]);
@@ -171,7 +233,7 @@ class SupplierPaymentController extends BaseController
 
     private function outstandingQuery(Request $request, int $providerId)
     {
-        $query = Purchase::with('warehouse:id,name')
+        $query = Purchase::with(['warehouse:id,name', 'categoryCreditTerms'])
             ->where('provider_id', $providerId)
             ->whereNull('deleted_at')
             ->where('statut', 'received')

@@ -198,12 +198,16 @@ class ProvidersController extends BaseController
             'name' => 'required',
             'tax_status' => 'nullable|in:gst,non_gst',
             'opening_balance' => 'nullable|numeric|min:0',
-            'category_ids' => 'nullable|array',
+            'credit_terms_mode' => 'nullable|in:invoice,category',
+            'credit_days' => 'nullable|integer|in:5,10,15,20,30',
+            'category_ids' => 'required_if:credit_terms_mode,category|array',
             'category_ids.*' => [
                 'integer',
                 'distinct',
                 Rule::exists('categories', 'id')->whereNull('deleted_at'),
             ],
+            'category_credit_days' => 'nullable|array',
+            'category_credit_days.*' => 'nullable|integer|in:5,10,15,20,30',
         ]);
         $taxStatus = $validated['tax_status'] ?? 'non_gst';
 
@@ -223,9 +227,15 @@ class ProvidersController extends BaseController
                 'ntn_number' => $taxStatus === 'gst' ? $request['ntn_number'] : null,
                 'opening_balance' => $request['opening_balance'] ?? 0,
                 'credit_limit' => $request['credit_limit'] ?? 0,
+                'credit_terms_mode' => $validated['credit_terms_mode'] ?? 'invoice',
+                'credit_days' => $validated['credit_days'] ?? 15,
             ]);
 
-            $provider->categories()->sync($validated['category_ids'] ?? []);
+            $provider->categories()->sync($this->categoryTermsPayload(
+                $validated['category_ids'] ?? [],
+                $validated['category_credit_days'] ?? [],
+                (int) ($validated['credit_days'] ?? 15)
+            ));
 
             return $provider->load('categories:id,name');
         });
@@ -251,6 +261,9 @@ class ProvidersController extends BaseController
         return response()->json([
             'provider' => $provider,
             'category_ids' => $provider->categories->pluck('id')->values(),
+            'category_credit_days' => $provider->categories->mapWithKeys(fn ($category) => [
+                $category->id => $category->pivot->credit_days,
+            ]),
         ]);
 
     }
@@ -294,12 +307,16 @@ class ProvidersController extends BaseController
             'name' => 'required',
             'tax_status' => 'nullable|in:gst,non_gst',
             'opening_balance' => 'nullable|numeric|min:0',
-            'category_ids' => 'nullable|array',
+            'credit_terms_mode' => 'nullable|in:invoice,category',
+            'credit_days' => 'nullable|integer|in:5,10,15,20,30',
+            'category_ids' => 'required_if:credit_terms_mode,category|array',
             'category_ids.*' => [
                 'integer',
                 'distinct',
                 Rule::exists('categories', 'id')->whereNull('deleted_at'),
             ],
+            'category_credit_days' => 'nullable|array',
+            'category_credit_days.*' => 'nullable|integer|in:5,10,15,20,30',
         ]);
         $taxStatus = $validated['tax_status'] ?? 'non_gst';
 
@@ -318,17 +335,35 @@ class ProvidersController extends BaseController
                 'strn_number' => $taxStatus === 'gst' ? $request['strn_number'] : null,
                 'ntn_number' => $taxStatus === 'gst' ? $request['ntn_number'] : null,
                 'credit_limit' => $request->input('credit_limit', 0),
+                'credit_terms_mode' => $validated['credit_terms_mode'] ?? 'invoice',
+                'credit_days' => $validated['credit_days'] ?? 15,
             ];
             if ($request->has('opening_balance')) {
                 $attributes['opening_balance'] = $request->input('opening_balance');
             }
             $provider->update($attributes);
 
-            $provider->categories()->sync($validated['category_ids'] ?? []);
+            $provider->categories()->sync($this->categoryTermsPayload(
+                $validated['category_ids'] ?? [],
+                $validated['category_credit_days'] ?? [],
+                (int) ($validated['credit_days'] ?? 15)
+            ));
         });
 
         return response()->json(['success' => true]);
 
+    }
+
+    private function categoryTermsPayload(array $categoryIds, array $categoryDays, int $defaultDays): array
+    {
+        $payload = [];
+        foreach ($categoryIds as $categoryId) {
+            $payload[(int) $categoryId] = [
+                'credit_days' => (int) ($categoryDays[$categoryId] ?? $defaultDays),
+            ];
+        }
+
+        return $payload;
     }
 
     // ----------- Remdeleteove Provider-------\\

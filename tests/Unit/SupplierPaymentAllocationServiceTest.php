@@ -30,4 +30,23 @@ class SupplierPaymentAllocationServiceTest extends TestCase
             (object) ['GrandTotal' => 1000, 'paid_amount' => 200],
         ], 801);
     }
+
+    public function test_it_allocates_combined_payment_to_opening_balance_before_oldest_invoices(): void
+    {
+        $plan = app(SupplierPaymentAllocationService::class)->planCombined([
+            (object) ['id' => 1, 'GrandTotal' => 1000, 'paid_amount' => 0],
+        ], 650, 200);
+
+        $this->assertSame(200.0, $plan['opening_balance_amount']);
+        $this->assertSame([450.0], $plan['invoices']->pluck('amount')->all());
+    }
+
+    public function test_it_rejects_combined_payment_above_opening_and_invoice_balances(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        app(SupplierPaymentAllocationService::class)->planCombined([
+            (object) ['GrandTotal' => 1000, 'paid_amount' => 200],
+        ], 1001, 200);
+    }
 }

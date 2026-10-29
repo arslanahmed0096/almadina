@@ -6,9 +6,9 @@
       <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
           <h4 class="mb-1">New Supplier Payment</h4>
-          <small class="text-muted">The amount is allocated to the oldest outstanding supplier invoices first.</small>
+          <small class="text-muted">Payments are applied to the supplier opening balance first, then to the oldest outstanding invoices.</small>
         </div>
-        <b-badge variant="primary">FIFO Allocation</b-badge>
+        <b-badge variant="primary">Opening Balance + FIFO</b-badge>
       </div>
 
       <b-row>
@@ -32,6 +32,27 @@
             <b-form-input v-model.number="form.amount" type="number" min="0.01" step="0.01" />
             <small class="text-muted">Outstanding: {{ money(totalOutstanding) }}</small>
           </b-form-group>
+        </b-col>
+      </b-row>
+
+      <b-row v-if="form.provider_id" class="mb-3">
+        <b-col md="4">
+          <div class="balance-card">
+            <small>Opening Balance</small>
+            <strong>{{ money(openingBalance) }}</strong>
+          </div>
+        </b-col>
+        <b-col md="4">
+          <div class="balance-card">
+            <small>Purchase Credit Balance</small>
+            <strong>{{ money(purchaseCreditBalance) }}</strong>
+          </div>
+        </b-col>
+        <b-col md="4">
+          <div class="balance-card overdue">
+            <small>Overdue Balance</small>
+            <strong>{{ money(overdueBalance) }}</strong>
+          </div>
         </b-col>
       </b-row>
 
@@ -72,14 +93,14 @@
       <div class="allocation-preview mb-3">
         <div class="d-flex justify-content-between align-items-center p-3 border-bottom">
           <strong>Allocation Preview</strong>
-          <span>{{ preview.length }} invoice(s) · Allocated {{ money(previewAllocated) }}</span>
+          <span>{{ invoicePreviewCount }} invoice(s) · Allocated {{ money(previewAllocated) }}</span>
         </div>
         <div class="table-responsive">
           <table class="table table-sm mb-0">
-            <thead><tr><th>Invoice</th><th>Date</th><th>Branch</th><th class="text-right">Outstanding</th><th class="text-right">This Payment</th><th class="text-right">Remaining</th></tr></thead>
+            <thead><tr><th>Balance</th><th>Date</th><th>Branch</th><th class="text-right">Outstanding</th><th class="text-right">This Payment</th><th class="text-right">Remaining</th></tr></thead>
             <tbody>
               <tr v-for="row in preview" :key="row.id">
-                <td>{{ row.reference }}</td><td>{{ row.date }}</td><td>{{ row.warehouse || '-' }}</td>
+                <td>{{ row.reference }}</td><td>{{ row.date || '-' }}</td><td>{{ row.warehouse || '-' }}</td>
                 <td class="text-right">{{ money(row.outstanding) }}</td><td class="text-right text-success font-weight-bold">{{ money(row.allocated) }}</td><td class="text-right">{{ money(row.remaining) }}</td>
               </tr>
               <tr v-if="!preview.length"><td colspan="6" class="text-center text-muted py-3">Select a supplier and enter an amount to preview FIFO allocation.</td></tr>
@@ -90,6 +111,9 @@
 
       <b-alert v-if="Number(form.amount) > totalOutstanding && totalOutstanding >= 0" show variant="danger">
         Payment cannot exceed the supplier's outstanding balance.
+      </b-alert>
+      <b-alert v-if="allocatesOpeningBalance && !canPayOpeningBalance" show variant="warning">
+        You need supplier opening-balance payment permission to make this payment while an opening balance is outstanding.
       </b-alert>
       <b-button variant="primary" :disabled="saving || !canSubmit" @click="savePayment">
         <span v-if="saving" class="spinner sm spinner-white mr-2"></span>
@@ -104,7 +128,7 @@
       </div>
       <div class="table-responsive">
         <table class="table table-hover">
-          <thead><tr><th>Reference / Date</th><th>Supplier</th><th>Method / Account</th><th>Bank / Cheque Details</th><th class="text-right">Amount</th><th>Invoices Covered</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Reference / Date</th><th>Supplier</th><th>Method / Account</th><th>Bank / Cheque Details</th><th class="text-right">Amount</th><th>Balances Covered</th><th>Status</th><th></th></tr></thead>
           <tbody>
             <tr v-for="payment in payments" :key="payment.id">
               <td><strong>{{ payment.reference }}</strong><br><small>{{ payment.payment_date }}</small></td>
@@ -117,6 +141,9 @@
               </td>
               <td class="text-right font-weight-bold">{{ money(payment.amount) }}</td>
               <td>
+                <div v-if="Number(payment.opening_balance_amount) > 0">
+                  Opening balance: {{ money(payment.opening_balance_amount) }}
+                </div>
                 <div v-for="allocation in payment.allocations" :key="allocation.id">
                   {{ allocation.purchase ? allocation.purchase.Ref : '-' }}: {{ money(allocation.montant) }}
                 </div>
@@ -145,6 +172,7 @@ export default {
     const today = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
     return {
       providers: [], paymentMethods: [], accounts: [], invoices: [], payments: [],
+      openingBalance: 0, purchaseCreditBalance: 0, overdueBalance: 0,
       saving: false,
       chequeStatuses: ["pending", "cleared", "bounced", "cancelled"],
       form: {
@@ -166,18 +194,37 @@ export default {
       if (this.isBank) return this.accounts.filter(row => row.account_type === "bank");
       return this.accounts;
     },
-    totalOutstanding() { return this.invoices.reduce((sum, row) => sum + Number(row.outstanding || 0), 0); },
+    totalOutstanding() { return this.openingBalance + this.purchaseCreditBalance; },
+    allocatesOpeningBalance() { return Number(this.form.amount || 0) > 0 && this.openingBalance > 0; },
+    canPayOpeningBalance() { return (this.currentUserPermissions || []).includes("pay_supplier_due"); },
     preview() {
       let remaining = Math.max(0, Number(this.form.amount || 0));
-      return this.invoices.map(row => {
+      const allocations = [];
+      const openingAllocated = Math.min(remaining, this.openingBalance);
+      if (openingAllocated > 0) {
+        allocations.push({
+          id: "opening-balance",
+          reference: "Opening Balance",
+          date: null,
+          warehouse: null,
+          outstanding: this.openingBalance,
+          allocated: openingAllocated,
+          remaining: this.openingBalance - openingAllocated
+        });
+        remaining -= openingAllocated;
+      }
+      const invoiceAllocations = this.invoices.map(row => {
         const allocated = Math.min(remaining, Number(row.outstanding || 0));
         remaining = Math.max(0, remaining - allocated);
         return Object.assign({}, row, { allocated, remaining: Number(row.outstanding || 0) - allocated });
       }).filter(row => row.allocated > 0);
+      return allocations.concat(invoiceAllocations);
     },
     previewAllocated() { return this.preview.reduce((sum, row) => sum + row.allocated, 0); },
+    invoicePreviewCount() { return this.preview.filter(row => row.id !== "opening-balance").length; },
     canSubmit() {
       if (!this.form.provider_id || !this.form.payment_date || !this.form.payment_method_id || Number(this.form.amount) <= 0 || Number(this.form.amount) > this.totalOutstanding) return false;
+      if (this.allocatesOpeningBalance && !this.canPayOpeningBalance) return false;
       if (this.requiresAccount && !this.form.account_id) return false;
       return !this.isCheque || Boolean(this.form.cheque_number && this.form.cheque_date);
     }
@@ -197,9 +244,17 @@ export default {
     },
     loadOutstanding() {
       this.invoices = [];
+      this.openingBalance = 0;
+      this.purchaseCreditBalance = 0;
+      this.overdueBalance = 0;
       if (!this.form.provider_id) return;
       axios.get("supplier-payments/outstanding", { params: { provider_id: this.form.provider_id } })
-        .then(response => { this.invoices = response.data.invoices || []; })
+        .then(response => {
+          this.invoices = response.data.invoices || [];
+          this.openingBalance = Number(response.data.opening_balance || 0);
+          this.purchaseCreditBalance = Number(response.data.purchase_credit_balance || 0);
+          this.overdueBalance = Number(response.data.overdue_balance || 0);
+        })
         .catch(error => this.showError(error, "Outstanding invoices could not be loaded."));
     },
     savePayment() {
@@ -207,14 +262,14 @@ export default {
       this.saving = true;
       NProgress.start();
       axios.post("supplier-payments", this.form).then(() => {
-        this.$bvToast.toast("Supplier payment saved and allocated to the oldest invoices.", { title: "Success", variant: "success", solid: true });
+        this.$bvToast.toast("Supplier payment saved against the opening balance and oldest outstanding invoices.", { title: "Success", variant: "success", solid: true });
         const providerId = this.form.provider_id;
         this.form.amount = null; this.form.notes = ""; this.form.cheque_number = ""; this.form.transaction_reference = "";
         this.loadPayments(); this.form.provider_id = providerId; this.loadOutstanding();
       }).catch(error => this.showError(error, "Supplier payment could not be saved.")).finally(() => { this.saving = false; NProgress.done(); });
     },
     cancelPayment(payment) {
-      this.$bvModal.msgBoxConfirm("Cancel this complete supplier payment and reverse all invoice allocations?", { title: "Cancel Supplier Payment", okVariant: "danger", okTitle: "Cancel Payment" })
+      this.$bvModal.msgBoxConfirm("Cancel this complete supplier payment and reverse its opening-balance and invoice allocations?", { title: "Cancel Supplier Payment", okVariant: "danger", okTitle: "Cancel Payment" })
         .then(confirmed => {
           if (!confirmed) return;
           axios.delete("supplier-payments/" + payment.id).then(() => {
@@ -237,4 +292,8 @@ export default {
 .allocation-preview { border: 1px solid #dfe5ec; border-radius: 8px; overflow: hidden; }
 .allocation-preview thead th { background: #f5f6fa; white-space: nowrap; }
 .table td { vertical-align: middle; }
+.balance-card { padding: 12px 16px; border: 1px solid #dfe5ec; border-radius: 8px; display: flex; flex-direction: column; }
+.balance-card small { color: #6c757d; }
+.balance-card strong { font-size: 1.15rem; }
+.balance-card.overdue strong { color: #dc3545; }
 </style>

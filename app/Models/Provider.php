@@ -12,7 +12,7 @@ class Provider extends Model
         'name', 'code', 'adresse', 'phone', 'country', 'email', 'city', 'tax_number', 'tax_status',
         'strn_number', 'ntn_number',
         'account_title',
-        'opening_balance', 'opening_balance_date', 'credit_limit',
+        'opening_balance', 'opening_balance_date', 'credit_limit', 'credit_terms_mode', 'credit_days',
     ];
 
     protected $casts = [
@@ -20,6 +20,7 @@ class Provider extends Model
         'opening_balance' => 'double',
         'opening_balance_date' => 'date:Y-m-d',
         'credit_limit' => 'double',
+        'credit_days' => 'integer',
     ];
 
     /**
@@ -46,6 +47,7 @@ class Provider extends Model
     public function categories()
     {
         return $this->belongsToMany(Category::class, 'category_provider', 'provider_id', 'category_id')
+            ->withPivot('credit_days')
             ->withTimestamps();
     }
 

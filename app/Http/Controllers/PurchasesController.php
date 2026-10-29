@@ -459,6 +459,7 @@ class PurchasesController extends BaseController
                 }
             }
             PurchaseDetail::insert($orderDetails);
+            app(\App\Services\SupplierCreditTermsService::class)->syncPurchase($order);
             app(\App\Services\ProductMarginPricingService::class)->syncPurchase($order);
             if ($purchaseOrder) {
                 app(\App\Services\Procurement\PurchaseOrderProgressService::class)
@@ -920,6 +921,7 @@ class PurchasesController extends BaseController
                     'GrandTotal' => $request['GrandTotal'],
                     'payment_statut' => $payment_statut,
                 ]);
+                app(\App\Services\SupplierCreditTermsService::class)->syncPurchase($current_Purchase);
                 app(\App\Services\ProductMarginPricingService::class)->syncPurchase($current_Purchase);
 
                 // Pharmacy: re-apply batches to the now-persisted PurchaseDetail rows.
@@ -1029,6 +1031,7 @@ class PurchasesController extends BaseController
                 'GrandTotal' => $grandTotal,
                 'payment_statut' => $paymentStatus,
             ]);
+            app(\App\Services\SupplierCreditTermsService::class)->syncPurchase($purchase);
             app(\App\Services\ProductMarginPricingService::class)->syncPurchase($purchase);
 
             app(\App\Services\Tax\TransactionTaxService::class)
@@ -1807,7 +1810,8 @@ class PurchasesController extends BaseController
             $warehouses = Warehouse::where('deleted_at', '=', null)->whereIn('id', $warehouses_id)->get(['id', 'name']);
         }
 
-        $suppliers = Provider::where('deleted_at', '=', null)->get(['id', 'name']);
+        $suppliers = Provider::where('deleted_at', '=', null)
+            ->get(['id', 'name', 'credit_terms_mode', 'credit_days']);
         $settings = Setting::where('deleted_at', '=', null)->first();
         $managedTaxes = \App\Models\Tax::query()
             ->with(['priceTypes:id,code,name', 'transactionTypes'])
@@ -2038,7 +2042,8 @@ class PurchasesController extends BaseController
                 $warehouses = Warehouse::where('deleted_at', '=', null)->whereIn('id', $warehouses_id)->get(['id', 'name']);
             }
 
-            $suppliers = Provider::where('deleted_at', '=', null)->get(['id', 'name']);
+            $suppliers = Provider::where('deleted_at', '=', null)
+                ->get(['id', 'name', 'credit_terms_mode', 'credit_days']);
             $managedTaxes = \App\Models\Tax::with(['priceTypes:id,code,name', 'transactionTypes'])
                 ->effective()->forTransaction('purchase')->forWarehouse($Purchase_data->warehouse_id)
                 ->orderBy('priority')->get();

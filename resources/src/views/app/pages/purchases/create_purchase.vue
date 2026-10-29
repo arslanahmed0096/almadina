@@ -154,9 +154,9 @@
              </validation-provider>
              </b-col>
               <b-col lg="4" md="4" sm="12" class="mb-3">
-                <b-form-group label="Allowed Credit Days *">
-                  <b-form-select v-model.number="purchase.payment_due_days" :options="paymentDueDayOptions" />
-                  <small class="text-muted">Invoice due date: {{ paymentDueDatePreview }}</small>
+                <b-form-group :label="selectedSupplier && selectedSupplier.credit_terms_mode === 'category' ? 'Fallback Credit Days' : 'Allowed Credit Days *'">
+                  <b-form-select v-model.number="purchase.payment_due_days" :options="paymentDueDayOptions" :disabled="selectedSupplier && selectedSupplier.credit_terms_mode === 'category'" />
+                  <small class="text-muted">{{ selectedSupplierTermsText }} Invoice due date: {{ paymentDueDatePreview }}</small>
                 </b-form-group>
               </b-col>
              <!-- Supplier -->
@@ -169,6 +169,7 @@
                           :state="errors[0] ? false : (valid ? true : null)"
                           :disabled="selectedGatePasses.length > 0"
                           v-model="purchase.supplier_id"
+                          @input="onSupplierChanged"
                           :reduce="label => label.value"
                           :placeholder="$t('Choose_Supplier')"
                           :options="suppliers.map(suppliers => ({label: suppliers.name, value: suppliers.id}))"
@@ -1015,6 +1016,15 @@ export default {
       dueDate.setDate(dueDate.getDate() + days);
       return dueDate.toISOString().slice(0, 10);
     },
+    selectedSupplier() {
+      return this.suppliers.find(supplier => Number(supplier.id) === Number(this.purchase.supplier_id)) || null;
+    },
+    selectedSupplierTermsText() {
+      if (!this.selectedSupplier) return '';
+      return this.selectedSupplier.credit_terms_mode === 'category'
+        ? 'Category-specific credit terms are applied to this purchase. '
+        : `Supplier default: ${Number(this.selectedSupplier.credit_days || 15)} days. `;
+    },
 
    // True if any batch-tracked line has missing batches or a qty mismatch
     hasBatchValidationErrors() {
@@ -1048,6 +1058,10 @@ export default {
   },
 
   methods: {
+    onSupplierChanged(providerId) {
+      const supplier = this.suppliers.find(row => Number(row.id) === Number(providerId));
+      if (supplier) this.purchase.payment_due_days = Number(supplier.credit_days || 15);
+    },
 
     showModal() {
       if (this.selectedGatePasses.length && !this.canAddInvoiceExcess) {
@@ -1193,6 +1207,7 @@ export default {
       const lines = gatePass.items.map(item => ({ item, product: item.product_data || {} }));
       return Promise.resolve().then(() => {
         this.purchase.supplier_id = gatePass.provider_id;
+        this.onSupplierChanged(gatePass.provider_id);
         this.purchase.warehouse_id = gatePass.warehouse_id;
         let nextDetailId = this.details.reduce((highest, detail) => Math.max(highest, Number(detail.detail_id) || 0), 0) + 1;
 
@@ -1976,9 +1991,12 @@ export default {
                 this.suppliers.push({
                   id: newSupplier.id,
                   name: newSupplier.name,
-                  phone: newSupplier.phone || ""
+                  phone: newSupplier.phone || "",
+                  credit_terms_mode: newSupplier.credit_terms_mode || 'invoice',
+                  credit_days: Number(newSupplier.credit_days || 15)
                 });
                 this.purchase.supplier_id = newSupplier.id;
+                this.onSupplierChanged(newSupplier.id);
               }
 
               this.makeToast(

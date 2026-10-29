@@ -7,6 +7,25 @@ use Illuminate\Validation\ValidationException;
 
 class SupplierPaymentAllocationService
 {
+    public function planCombined(iterable $purchases, float $amount, float $openingBalance): array
+    {
+        $amount = round($amount, 2);
+        $openingBalance = round(max(0, $openingBalance), 2);
+        if ($amount <= 0) {
+            throw ValidationException::withMessages(['amount' => ['Payment amount must be greater than zero.']]);
+        }
+
+        $openingBalanceAmount = min($amount, $openingBalance);
+        $invoicePaymentAmount = round($amount - $openingBalanceAmount, 2);
+
+        return [
+            'opening_balance_amount' => $openingBalanceAmount,
+            'invoices' => $invoicePaymentAmount > 0
+                ? $this->plan($purchases, $invoicePaymentAmount)
+                : collect(),
+        ];
+    }
+
     public function plan(iterable $purchases, float $amount): Collection
     {
         $purchases = collect($purchases);

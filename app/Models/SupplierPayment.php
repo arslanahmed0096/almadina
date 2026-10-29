@@ -11,10 +11,12 @@ class SupplierPayment extends Model
         'payment_date', 'amount', 'bank_name', 'bank_account_number',
         'transaction_reference', 'transfer_date', 'cheque_number', 'cheque_date',
         'cheque_status', 'clearance_date', 'notes', 'status', 'cancelled_at',
+        'opening_balance_amount',
     ];
 
     protected $casts = [
         'amount' => 'double',
+        'opening_balance_amount' => 'double',
         'payment_date' => 'date:Y-m-d',
         'transfer_date' => 'date:Y-m-d',
         'cheque_date' => 'date:Y-m-d',
@@ -27,4 +29,5 @@ class SupplierPayment extends Model
     public function paymentMethod() { return $this->belongsTo(PaymentMethod::class); }
     public function account() { return $this->belongsTo(Account::class); }
     public function allocations() { return $this->hasMany(PaymentPurchase::class); }
+    public function openingBalanceAllocation() { return $this->hasOne(ProviderPaymentOpeningBalance::class); }
 }

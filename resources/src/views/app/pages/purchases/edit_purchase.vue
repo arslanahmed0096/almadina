@@ -41,9 +41,9 @@
              </validation-provider>
              </b-col>
               <b-col lg="4" md="4" sm="12" class="mb-3">
-                <b-form-group label="Allowed Credit Days *">
-                  <b-form-select v-model.number="purchase.payment_due_days" :options="paymentDueDayOptions" />
-                  <small class="text-muted">Invoice due date: {{ paymentDueDatePreview }}</small>
+                <b-form-group :label="selectedSupplier && selectedSupplier.credit_terms_mode === 'category' ? 'Fallback Credit Days' : 'Allowed Credit Days *'">
+                  <b-form-select v-model.number="purchase.payment_due_days" :options="paymentDueDayOptions" :disabled="selectedSupplier && selectedSupplier.credit_terms_mode === 'category'" />
+                  <small class="text-muted">{{ selectedSupplierTermsText }} Invoice due date: {{ paymentDueDatePreview }}</small>
                 </b-form-group>
               </b-col>
              <!-- Supplier -->
@@ -55,6 +55,7 @@
                         :state="errors[0] ? false : (valid ? true : null)"
                         :disabled="linked_gate_passes.length > 0"
                         v-model="purchase.supplier_id"
+                        @input="onSupplierChanged"
                         :reduce="label => label.value"
                         :placeholder="$t('Choose_Supplier')"
                         :options="suppliers.map(suppliers => ({label: suppliers.name, value: suppliers.id}))"
@@ -773,6 +774,15 @@ export default {
       dueDate.setDate(dueDate.getDate() + days);
       return dueDate.toISOString().slice(0, 10);
     },
+    selectedSupplier() {
+      return this.suppliers.find(supplier => Number(supplier.id) === Number(this.purchase.supplier_id)) || null;
+    },
+    selectedSupplierTermsText() {
+      if (!this.selectedSupplier) return '';
+      return this.selectedSupplier.credit_terms_mode === 'category'
+        ? 'Category-specific credit terms are applied to this purchase. '
+        : `Supplier default: ${Number(this.selectedSupplier.credit_days || 15)} days. `;
+    },
 
    // Only validate lines that are visible & not marked for deletion
     activeBatchTrackedDetails() {
@@ -800,6 +810,10 @@ export default {
   },
 
   methods: {
+    onSupplierChanged(providerId) {
+      const supplier = this.suppliers.find(row => Number(row.id) === Number(providerId));
+      if (supplier) this.purchase.payment_due_days = Number(supplier.credit_days || 15);
+    },
 
        
     showModal() {

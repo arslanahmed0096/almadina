@@ -1285,7 +1285,7 @@ class ReportController extends BaseController
             ->where('provider_id', $provider->id)
             ->orderBy('date')
             ->orderBy('id')
-            ->get(['id', 'date', 'Ref', 'montant', 'notes']);
+            ->get(['id', 'supplier_payment_id', 'date', 'Ref', 'montant', 'notes']);
 
         $originalOpeningBalance = (float) ($provider->opening_balance ?? 0)
             + (float) $openingPayments->sum('montant');
@@ -1303,7 +1303,7 @@ class ReportController extends BaseController
             ]);
         }
 
-        foreach ($openingPayments as $payment) {
+        foreach ($openingPayments->whereNull('supplier_payment_id') as $payment) {
             $entries->push([
                 'sort_date' => (string) $payment->date,
                 'sort_rank' => 4,

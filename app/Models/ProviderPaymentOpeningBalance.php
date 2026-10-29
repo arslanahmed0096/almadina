@@ -14,13 +14,14 @@ class ProviderPaymentOpeningBalance extends Model
     protected $dates = ['deleted_at'];
 
     protected $fillable = [
-        'provider_id', 'date', 'montant', 'Ref', 'change', 'payment_method_id', 'user_id', 'notes', 'account_id',
+        'provider_id', 'supplier_payment_id', 'date', 'montant', 'Ref', 'change', 'payment_method_id', 'user_id', 'notes', 'account_id',
     ];
 
     protected $casts = [
         'montant' => 'double',
         'change' => 'double',
         'provider_id' => 'integer',
+        'supplier_payment_id' => 'integer',
         'user_id' => 'integer',
         'account_id' => 'integer',
         'payment_method_id' => 'integer',
