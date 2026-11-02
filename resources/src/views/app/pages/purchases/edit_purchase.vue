@@ -1448,8 +1448,8 @@ export default {
     Get_Product_Details(product_id, variant_id) {
       const wid = this.purchase && this.purchase.warehouse_id ? this.purchase.warehouse_id : null;
       const url = wid
-        ? `/show_product_data/${product_id}/${variant_id}/${wid}`
-        : `/show_product_data/${product_id}/${variant_id}`;
+        ? `/show_product_data/${product_id}/${variant_id}/${wid}?purchase_pricing=1`
+        : `/show_product_data/${product_id}/${variant_id}?purchase_pricing=1`;
 
       axios.get(url).then(response => {
         this.product.del = 0;

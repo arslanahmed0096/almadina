@@ -1668,7 +1668,11 @@ class SalesController extends BaseController
         // New way: Check user's record_view field (user-level boolean)
         // Backward compatibility: If record_view is null, fall back to role permission check
         $view_records = $user->hasRecordView();
-        $sale_data = Sale::with(['details.product.unitSale', 'salesAgent:id,name,phone'])
+        $sale_data = Sale::with([
+            'details.product.unitSale',
+            'details.shipmentItem.shipment:id,deleted_at',
+            'salesAgent:id,name,phone',
+        ])
             ->where('deleted_at', '=', null)
             ->findOrFail($id);
 
@@ -1822,6 +1826,14 @@ class SalesController extends BaseController
             }
 
             $data['quantity'] = $detail->quantity;
+            $shippedItem = $detail->shipmentItem;
+            $shippedQuantity = $shippedItem && ! optional($shippedItem->shipment)->deleted_at
+                ? min((float) $detail->quantity, (float) ($shippedItem->quantity ?? $detail->quantity))
+                : 0;
+            $data['shipped_quantity'] = $shippedQuantity;
+            $data['shipment_status'] = $shippedQuantity <= 0.000001
+                ? null
+                : ($shippedQuantity + 0.000001 >= (float) $detail->quantity ? 'shipped' : 'partial');
             $data['total'] = $detail->total;
             $data['price'] = $detail->price;
             $data['unit_sale'] = $unit ? $unit->ShortName : '';

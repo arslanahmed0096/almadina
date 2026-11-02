@@ -289,6 +289,9 @@
                     <table class="table table-hover purchase-products-table">
                       <thead class="bg-gray-300">
                         <tr>
+                          <th scope="col" class="text-center">
+                            <i class="fa fa-trash"></i>
+                          </th>
                           <th scope="col">{{$t('ProductName')}}</th>
                           <th scope="col" class="purchase-quantity-column">{{$t('Qty')}}</th>
                           <th scope="col">RB Price</th>
@@ -300,9 +303,7 @@
                           <th scope="col">MRP With Tax</th>
                           <th scope="col">I.Tax Withholding Amount</th>
                           <th scope="col">Grand Total</th>
-                          <th scope="col" class="text-center">
-                            <i class="fa fa-trash"></i>
-                          </th>
+                          <th scope="col" class="text-center">Edit</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -315,6 +316,9 @@
                           :ref="'purchase_detail_' + detail.detail_id"
                           :class="{'purchase-row-highlight': highlightedDetailId === detail.detail_id}"
                         >
+                          <td class="text-center">
+                            <lucide-icon class="text-25 text-danger" name="x" @click="delete_Product_Detail(detail.detail_id)" />
+                          </td>
                           <td>
                             <strong>{{detail.name}}</strong>
                             <br>
@@ -371,7 +375,6 @@
                           <td class="font-weight-bold">{{currentUser.currency}} {{formatNumber(pricingPreview(detail).netPayable * detail.quantity, 2)}}</td>
                           <td class="text-center">
                             <lucide-icon class="text-25 text-success" name="pencil" v-if="currentUserPermissions && currentUserPermissions.includes('edit_product_purchase')" @click="Modal_Updat_Detail(detail)" />
-                            <lucide-icon class="text-25 text-danger" name="x" @click="delete_Product_Detail(detail.detail_id)" />
                           </td>
                         </tr>
                         <tr v-if="detail.is_batch_tracked" :key="'batches-'+detail.detail_id" :style="{ background: 'transparent' }">
@@ -1904,8 +1907,8 @@ export default {
     Get_Product_Details(product_id, variant_id) {
       const wid = this.purchase && this.purchase.warehouse_id ? this.purchase.warehouse_id : null;
       const url = wid
-        ? `/show_product_data/${product_id}/${variant_id}/${wid}`
-        : `/show_product_data/${product_id}/${variant_id}`;
+        ? `/show_product_data/${product_id}/${variant_id}/${wid}?purchase_pricing=1`
+        : `/show_product_data/${product_id}/${variant_id}?purchase_pricing=1`;
 
       axios.get(url).then(response => {
         this.product.discount           = response.data.discount;

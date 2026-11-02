@@ -14,6 +14,7 @@ use App\Models\CombinedProduct;
 use App\Models\CountStock;
 use App\Models\Product;
 use App\Models\ProductImage;
+use App\Models\PurchaseDetail;
 use App\Models\PricingLevelDetail;
 use App\Models\product_warehouse;
 use App\Models\ProductVariant;
@@ -2791,6 +2792,36 @@ class ProductsController extends BaseController
         $item['supplier_id'] = $supplier ? (int) $supplier->id : null;
         $item['supplier_name'] = $supplier?->name;
         $item['supplier_tax_status'] = $supplier ? ($supplier->tax_status === 'gst' ? 'gst' : 'non_gst') : null;
+
+        // A new purchase should start with the actual terms used on the last
+        // completed invoice line. Product defaults alone lose the line discount,
+        // which made discounted purchase prices disappear on the next purchase.
+        if ($request->boolean('purchase_pricing')) {
+            $lastPurchaseLine = PurchaseDetail::query()
+                ->where('product_id', $Product_data->id)
+                ->when($variant_id && $variant_id !== 'null', function ($query) use ($variant_id) {
+                    $query->where('product_variant_id', (int) $variant_id);
+                }, function ($query) {
+                    $query->whereNull('product_variant_id');
+                })
+                ->whereHas('purchase', function ($query) {
+                    $query->whereNull('deleted_at')->where('statut', 'received');
+                })
+                ->latest('id')
+                ->first();
+
+            if ($lastPurchaseLine) {
+                $item['company_rb_price'] = (float) ($lastPurchaseLine->company_rb_price ?: $lastPurchaseLine->cost);
+                $item['Unit_cost'] = $item['company_rb_price'];
+                $item['mrp_price'] = (float) ($lastPurchaseLine->mrp_price ?: $item['mrp_price']);
+                $item['discount'] = (float) $lastPurchaseLine->discount;
+                $item['discount_method'] = (string) ($lastPurchaseLine->discount_method ?: '2');
+                $item['DiscountNet'] = $item['discount_method'] === '1'
+                    ? round($item['company_rb_price'] * $item['discount'] / 100, 2)
+                    : $item['discount'];
+            }
+        }
+
         $item['target_discounts'] = $warehouse_id
             ? $this->targetDiscountVisibility->forProduct($Product_data, (int) $warehouse_id, $request->input('date'))->all()
             : [];

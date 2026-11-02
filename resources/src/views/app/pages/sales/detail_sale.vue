@@ -193,7 +193,11 @@
             <tbody>
               <tr v-for="(detail, index) in details" :key="index" :class="{'invoice-products-row-even': index % 2 === 1}">
                 <td class="invoice-product-name-cell">
-                  <div class="invoice-product-name">{{detail.name}}</div>
+                  <div class="invoice-product-name">
+                    {{detail.name}}
+                    <b-badge v-if="detail.shipment_status === 'shipped'" variant="success" class="ml-1">Shipped</b-badge>
+                    <b-badge v-else-if="detail.shipment_status === 'partial'" variant="warning" class="ml-1">Partially shipped</b-badge>
+                  </div>
                   <div class="invoice-product-code">Code: {{detail.code}}</div>
                   <div v-if="detail.is_imei && detail.imei_number !== null" class="invoice-product-imei">SN: {{detail.imei_number}}</div>
                   <div v-if="detail.is_batch_tracked && (detail.batches || []).length > 0" class="invoice-product-batches">
@@ -225,7 +229,11 @@
               class="invoice-product-card"
             >
               <div class="invoice-product-card-header">
-                <div class="invoice-product-card-name">{{detail.name}}</div>
+                <div class="invoice-product-card-name">
+                  {{detail.name}}
+                  <b-badge v-if="detail.shipment_status === 'shipped'" variant="success" class="ml-1">Shipped</b-badge>
+                  <b-badge v-else-if="detail.shipment_status === 'partial'" variant="warning" class="ml-1">Partially shipped</b-badge>
+                </div>
                 <div class="invoice-product-card-total">{{ formatPriceDisplay(detail.total, 2) }}</div>
               </div>
               <div class="invoice-product-card-body">
