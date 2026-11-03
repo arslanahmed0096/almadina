@@ -665,7 +665,7 @@ export default {
       }
       columns.push(
         { label: "Al-Madina Price", field: "price", tdClass: "text-left pre", thClass: "text-left" },
-        { label: this.$t("FixPrice"), field: "fix_price", tdClass: "text-left pre", thClass: "text-left" },
+        { label: "Regular Price", field: "fix_price", tdClass: "text-left pre", thClass: "text-left" },
         { label: this.$t("Unit"), field: "unit", tdClass: "text-left", thClass: "text-left" },
         { label: this.$t("Quantity"), field: "quantity", tdClass: "text-left", thClass: "text-left" },
         { label: this.$t("Status") || "Status", field: "is_active", tdClass: "text-center", thClass: "text-center" },
@@ -685,7 +685,7 @@ export default {
       }
       columns.push(
         { label: "Al-Madina Price", field: "price" },
-        { label: this.$t("FixPrice"), field: "fix_price" },
+        { label: "Regular Price", field: "fix_price" },
         { label: this.$t("Unit"), field: "unit" },
         { label: this.$t("Quantity"), field: "quantity" },
         { label: this.$t("Status") || "Status", field: "status" }
@@ -862,7 +862,7 @@ export default {
         this.$t("Categorie")
       ];
       if (this.can("products_cost_view")) headers.push(this.$t("Cost"));
-      headers.push(this.$t("Price"), this.$t("FixPrice"), this.$t("Unit"), this.$t("Quantity"), this.$t("Status") || "Status");
+      headers.push(this.$t("Price"), "Regular Price", this.$t("Unit"), this.$t("Quantity"), this.$t("Status") || "Status");
 
       const products_pdf = JSON.parse(JSON.stringify(this.products));
       products_pdf.forEach(item => {
