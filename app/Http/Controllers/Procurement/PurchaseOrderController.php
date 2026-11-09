@@ -84,6 +84,7 @@ class PurchaseOrderController extends Controller
     {
         $this->permit($request, 'purchase_orders_create');
         $data = $request->validate($this->rules());
+        $this->ensureUniqueItemProducts($data['items']);
         $this->assertWarehouse($request, (int) $data['warehouse_id']);
 
         return response()->json(['purchase_order' => $this->service->create($data, $request->user('api'))], 201);
@@ -103,7 +104,10 @@ class PurchaseOrderController extends Controller
         $this->permit($request, 'purchase_orders_edit_draft');
         $this->assertWarehouse($request, $purchaseOrder->warehouse_id);
 
-        return response()->json(['purchase_order' => $this->service->update($purchaseOrder, $request->validate($this->rules()))]);
+        $data = $request->validate($this->rules());
+        $this->ensureUniqueItemProducts($data['items']);
+
+        return response()->json(['purchase_order' => $this->service->update($purchaseOrder, $data)]);
     }
 
     public function issue(Request $request, PurchaseOrder $purchaseOrder, ProcurementNotificationService $notifications)
@@ -156,6 +160,20 @@ class PurchaseOrderController extends Controller
             'items.*.discount' => 'nullable|numeric|min:0|decimal:0,6', 'items.*.discount_method' => ['nullable', Rule::in(['fixed', 'percentage'])],
             'items.*.tax_id' => 'nullable|integer|exists:taxes,id', 'items.*.notes' => 'nullable|string|max:1000',
         ];
+    }
+
+    private function ensureUniqueItemProducts(array $items): void
+    {
+        $seen = [];
+        foreach ($items as $item) {
+            $key = (int) $item['product_id'].':'.((int) ($item['product_variant_id'] ?? 0));
+            if (isset($seen[$key])) {
+                throw ValidationException::withMessages([
+                    'items' => ['The same product/model can only be added once. Change its quantity on the existing line.'],
+                ]);
+            }
+            $seen[$key] = true;
+        }
     }
 
     private function permit(Request $request, string ...$permissions): void

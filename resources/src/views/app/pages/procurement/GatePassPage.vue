@@ -119,7 +119,13 @@
               <td v-if="!direct">{{ formatQty(line.ordered) }}</td>
               <td v-if="!direct">{{ formatQty(line.received) }}</td>
               <td v-if="!direct"><span class="font-weight-bold text-primary">{{ formatQty(line.remaining) }}</span></td>
-              <td><b-form-input type="number" step="1" min="0" :max="direct ? null : line.remaining" v-model.number="line.delivered_quantity" /></td>
+              <td>
+                <b-input-group>
+                  <b-input-group-prepend><b-button size="sm" variant="primary" @click="decrementDelivered(line)">−</b-button></b-input-group-prepend>
+                  <b-form-input type="number" step="1" min="0" :max="direct ? null : line.remaining" v-model.number="line.delivered_quantity" @input="normalizeDeliveredQuantity(line)" />
+                  <b-input-group-append><b-button size="sm" variant="primary" @click="incrementDelivered(line)">+</b-button></b-input-group-append>
+                </b-input-group>
+              </td>
               <td v-if="direct"><b-button size="sm" variant="outline-danger" @click="lines.splice(index, 1)"><lucide-icon name="x" /></b-button></td>
             </tr>
           </tbody>
@@ -186,6 +192,20 @@ export default {
       return [source.product_name || ('Product #' + item.product_id), source.variant_name].filter(Boolean).join(' ');
     },
     formatQty(value) { return Number(value || 0).toFixed(0); },
+    normalizeDeliveredQuantity(line) {
+      const maximum = this.direct ? Infinity : Math.max(0, Number(line.remaining) || 0);
+      const quantity = Number(line.delivered_quantity);
+      line.delivered_quantity = Number.isFinite(quantity)
+        ? Math.min(maximum, Math.max(0, Math.round(quantity)))
+        : 0;
+    },
+    incrementDelivered(line) {
+      const maximum = this.direct ? Infinity : Math.max(0, Number(line.remaining) || 0);
+      line.delivered_quantity = Math.min(maximum, (Number(line.delivered_quantity) || 0) + 1);
+    },
+    decrementDelivered(line) {
+      line.delivered_quantity = Math.max(0, (Number(line.delivered_quantity) || 0) - 1);
+    },
     errorMessage(error, fallback) {
       const data = error && error.response && error.response.data;
       if (data && data.errors) {

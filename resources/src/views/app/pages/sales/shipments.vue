@@ -184,7 +184,10 @@
                     <h5>Items to Deliver</h5>
                     <small>Select the remaining items for this delivery.</small>
                   </div>
-                  <b-badge variant="primary">{{ remainingShipmentItems.length }} remaining</b-badge>
+                  <div>
+                    <b-button type="button" size="sm" variant="outline-primary" class="mr-2" @click="selectAllShipmentItems">Select All</b-button>
+                    <b-badge variant="primary">{{ remainingShipmentItems.length }} remaining</b-badge>
+                  </div>
                 </div>
                 <div class="table-responsive shipment-items-table">
                 <table class="table table-hover mb-0">
@@ -525,6 +528,27 @@ export default {
         0
       );
       return requiredCredit > this.shipmentAvailableCredit + 0.005;
+    },
+
+    selectAllShipmentItems() {
+      const selected = [];
+      let selectedTotal = 0;
+      const paidAmount = this.shipmentAvailablePaidAmount;
+
+      this.remainingShipmentItems.forEach(item => {
+        if (!item || item.is_shipped || !item.eligible) return;
+        const remaining = Math.max(Number(item.remaining_quantity || item.quantity || 0), 0.000001);
+        const quantity = Math.min(Number(this.shipmentQuantities[item.sale_detail_id] || 0), remaining);
+        const lineTotal = Number(item.item_total || 0) * Math.max(quantity, 0) / remaining;
+        const requiredCredit = Math.max(selectedTotal + lineTotal - paidAmount, 0);
+
+        if (this.shipmentCreditUnlimited || requiredCredit <= this.shipmentAvailableCredit + 0.005) {
+          selected.push(item.sale_detail_id);
+          selectedTotal += lineTotal;
+        }
+      });
+
+      this.selectedShipmentItemIds = selected;
     },
 
     openCreditLimitEditor() {

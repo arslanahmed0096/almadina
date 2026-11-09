@@ -15,6 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class GatePassController extends Controller
 {
@@ -174,6 +175,7 @@ class GatePassController extends Controller
             'items.*.rejected_quantity' => 'nullable|numeric|min:0|decimal:0,6', 'items.*.short_quantity' => 'nullable|numeric|min:0|decimal:0,6',
             'items.*.over_delivery_reason' => 'nullable|string|max:2000', 'items.*.notes' => 'nullable|string|max:1000',
         ]);
+        $this->ensureUniqueItems($data['items'], $data['receipt_type']);
         $order = ! empty($data['purchase_order_id']) ? PurchaseOrder::findOrFail($data['purchase_order_id']) : null;
         $gatePass = $this->service->create($order, $data, $request->user('api'));
         if ($request->hasFile('attachment')) {
@@ -254,6 +256,23 @@ class GatePassController extends Controller
         );
 
         return response()->json(['gate_pass' => $gatePass->fresh(['purchaseOrder', 'provider', 'warehouse', 'items.purchaseOrderItem'])]);
+    }
+
+    private function ensureUniqueItems(array $items, string $receiptType): void
+    {
+        $seen = [];
+        foreach ($items as $item) {
+            $key = $receiptType === 'purchase_order'
+                ? 'po:'.(int) $item['purchase_order_item_id']
+                : 'product:'.(int) $item['product_id'].':'.(int) ($item['product_variant_id'] ?? 0);
+
+            if (isset($seen[$key])) {
+                throw ValidationException::withMessages([
+                    'items' => ['The same product/model can only be added once. Change its receiving quantity on the existing line.'],
+                ]);
+            }
+            $seen[$key] = true;
+        }
     }
 
     private function gatePassHasInvoiceableQuantity(GatePass $gatePass): bool
