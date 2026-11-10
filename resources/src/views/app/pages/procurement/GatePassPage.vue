@@ -351,16 +351,16 @@ export default {
       if (validationError) { this.toast(validationError); return; }
 
       this.$swal({
-        title: 'Save Gate Pass?',
-        text: 'Save this gate pass now, or continue adding products?',
+        title: 'Are you ready to submit this Gate Pass?',
+        text: 'Please review the items and quantities before submitting.',
         type: 'question',
         showCancelButton: true,
         allowOutsideClick: false,
         allowEscapeKey: false,
         confirmButtonColor: '#6f2dbd',
         cancelButtonColor: '#6c757d',
-        confirmButtonText: 'Save Gate Pass',
-        cancelButtonText: 'Add More Products'
+        confirmButtonText: 'Yes, Submit Gate Pass',
+        cancelButtonText: 'No, Continue Editing'
       }).then(result => {
         if (result.value) {
           this.submitGatePass();

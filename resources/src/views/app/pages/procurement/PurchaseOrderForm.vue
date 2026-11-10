@@ -543,16 +543,16 @@ export default {
       }
 
       this.$swal({
-        title: 'Save Purchase Order?',
-        text: 'Save this Purchase Order now, or continue adding products?',
+        title: 'Are you ready to save this Purchase Order?',
+        text: 'Please review the items and quantities before saving.',
         type: 'question',
         showCancelButton: true,
         allowOutsideClick: false,
         allowEscapeKey: false,
         confirmButtonColor: '#6f2dbd',
         cancelButtonColor: '#6c757d',
-        confirmButtonText: 'Save Purchase Order',
-        cancelButtonText: 'Add More Products'
+        confirmButtonText: 'Yes, Save Purchase Order',
+        cancelButtonText: 'No, Continue Editing'
       }).then(result => {
         if (result.value) {
           this.submitPurchaseOrder();
