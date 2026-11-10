@@ -48,6 +48,19 @@
                   <span v-if="deletingGatePassId === row.id" class="spinner-border spinner-border-sm" aria-hidden="true"></span>
                   <lucide-icon v-else name="trash-2" />
                 </b-button>
+                <b-button
+                  v-if="kind === 'orders' && row.can_delete"
+                  size="sm"
+                  variant="outline-danger"
+                  class="action-icon ml-1"
+                  :disabled="deletingPurchaseOrderId === row.id"
+                  title="Delete"
+                  aria-label="Delete"
+                  @click="deletePurchaseOrder(row)"
+                >
+                  <span v-if="deletingPurchaseOrderId === row.id" class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                  <lucide-icon v-else name="trash-2" />
+                </b-button>
               </td>
             </tr>
             <tr v-if="!rows.length"><td :colspan="columns.length + 1" class="text-center text-muted py-5">No records found</td></tr>
@@ -63,7 +76,7 @@
 import { mapGetters } from 'vuex';
 
 export default {
-  data: () => ({ rows: [], total: 0, page: 1, limit: 20, search: '', deletingGatePassId: null }),
+  data: () => ({ rows: [], total: 0, page: 1, limit: 20, search: '', deletingGatePassId: null, deletingPurchaseOrderId: null }),
   computed: {
     ...mapGetters(['currentUserPermissions']),
     kind() { return this.$route.meta.kind; },
@@ -154,6 +167,37 @@ export default {
         this.$bvToast.toast(message, { title: 'Delete failed', variant: 'danger', solid: true });
       } finally {
         this.deletingGatePassId = null;
+      }
+    },
+    async deletePurchaseOrder(row) {
+      const confirmed = await this.$bvModal.msgBoxConfirm(
+        `Delete Purchase Order ${row.number}? Any uninvoiced Gate Pass stock will be reversed first. This action cannot be undone.`,
+        {
+          title: 'Delete Purchase Order',
+          okTitle: 'Delete',
+          okVariant: 'danger',
+          cancelTitle: 'Cancel',
+          cancelVariant: 'outline-secondary',
+          centered: true
+        }
+      );
+      if (!confirmed) return;
+
+      this.deletingPurchaseOrderId = row.id;
+      try {
+        const response = await axios.delete(`procurement/purchase-orders/${row.id}`);
+        this.$bvToast.toast(response.data.message || 'Purchase Order deleted successfully.', {
+          title: 'Deleted', variant: 'success', solid: true
+        });
+        const targetPage = this.rows.length === 1 && this.page > 1 ? this.page - 1 : this.page;
+        this.load(targetPage);
+      } catch (error) {
+        const message = error.response?.data?.message
+          || Object.values(error.response?.data?.errors || {}).flat()[0]
+          || 'Unable to delete this Purchase Order.';
+        this.$bvToast.toast(message, { title: 'Delete failed', variant: 'danger', solid: true });
+      } finally {
+        this.deletingPurchaseOrderId = null;
       }
     },
     detailUrl(row) {

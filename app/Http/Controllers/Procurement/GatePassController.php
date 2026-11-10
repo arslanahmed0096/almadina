@@ -361,6 +361,16 @@ class GatePassController extends Controller
         $user = $request->user('api');
         abort_unless($user && $user->isSuperAdmin(), 403, 'Only the Super Admin can delete Gate Passes.');
 
+        // Duplicate Gate Passes may already have posted stock. Reverse that stock
+        // first so the Super Admin can safely remove the duplicate record.
+        if (DB::table('procurement_stock_movements')
+            ->where('gate_pass_id', $gatePass->id)
+            ->whereNull('reversed_at')
+            ->exists()) {
+            $this->service->cancel($gatePass, $user, 'Deleted by Super Admin as a duplicate Gate Pass.');
+            $gatePass->refresh();
+        }
+
         $attachmentPath = $gatePass->attachment_path;
         $purchaseOrderId = $gatePass->purchase_order_id;
 
@@ -381,8 +391,8 @@ class GatePassController extends Controller
                 abort(422, 'This Gate Pass is linked to a purchase and cannot be deleted.');
             }
 
-            if (DB::table('procurement_stock_movements')->where('gate_pass_id', $gatePass->id)->exists()) {
-                abort(422, 'This Gate Pass has posted stock. Cancel it to reverse stock before attempting removal.');
+            if (DB::table('procurement_stock_movements')->where('gate_pass_id', $gatePass->id)->whereNull('reversed_at')->exists()) {
+                abort(422, 'This Gate Pass still has stock that could not be reversed and cannot be deleted.');
             }
 
             if ($gatePassItemIds->isNotEmpty()
@@ -399,6 +409,7 @@ class GatePassController extends Controller
                 'Removed from the Gate Pass listing by Super Admin.',
                 $gatePass->purchase_order_id
             );
+            DB::table('procurement_stock_movements')->where('gate_pass_id', $gatePass->id)->delete();
             $gatePass->items()->delete();
             $gatePass->delete();
         });

@@ -6,12 +6,14 @@ use App\Enums\PurchaseOrderStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\Provider;
+use App\Models\GatePass;
 use App\Models\PurchaseOrder;
 use App\Models\Tax;
 use App\Models\UserWarehouse;
 use App\Models\Warehouse;
 use App\Services\Procurement\ProcurementAuditService;
 use App\Services\Procurement\ProcurementNotificationService;
+use App\Services\Procurement\GatePassService;
 use App\Services\Procurement\PurchaseOrderProgressService;
 use App\Services\Procurement\PurchaseOrderService;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -22,7 +24,7 @@ use Illuminate\Validation\ValidationException;
 
 class PurchaseOrderController extends Controller
 {
-    public function __construct(private PurchaseOrderService $service, private PurchaseOrderProgressService $progress, private ProcurementAuditService $audit) {}
+    public function __construct(private PurchaseOrderService $service, private PurchaseOrderProgressService $progress, private ProcurementAuditService $audit, private GatePassService $gatePassService) {}
 
     public function index(Request $request)
     {
@@ -41,7 +43,8 @@ class PurchaseOrderController extends Controller
             ->when($request->date_from, fn ($q, $date) => $q->whereDate('order_date', '>=', $date))
             ->when($request->date_to, fn ($q, $date) => $q->whereDate('order_date', '<=', $date));
         $page = $query->latest('id')->paginate(min(100, max(1, (int) $request->get('limit', 20))));
-        $page->getCollection()->transform(function ($order) {
+        $canDelete = $request->user('api')->isSuperAdmin();
+        $page->getCollection()->transform(function ($order) use ($canDelete) {
             $totals = $this->progress->progress($order)['totals'];
             $ordered = (float) ($totals['ordered'] ?? 0);
             $received = (float) ($totals['received'] ?? 0);
@@ -57,7 +60,8 @@ class PurchaseOrderController extends Controller
 
             return $order
                 ->setAttribute('progress', $totals)
-                ->setAttribute('gate_pass_status', $gatePassStatus);
+                ->setAttribute('gate_pass_status', $gatePassStatus)
+                ->setAttribute('can_delete', $canDelete);
         });
 
         return response()->json($page);
@@ -136,6 +140,66 @@ class PurchaseOrderController extends Controller
         });
 
         return response()->json(['success' => true]);
+    }
+
+    public function destroy(Request $request, PurchaseOrder $purchaseOrder)
+    {
+        $user = $request->user('api');
+        abort_unless($user && $user->isSuperAdmin(), 403, 'Only the Super Admin can delete Purchase Orders.');
+
+        $gatePasses = GatePass::where('purchase_order_id', $purchaseOrder->id)->get();
+        $gatePassIds = $gatePasses->pluck('id');
+
+        $hasInvoiceOrPurchase = DB::table('supplier_invoices')->where('purchase_order_id', $purchaseOrder->id)->exists()
+            || DB::table('purchases')->where('purchase_order_id', $purchaseOrder->id)->exists()
+            || ($gatePassIds->isNotEmpty() && (
+                DB::table('supplier_invoices')->whereIn('gate_pass_id', $gatePassIds)->exists()
+                || DB::table('purchases')->whereIn('gate_pass_id', $gatePassIds)->exists()
+                || DB::table('purchase_gate_pass_items')
+                    ->join('gate_pass_items', 'gate_pass_items.id', '=', 'purchase_gate_pass_items.gate_pass_item_id')
+                    ->join('purchases', 'purchases.id', '=', 'purchase_gate_pass_items.purchase_id')
+                    ->whereIn('gate_pass_items.gate_pass_id', $gatePassIds)
+                    ->exists()
+            ));
+        if ($hasInvoiceOrPurchase) {
+            throw ValidationException::withMessages([
+                'purchase_order' => ['A Purchase Order with a linked invoice or purchase cannot be deleted.'],
+            ]);
+        }
+
+        foreach ($gatePasses as $gatePass) {
+            if (DB::table('procurement_stock_movements')->where('gate_pass_id', $gatePass->id)->whereNull('reversed_at')->exists()) {
+                $this->gatePassService->cancel($gatePass, $user, 'Deleted by Super Admin with its duplicate Purchase Order.');
+            }
+        }
+
+        DB::transaction(function () use ($purchaseOrder) {
+            $order = PurchaseOrder::lockForUpdate()->findOrFail($purchaseOrder->id);
+            $gatePassIds = DB::table('gate_passes')->where('purchase_order_id', $order->id)->pluck('id');
+            $gatePassItemIds = $gatePassIds->isEmpty()
+                ? collect()
+                : DB::table('gate_pass_items')->whereIn('gate_pass_id', $gatePassIds)->pluck('id');
+
+            if ($gatePassIds->isNotEmpty() && DB::table('procurement_stock_movements')->whereIn('gate_pass_id', $gatePassIds)->whereNull('reversed_at')->exists()) {
+                throw ValidationException::withMessages([
+                    'purchase_order' => ['Purchase Order stock could not be reversed, so it cannot be deleted.'],
+                ]);
+            }
+
+            DB::table('procurement_stock_movements')->where('purchase_order_id', $order->id)->delete();
+            if ($gatePassItemIds->isNotEmpty()) {
+                DB::table('purchase_gate_pass_items')->whereIn('gate_pass_item_id', $gatePassItemIds)->delete();
+                DB::table('gate_pass_items')->whereIn('id', $gatePassItemIds)->delete();
+            }
+            if ($gatePassIds->isNotEmpty()) {
+                DB::table('gate_passes')->whereIn('id', $gatePassIds)->delete();
+            }
+            DB::table('procurement_audits')->where('purchase_order_id', $order->id)->update(['purchase_order_id' => null]);
+            DB::table('purchase_order_items')->where('purchase_order_id', $order->id)->delete();
+            $order->delete();
+        });
+
+        return response()->json(['message' => 'Purchase Order deleted successfully.']);
     }
 
     public function pdf(Request $request, PurchaseOrder $purchaseOrder)

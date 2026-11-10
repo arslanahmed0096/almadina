@@ -755,6 +755,7 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
     Route::put('procurement/purchase-orders/{purchaseOrder}', [PurchaseOrderController::class, 'update']);
     Route::post('procurement/purchase-orders/{purchaseOrder}/issue', [PurchaseOrderController::class, 'issue']);
     Route::post('procurement/purchase-orders/{purchaseOrder}/cancel', [PurchaseOrderController::class, 'cancel']);
+    Route::delete('procurement/purchase-orders/{purchaseOrder}', [PurchaseOrderController::class, 'destroy']);
     Route::get('procurement/purchase-orders/{purchaseOrder}/pdf', [PurchaseOrderController::class, 'pdf']);
     Route::get('procurement/gate-passes', [GatePassController::class, 'index']);
     Route::get('procurement/gate-passes-metadata', [GatePassController::class, 'metadata']);
