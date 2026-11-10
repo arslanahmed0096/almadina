@@ -154,7 +154,17 @@
           </table>
         </div>
 
-        <div class="d-flex justify-content-end mt-3">
+        <div class="d-flex flex-wrap justify-content-between align-items-center mt-3">
+          <div class="d-flex mb-2 mb-md-0">
+            <div class="po-order-total mr-2">
+              <span>Total Products</span>
+              <strong>{{ form.items.length }}</strong>
+            </div>
+            <div class="po-order-total">
+              <span>Total Quantity</span>
+              <strong>{{ totalOrderQuantity }}</strong>
+            </div>
+          </div>
           <div class="po-order-total">
             <span>Total Order Amount (MRP)</span>
             <strong>{{ formatAmount(mrpOrderTotal) }}</strong>
@@ -225,6 +235,10 @@ export default {
       return this.form.items.reduce((total, line) => {
         return total + (Number(line.quantity) || 0) * (Number(line.mrp_price) || 0);
       }, 0);
+    },
+
+    totalOrderQuantity() {
+      return this.form.items.reduce((total, line) => total + (Number(line.quantity) || 0), 0);
     }
   },
 

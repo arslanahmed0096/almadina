@@ -426,7 +426,9 @@ class GatePassController extends Controller
 
     public function replaceAttachment(Request $request, GatePass $gatePass)
     {
-        $this->permit($request, 'gate_passes_upload');
+        if (! $request->user('api')->isSuperAdmin()) {
+            $this->permit($request, 'gate_passes_upload');
+        }
         $this->assertWarehouse($request, $gatePass->warehouse_id);
         $request->validate(['attachment' => 'required|file|mimes:jpg,jpeg,png,pdf|max:10240', 'reason' => 'required|string|max:1000']);
         $old = ['attachment_name' => $gatePass->attachment_name, 'attachment_path' => $gatePass->attachment_path];

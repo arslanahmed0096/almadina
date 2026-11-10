@@ -39,9 +39,10 @@ class PurchaseOrderService
         });
     }
 
-    public function update(PurchaseOrder $order, array $data): PurchaseOrder
+    public function update(PurchaseOrder $order, array $data, bool $allowIssuedOrder = false): PurchaseOrder
     {
-        if ($order->status !== PurchaseOrderStatus::Draft->value) {
+        if ($order->status !== PurchaseOrderStatus::Draft->value
+            && ! ($allowIssuedOrder && $order->status === PurchaseOrderStatus::Issued->value)) {
             throw ValidationException::withMessages(['status' => ['Only draft Purchase Orders can be edited.']]);
         }
 

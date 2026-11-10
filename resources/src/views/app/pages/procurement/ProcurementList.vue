@@ -29,6 +29,13 @@
                   aria-label="Edit"
                 ><lucide-icon name="pencil" /></router-link>
                 <router-link
+                  v-if="kind === 'orders' && row.can_edit"
+                  class="btn btn-sm btn-outline-success action-icon ml-1"
+                  :to="'/app/procurement/purchase-orders/' + row.id + '/edit'"
+                  title="Edit"
+                  aria-label="Edit"
+                ><lucide-icon name="pencil" /></router-link>
+                <router-link
                   v-if="kind === 'gates' && can('Purchases_add') && row.can_invoice && ['accepted', 'partially_accepted'].includes(row.status)"
                   class="btn btn-sm btn-outline-success action-icon ml-1"
                   :to="{ path: '/app/purchases/store', query: { gate_pass: row.number } }"
@@ -171,7 +178,7 @@ export default {
     },
     async deletePurchaseOrder(row) {
       const confirmed = await this.$bvModal.msgBoxConfirm(
-        `Delete Purchase Order ${row.number}? Any uninvoiced Gate Pass stock will be reversed first. This action cannot be undone.`,
+        `Delete Purchase Order ${row.number}? Delete any related Gate Pass first. This action cannot be undone.`,
         {
           title: 'Delete Purchase Order',
           okTitle: 'Delete',

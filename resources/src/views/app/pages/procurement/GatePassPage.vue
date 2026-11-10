@@ -48,6 +48,35 @@
           <b-col md="4"><b-form-group label="Vehicle"><b-form-input v-model="form.vehicle_number" /></b-form-group></b-col>
           <b-col md="4"><b-form-group label="Driver name"><b-form-input v-model="form.driver_name" /></b-form-group></b-col>
           <b-col md="4"><b-form-group label="Driver phone"><b-form-input v-model="form.driver_phone" /></b-form-group></b-col>
+          <b-col md="6">
+            <b-form-group label="Gate Pass image/PDF">
+              <b-form-file @input="file = $event" accept="image/jpeg,image/png,application/pdf" :disabled="saving" />
+              <small v-if="gate.attachment_name" class="text-muted">Current file: {{ gate.attachment_name }}</small>
+            </b-form-group>
+          </b-col>
+          <b-col md="12">
+            <b-form-group label="Gate Pass Items">
+              <div class="table-responsive">
+                <table class="table table-sm table-bordered mb-0">
+                  <thead><tr><th>Product</th><th>Code</th><th class="text-right">Delivered Quantity</th></tr></thead>
+                  <tbody>
+                    <tr v-for="item in gate.items" :key="item.id">
+                      <td>{{ displayProduct(item) }}</td>
+                      <td>{{ item.sku || '-' }}</td>
+                      <td class="text-right">{{ formatQty(item.delivered_quantity) }}</td>
+                    </tr>
+                    <tr v-if="!gate.items || !gate.items.length"><td colspan="3" class="text-center text-muted">No items found.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </b-form-group>
+          </b-col>
+          <b-col md="12" class="d-flex justify-content-end mb-3">
+            <div class="border rounded bg-light px-3 py-2 text-white">
+              <span class="mr-4"><strong>Total Items:</strong> {{ gatePassItemCount }}</span>
+              <span><strong>Total Quantity:</strong> {{ formatQty(gatePassTotalQuantity) }}</span>
+            </div>
+          </b-col>
           <b-col md="12"><b-form-group label="Notes"><b-form-textarea v-model="form.notes" /></b-form-group></b-col>
         </b-row>
         <b-button type="submit" variant="primary" :disabled="saving">{{ saving ? 'Updating...' : 'Update Gate Pass' }}</b-button>
@@ -130,6 +159,12 @@
             </tr>
           </tbody>
         </table></div>
+        <div class="d-flex justify-content-end mb-3">
+          <div class="border rounded bg-light px-3 py-2 text-white">
+            <span class="mr-4"><strong>Total Items:</strong> {{ gatePassItemCount }}</span>
+            <span><strong>Total Quantity:</strong> {{ formatQty(gatePassTotalQuantity) }}</span>
+          </div>
+        </div>
         <b-form-group label="Notes"><b-form-textarea v-model="form.notes" /></b-form-group>
         <b-button type="submit" variant="primary" :disabled="saving">{{ saving ? 'Saving...' : 'Record and send for verification' }}</b-button>
       </b-form>
@@ -159,6 +194,14 @@ export default {
     viewing() { return this.$route.name === 'procurement_gate_detail'; },
     editing() { return this.$route.name === 'procurement_gate_edit'; },
     direct() { return !this.hasPurchaseOrder; },
+    gatePassItems() {
+      if (this.editing) return this.gate && Array.isArray(this.gate.items) ? this.gate.items : [];
+      return this.lines || [];
+    },
+    gatePassItemCount() { return this.gatePassItems.length; },
+    gatePassTotalQuantity() {
+      return this.gatePassItems.reduce((total, item) => total + (Number(item.delivered_quantity) || 0), 0);
+    },
     filteredPurchaseOrders() {
       if (!this.form.provider_id) return [];
       return this.meta.purchase_orders.filter(order => Number(order.provider_id) === Number(this.form.provider_id));
@@ -415,6 +458,13 @@ export default {
         const payload = fields.reduce((data, field) => ({ ...data, [field]: this.form[field] || null }), {});
         this.saving = true;
         axios.put('procurement/gate-passes/' + this.gate.id, payload)
+          .then(() => {
+            if (!this.file) return null;
+            const attachment = new FormData();
+            attachment.append('attachment', this.file);
+            attachment.append('reason', 'Attachment updated while editing the Gate Pass.');
+            return axios.post('procurement/gate-passes/' + this.gate.id + '/attachment', attachment);
+          })
           .then(() => { this.$router.push('/app/procurement/gate-passes/' + this.gate.id); })
           .catch(error => this.toast(this.errorMessage(error, 'Could not update the Gate Pass.'), 'danger'))
           .finally(() => { this.saving = false; });
