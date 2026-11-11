@@ -158,6 +158,67 @@ class ProcurementWorkflowTest extends TestCase
             ->assertJsonValidationErrors('items.0.quantity');
     }
 
+    public function test_super_admin_can_edit_purchase_order_quantity_after_partial_receipt_without_replacing_the_line(): void
+    {
+        [$order, $product] = $this->singleLineOrder(10);
+        $originalItemId = $order->items[0]->id;
+        $gatePass = app(GatePassService::class)->create($order, [
+            'delivered_at' => '2026-09-07 10:00:00',
+            'items' => [[
+                'purchase_order_item_id' => $originalItemId,
+                'delivered_quantity' => 5,
+                'accepted_quantity' => 5,
+            ]],
+        ], $this->user);
+        app(GatePassService::class)->confirm($gatePass, $this->user);
+
+        $payload = [
+            'order_date' => '2026-08-25',
+            'provider_id' => $this->provider->id,
+            'warehouse_id' => $this->warehouse->id,
+            'items' => [[
+                'product_id' => $product->id,
+                'unit_id' => $this->unit->id,
+                'quantity' => 12,
+                'unit_price' => 100,
+                'discount' => 0,
+                'discount_method' => 'fixed',
+            ]],
+        ];
+
+        $this->actingAs($this->user, 'api')
+            ->putJson('/api/procurement/purchase-orders/'.$order->id, $payload)
+            ->assertOk()
+            ->assertJsonPath('purchase_order.items.0.id', $originalItemId)
+            ->assertJsonPath('purchase_order.items.0.ordered_quantity', '12.000000');
+
+        $this->assertDatabaseHas('gate_pass_items', [
+            'gate_pass_id' => $gatePass->id,
+            'purchase_order_item_id' => $originalItemId,
+        ]);
+
+        $payload['items'][0]['quantity'] = 4;
+        $this->actingAs($this->user, 'api')
+            ->putJson('/api/procurement/purchase-orders/'.$order->id, $payload)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('items.0.quantity');
+
+        $this->assertSame(12.0, (float) $order->items()->findOrFail($originalItemId)->ordered_quantity);
+    }
+
+    public function test_super_admin_can_delete_an_unlinked_purchase_order(): void
+    {
+        [$order] = $this->singleLineOrder(10);
+
+        $this->actingAs($this->user, 'api')
+            ->deleteJson('/api/procurement/purchase-orders/'.$order->id)
+            ->assertOk()
+            ->assertJsonPath('message', 'Purchase Order deleted successfully.');
+
+        $this->assertDatabaseMissing('purchase_orders', ['id' => $order->id]);
+        $this->assertDatabaseMissing('purchase_order_items', ['purchase_order_id' => $order->id]);
+    }
+
     public function test_first_gate_pass_automatically_issues_an_open_draft_purchase_order(): void
     {
         $product = Product::create([
@@ -208,6 +269,78 @@ class ProcurementWorkflowTest extends TestCase
             'auditable_id' => $gatePass->id,
             'action' => 'deleted_by_super_admin',
         ]);
+    }
+
+    public function test_super_admin_can_edit_accepted_gate_pass_quantity_and_stock_is_adjusted(): void
+    {
+        [$order, $product] = $this->singleLineOrder(10);
+        $gatePass = app(GatePassService::class)->create($order, [
+            'delivered_at' => '2026-09-07 10:00:00',
+            'items' => [[
+                'purchase_order_item_id' => $order->items[0]->id,
+                'delivered_quantity' => 5,
+                'accepted_quantity' => 5,
+            ]],
+        ], $this->user);
+        app(GatePassService::class)->confirm($gatePass, $this->user);
+        $item = $gatePass->items()->firstOrFail();
+
+        $this->actingAs($this->user, 'api')
+            ->putJson('/api/procurement/gate-passes/'.$gatePass->id, [
+                'delivered_at' => '2026-09-07 10:00:00',
+                'items' => [['id' => $item->id, 'delivered_quantity' => 7]],
+            ])
+            ->assertOk()
+            ->assertJsonPath('gate_pass.items.0.delivered_quantity', '7.000000')
+            ->assertJsonPath('gate_pass.items.0.accepted_quantity', '7.000000');
+
+        $this->assertSame(7.0, (float) product_warehouse::where('warehouse_id', $this->warehouse->id)->where('product_id', $product->id)->value('qte'));
+        $this->assertDatabaseHas('procurement_stock_movements', [
+            'gate_pass_item_id' => $item->id,
+            'quantity' => 7,
+        ]);
+
+        $this->actingAs($this->user, 'api')
+            ->putJson('/api/procurement/gate-passes/'.$gatePass->id, [
+                'delivered_at' => '2026-09-07 10:00:00',
+                'items' => [['id' => $item->id, 'delivered_quantity' => 4]],
+            ])
+            ->assertOk();
+
+        $this->assertSame(4.0, (float) product_warehouse::where('warehouse_id', $this->warehouse->id)->where('product_id', $product->id)->value('qte'));
+        $this->assertDatabaseHas('procurement_audits', [
+            'auditable_id' => $gatePass->id,
+            'action' => 'quantities_updated_by_super_admin',
+        ]);
+    }
+
+    public function test_accepted_gate_pass_quantity_cannot_be_reduced_below_available_stock(): void
+    {
+        [$order, $product] = $this->singleLineOrder(10);
+        $gatePass = app(GatePassService::class)->create($order, [
+            'delivered_at' => '2026-09-07 10:00:00',
+            'items' => [[
+                'purchase_order_item_id' => $order->items[0]->id,
+                'delivered_quantity' => 5,
+                'accepted_quantity' => 5,
+            ]],
+        ], $this->user);
+        app(GatePassService::class)->confirm($gatePass, $this->user);
+        $item = $gatePass->items()->firstOrFail();
+        product_warehouse::where('warehouse_id', $this->warehouse->id)
+            ->where('product_id', $product->id)
+            ->update(['qte' => 2]);
+
+        $this->actingAs($this->user, 'api')
+            ->putJson('/api/procurement/gate-passes/'.$gatePass->id, [
+                'delivered_at' => '2026-09-07 10:00:00',
+                'items' => [['id' => $item->id, 'delivered_quantity' => 1]],
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('items');
+
+        $this->assertSame(5.0, (float) $item->fresh()->delivered_quantity);
+        $this->assertSame(2.0, (float) product_warehouse::where('warehouse_id', $this->warehouse->id)->where('product_id', $product->id)->value('qte'));
     }
 
     public function test_super_admin_cannot_delete_a_gate_pass_that_has_posted_stock(): void

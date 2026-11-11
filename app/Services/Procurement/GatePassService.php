@@ -4,6 +4,7 @@ namespace App\Services\Procurement;
 
 use App\Enums\GatePassStatus;
 use App\Models\GatePass;
+use App\Models\GatePassItem;
 use App\Models\ProcurementStockMovement;
 use App\Models\Product;
 use App\Models\product_warehouse;
@@ -138,6 +139,150 @@ class GatePassService
             }
 
             return $gatePass->fresh(['items.purchaseOrderItem', 'purchaseOrder']);
+        });
+    }
+
+    public function updateQuantities(GatePass $gatePass, array $rows, $user): GatePass
+    {
+        $this->assertWarehouse($user, $gatePass->warehouse_id);
+
+        return DB::transaction(function () use ($gatePass, $rows, $user) {
+            $gatePass = GatePass::lockForUpdate()->findOrFail($gatePass->id);
+            if (! in_array($gatePass->status, [
+                GatePassStatus::Draft->value,
+                GatePassStatus::PendingVerification->value,
+                GatePassStatus::Accepted->value,
+                GatePassStatus::PartiallyAccepted->value,
+            ], true)) {
+                throw ValidationException::withMessages([
+                    'items' => ['Quantities cannot be changed on a rejected or cancelled Gate Pass.'],
+                ]);
+            }
+
+            $items = GatePassItem::where('gate_pass_id', $gatePass->id)->lockForUpdate()->get()->keyBy('id');
+            $submitted = collect($rows)->keyBy(fn ($row) => (int) $row['id']);
+            if ($items->keys()->sort()->values()->all() !== $submitted->keys()->sort()->values()->all()) {
+                throw ValidationException::withMessages([
+                    'items' => ['Submit a quantity for every existing Gate Pass item. Products cannot be added or removed while editing.'],
+                ]);
+            }
+
+            $isFinalized = in_array($gatePass->status, [
+                GatePassStatus::Accepted->value,
+                GatePassStatus::PartiallyAccepted->value,
+            ], true);
+            $before = $items->map(fn ($item) => [
+                'id' => $item->id,
+                'delivered_quantity' => (string) $item->delivered_quantity,
+                'accepted_quantity' => (string) $item->accepted_quantity,
+                'rejected_quantity' => (string) $item->rejected_quantity,
+            ])->values()->all();
+
+            foreach ($items as $item) {
+                $newQuantity = (string) $submitted[$item->id]['delivered_quantity'];
+                $usedByInvoices = (string) DB::table('supplier_invoice_items as invoice_items')
+                    ->join('supplier_invoices as invoices', 'invoices.id', '=', 'invoice_items.supplier_invoice_id')
+                    ->where('invoice_items.gate_pass_item_id', $item->id)
+                    ->where('invoices.status', '<>', 'cancelled')
+                    ->sum('invoice_items.quantity');
+                $usedByPurchases = (string) DB::table('purchase_gate_pass_items as allocations')
+                    ->join('purchases', 'purchases.id', '=', 'allocations.purchase_id')
+                    ->where('allocations.gate_pass_item_id', $item->id)
+                    ->whereNull('purchases.deleted_at')
+                    ->where('purchases.posting_status', '<>', 'cancelled')
+                    ->sum('allocations.quantity');
+                $usedQuantity = Decimal::add($usedByInvoices, $usedByPurchases);
+                if (bccomp($newQuantity, $usedQuantity, 6) === -1) {
+                    throw ValidationException::withMessages([
+                        'items' => ["{$item->product_name} cannot be reduced below {$usedQuantity} because that quantity is already invoiced or purchased."],
+                    ]);
+                }
+
+                if ($item->purchase_order_item_id) {
+                    $poItem = PurchaseOrderItem::lockForUpdate()->findOrFail($item->purchase_order_item_id);
+                    $receivedByOtherGatePasses = (string) DB::table('gate_pass_items as other_items')
+                        ->join('gate_passes as other_gates', 'other_gates.id', '=', 'other_items.gate_pass_id')
+                        ->where('other_items.purchase_order_item_id', $poItem->id)
+                        ->where('other_items.id', '<>', $item->id)
+                        ->whereIn('other_gates.status', [GatePassStatus::Accepted->value, GatePassStatus::PartiallyAccepted->value])
+                        ->sum('other_items.accepted_quantity');
+                    $available = Decimal::sub($poItem->ordered_quantity, $receivedByOtherGatePasses);
+                    if (bccomp($newQuantity, $available, 6) === 1) {
+                        throw ValidationException::withMessages([
+                            'items' => ["{$item->product_name} cannot exceed the remaining Purchase Order quantity of {$available}."],
+                        ]);
+                    }
+                }
+
+                if ($isFinalized) {
+                    $movement = ProcurementStockMovement::where('gate_pass_item_id', $item->id)->lockForUpdate()->first();
+                    if (! $movement) {
+                        throw ValidationException::withMessages([
+                            'items' => ["The stock movement for {$item->product_name} is missing, so its quantity cannot be changed safely."],
+                        ]);
+                    }
+
+                    $unit = $item->unit_id ? Unit::find($item->unit_id) : null;
+                    $newStockQuantity = $newQuantity;
+                    if ($unit && (float) $unit->operator_value > 0) {
+                        $newStockQuantity = $unit->operator === '/'
+                            ? Decimal::div($newStockQuantity, $unit->operator_value)
+                            : Decimal::mul($newStockQuantity, $unit->operator_value);
+                    }
+                    $difference = Decimal::sub($newStockQuantity, $movement->quantity);
+
+                    if (bccomp($difference, '0', 6) !== 0) {
+                        $stockQuery = product_warehouse::whereNull('deleted_at')
+                            ->where('warehouse_id', $movement->warehouse_id)
+                            ->where('product_id', $movement->product_id);
+                        $movement->product_variant_id
+                            ? $stockQuery->where('product_variant_id', $movement->product_variant_id)
+                            : $stockQuery->whereNull('product_variant_id');
+                        $stock = $stockQuery->lockForUpdate()->firstOrFail();
+                        if (bccomp($difference, '0', 6) === -1
+                            && bccomp((string) $stock->qte, ltrim($difference, '-'), 6) === -1) {
+                            throw ValidationException::withMessages([
+                                'items' => ["{$item->product_name} cannot be reduced by ".ltrim($difference, '-')." because only {$stock->qte} remains in this warehouse."],
+                            ]);
+                        }
+                        $stock->qte = (float) Decimal::add((string) $stock->qte, $difference);
+                        $stock->save();
+                    }
+
+                    $metadata = $movement->metadata ?: [];
+                    $metadata['accepted_quantity'] = $newQuantity;
+                    $movement->update(['quantity' => $newStockQuantity, 'metadata' => $metadata]);
+                }
+
+                $item->update([
+                    'delivered_quantity' => $newQuantity,
+                    'accepted_quantity' => $newQuantity,
+                    'rejected_quantity' => 0,
+                    'short_quantity' => 0,
+                ]);
+            }
+
+            $after = $gatePass->items()->get()->map(fn ($item) => [
+                'id' => $item->id,
+                'delivered_quantity' => (string) $item->delivered_quantity,
+                'accepted_quantity' => (string) $item->accepted_quantity,
+                'rejected_quantity' => (string) $item->rejected_quantity,
+            ])->all();
+            if ($before !== $after) {
+                $this->audit->record(
+                    $gatePass,
+                    'quantities_updated_by_super_admin',
+                    ['items' => $before],
+                    ['items' => $after],
+                    'Gate Pass quantities corrected by Super Admin.',
+                    $gatePass->purchase_order_id
+                );
+            }
+            if ($gatePass->purchase_order_id) {
+                $this->progress->refreshStatus(PurchaseOrder::findOrFail($gatePass->purchase_order_id));
+            }
+
+            return $gatePass->fresh(['items.purchaseOrderItem', 'purchaseOrder', 'provider', 'warehouse']);
         });
     }
 

@@ -618,12 +618,13 @@ export default {
     },
 
     errorMessage(error, fallback) {
-      const response = error && error.response && error.response.data;
+      const response = (error && error.response && error.response.data) || error;
+      if (typeof response === 'string') return response;
       if (response && response.errors) {
         const first = Object.values(response.errors)[0];
         if (Array.isArray(first) && first[0]) return first[0];
       }
-      return (response && response.message) || fallback;
+      return (response && response.message) || (error && error.message) || fallback;
     },
 
     toast(message, variant) {

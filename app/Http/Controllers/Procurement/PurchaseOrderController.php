@@ -110,14 +110,9 @@ class PurchaseOrderController extends Controller
         }
         $this->assertWarehouse($request, $purchaseOrder->warehouse_id);
 
-        if ($purchaseOrder->gatePasses()->exists()) {
-            throw ValidationException::withMessages([
-                'purchase_order' => ['Edit or delete the related Gate Pass first before editing this Purchase Order.'],
-            ]);
-        }
-
         $data = $request->validate($this->rules());
         $this->ensureUniqueItemProducts($data['items']);
+        $this->assertWarehouse($request, (int) $data['warehouse_id']);
 
         return response()->json(['purchase_order' => $this->service->update($purchaseOrder, $data, $request->user('api')->isSuperAdmin())]);
     }

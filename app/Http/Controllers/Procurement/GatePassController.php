@@ -242,18 +242,32 @@ class GatePassController extends Controller
             'driver_name' => 'nullable|string|max:150',
             'driver_phone' => 'nullable|string|max:80',
             'notes' => 'nullable|string|max:5000',
+            'items' => 'sometimes|required|array|min:1',
+            'items.*.id' => 'required|integer|distinct',
+            'items.*.delivered_quantity' => 'required|integer|gt:0',
         ]);
+
+        $itemRows = $data['items'] ?? null;
+        unset($data['items']);
         $fields = array_keys($data);
-        $before = $gatePass->only($fields);
-        $gatePass->update($data);
-        $this->audit->record(
-            $gatePass,
-            'updated_by_super_admin',
-            $before,
-            $gatePass->fresh()->only($fields),
-            'Gate Pass header details updated by Super Admin.',
-            $gatePass->purchase_order_id
-        );
+        DB::transaction(function () use ($gatePass, $user, $data, $fields, $itemRows) {
+            $before = $gatePass->only($fields);
+            if ($itemRows !== null) {
+                $this->service->updateQuantities($gatePass, $itemRows, $user);
+            }
+            $gatePass->update($data);
+            $after = $gatePass->fresh()->only($fields);
+            if ($before !== $after) {
+                $this->audit->record(
+                    $gatePass,
+                    'updated_by_super_admin',
+                    $before,
+                    $after,
+                    'Gate Pass header details updated by Super Admin.',
+                    $gatePass->purchase_order_id
+                );
+            }
+        });
 
         return response()->json(['gate_pass' => $gatePass->fresh(['purchaseOrder', 'provider', 'warehouse', 'items.purchaseOrderItem'])]);
     }

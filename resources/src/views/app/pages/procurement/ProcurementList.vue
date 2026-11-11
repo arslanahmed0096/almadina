@@ -145,6 +145,14 @@ export default {
       if (status.includes('received') || status.includes('completed') || status === 'accepted' || status === 'posted') return 'success';
       return 'primary';
     },
+    errorMessage(error, fallback) {
+      // The global Axios interceptor unwraps most 4xx responses before rejecting,
+      // while network/5xx errors can still arrive as a normal Axios error.
+      const data = error?.response?.data || error;
+      if (typeof data === 'string') return data;
+      const validationMessage = Object.values(data?.errors || {}).flat()[0];
+      return validationMessage || data?.message || error?.message || fallback;
+    },
     async deleteGatePass(row) {
       const confirmed = await this.$bvModal.msgBoxConfirm(
         `Delete Gate Pass ${row.number}? This action cannot be undone.`,
@@ -168,9 +176,7 @@ export default {
         const targetPage = this.rows.length === 1 && this.page > 1 ? this.page - 1 : this.page;
         this.load(targetPage);
       } catch (error) {
-        const message = error.response?.data?.message
-          || Object.values(error.response?.data?.errors || {}).flat()[0]
-          || 'Unable to delete this Gate Pass.';
+        const message = this.errorMessage(error, 'Unable to delete this Gate Pass.');
         this.$bvToast.toast(message, { title: 'Delete failed', variant: 'danger', solid: true });
       } finally {
         this.deletingGatePassId = null;
@@ -199,9 +205,7 @@ export default {
         const targetPage = this.rows.length === 1 && this.page > 1 ? this.page - 1 : this.page;
         this.load(targetPage);
       } catch (error) {
-        const message = error.response?.data?.message
-          || Object.values(error.response?.data?.errors || {}).flat()[0]
-          || 'Unable to delete this Purchase Order.';
+        const message = this.errorMessage(error, 'Unable to delete this Purchase Order.');
         this.$bvToast.toast(message, { title: 'Delete failed', variant: 'danger', solid: true });
       } finally {
         this.deletingPurchaseOrderId = null;

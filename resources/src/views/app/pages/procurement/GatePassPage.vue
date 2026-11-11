@@ -37,7 +37,7 @@
     <b-card v-else-if="editing && gate">
       <b-form @submit.prevent="updateGatePass">
         <b-alert show variant="light">
-          Editing <strong>{{ gate.number }}</strong>. Supplier, Purchase Order, products, and quantities cannot be changed.
+          Editing <strong>{{ gate.number }}</strong>. Supplier, Purchase Order, and products cannot be changed. Quantities can be corrected by Superadmin.
         </b-alert>
         <b-row>
           <b-col md="6"><p><strong>Supplier:</strong> {{ gate.provider ? gate.provider.name : '-' }}</p></b-col>
@@ -63,7 +63,13 @@
                     <tr v-for="item in gate.items" :key="item.id">
                       <td>{{ displayProduct(item) }}</td>
                       <td>{{ item.sku || '-' }}</td>
-                      <td class="text-right">{{ formatQty(item.delivered_quantity) }}</td>
+                      <td style="width: 230px">
+                        <b-input-group>
+                          <b-input-group-prepend><b-button size="sm" variant="primary" :disabled="saving || Number(item.delivered_quantity) <= 1" @click="decrementEditQuantity(item)">−</b-button></b-input-group-prepend>
+                          <b-form-input type="number" step="1" min="1" v-model.number="item.delivered_quantity" :disabled="saving" @input="normalizeEditQuantity(item)" />
+                          <b-input-group-append><b-button size="sm" variant="primary" :disabled="saving" @click="incrementEditQuantity(item)">+</b-button></b-input-group-append>
+                        </b-input-group>
+                      </td>
                     </tr>
                     <tr v-if="!gate.items || !gate.items.length"><td colspan="3" class="text-center text-muted">No items found.</td></tr>
                   </tbody>
@@ -249,18 +255,35 @@ export default {
     decrementDelivered(line) {
       line.delivered_quantity = Math.max(0, (Number(line.delivered_quantity) || 0) - 1);
     },
+    normalizeEditQuantity(item) {
+      const quantity = Number(item.delivered_quantity);
+      item.delivered_quantity = Number.isFinite(quantity) ? Math.max(1, Math.round(quantity)) : 1;
+    },
+    incrementEditQuantity(item) {
+      item.delivered_quantity = (Number(item.delivered_quantity) || 0) + 1;
+    },
+    decrementEditQuantity(item) {
+      item.delivered_quantity = Math.max(1, (Number(item.delivered_quantity) || 1) - 1);
+    },
     errorMessage(error, fallback) {
-      const data = error && error.response && error.response.data;
+      const data = (error && error.response && error.response.data) || error;
+      if (typeof data === 'string') return data;
       if (data && data.errors) {
         const first = Object.values(data.errors)[0];
         if (Array.isArray(first) && first[0]) return first[0];
       }
-      return (data && data.message) || fallback;
+      return (data && data.message) || (error && error.message) || fallback;
     },
     toast(message, variant = 'warning') { this.$root.$bvToast.toast(message, { title: 'Gate Pass', variant, solid: true }); },
     loadGate() {
       axios.get('procurement/gate-passes/' + this.$route.params.id).then(response => {
         this.gate = response.data.gate_pass;
+        if (Array.isArray(this.gate.items)) {
+          this.gate.items = this.gate.items.map(item => ({
+            ...item,
+            delivered_quantity: Math.round(Number(item.delivered_quantity) || 0)
+          }));
+        }
         if (this.editing) {
           if (!this.gate.can_edit) {
             this.toast('Only the Super Admin can edit Gate Passes.', 'danger');
@@ -443,6 +466,10 @@ export default {
     },
     updateGatePass() {
       if (!this.form.delivered_at) { this.toast('Delivery date/time is required.'); return; }
+      if (!this.gate.items.length || this.gate.items.some(item => !Number.isInteger(Number(item.delivered_quantity)) || Number(item.delivered_quantity) < 1)) {
+        this.toast('Every Gate Pass item must have a whole quantity greater than zero.');
+        return;
+      }
       this.$swal({
         title: 'Are you sure?',
         text: 'Do you want to update this gate pass?',
@@ -456,6 +483,7 @@ export default {
         if (!result.value) return;
         const fields = ['delivered_at', 'supplier_gate_pass_number', 'bilty_number', 'vehicle_number', 'driver_name', 'driver_phone', 'notes'];
         const payload = fields.reduce((data, field) => ({ ...data, [field]: this.form[field] || null }), {});
+        payload.items = this.gate.items.map(item => ({ id: item.id, delivered_quantity: Number(item.delivered_quantity) }));
         this.saving = true;
         axios.put('procurement/gate-passes/' + this.gate.id, payload)
           .then(() => {
