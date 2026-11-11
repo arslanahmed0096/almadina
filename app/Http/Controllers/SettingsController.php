@@ -176,7 +176,7 @@ class SettingsController extends Controller
             'logo' => $filename,
             'point_to_amount_rate' => $request['point_to_amount_rate'],
             'default_tax' => $request['default_tax'] ?? 0,
-            'default_dashboard_date_range' => in_array($request['default_dashboard_date_range'] ?? 'week', ['today', 'week', 'month'], true) ? $request['default_dashboard_date_range'] : 'week',
+            'default_dashboard_date_range' => in_array($request['default_dashboard_date_range'] ?? 'today', ['today', 'week', 'month'], true) ? $request['default_dashboard_date_range'] : 'today',
             'dashboard_section_order' => $request['dashboard_section_order'] ?? null,
             'dashboard_grid_layout' => $request['dashboard_grid_layout'] ?? null,
             'dashboard_font_size' => $request['dashboard_font_size'] ?? null,
@@ -653,7 +653,7 @@ class SettingsController extends Controller
                 : 'vertical';
             $item['point_to_amount_rate'] = $settings->point_to_amount_rate;
             $item['default_tax'] = $settings->default_tax;
-            $item['default_dashboard_date_range'] = in_array($settings->default_dashboard_date_range ?? 'week', ['today', 'week', 'month'], true) ? $settings->default_dashboard_date_range : 'week';
+            $item['default_dashboard_date_range'] = in_array($settings->default_dashboard_date_range ?? 'today', ['today', 'week', 'month'], true) ? $settings->default_dashboard_date_range : 'today';
             $item['dashboard_section_order'] = $settings->dashboard_section_order ?? null;
             $item['dashboard_font_size'] = $settings->dashboard_font_size ?? '';
             $item['dashboard_font_family'] = $settings->dashboard_font_family ?? '';
@@ -881,7 +881,7 @@ class SettingsController extends Controller
                 : 'vertical';
             $item['point_to_amount_rate'] = $settings->point_to_amount_rate;
             $item['default_tax'] = $settings->default_tax;
-            $item['default_dashboard_date_range'] = in_array($settings->default_dashboard_date_range ?? 'week', ['today', 'week', 'month'], true) ? $settings->default_dashboard_date_range : 'week';
+            $item['default_dashboard_date_range'] = in_array($settings->default_dashboard_date_range ?? 'today', ['today', 'week', 'month'], true) ? $settings->default_dashboard_date_range : 'today';
             $item['dashboard_section_order'] = $settings->dashboard_section_order ?? null;
             $item['dashboard_font_size'] = $settings->dashboard_font_size ?? '';
             $item['dashboard_font_family'] = $settings->dashboard_font_family ?? '';

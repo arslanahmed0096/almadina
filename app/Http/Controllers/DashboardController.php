@@ -57,6 +57,8 @@ class DashboardController extends Controller
         // Stat cards and Sales by Payment: Use date range + warehouse filter
         $report_dashboard = $this->report_dashboard($request, $warehouse_id, $array_warehouses_id);
         $sales_by_payment = $this->SalesByPayment($warehouse_id, $array_warehouses_id, $request->from, $request->to);
+        $daily_sales_and_returns = $this->DailySalesAndReturns($warehouse_id, $array_warehouses_id, $request->from, $request->to);
+        $daily_purchases_and_returns = $this->DailyPurchasesAndReturns($warehouse_id, $array_warehouses_id, $request->from, $request->to);
         
         // Stock Value: Only warehouse filter (no date range)
         $stock_value = $this->StockValue($warehouse_id, $array_warehouses_id);
@@ -71,8 +73,135 @@ class DashboardController extends Controller
             'report_dashboard' => $report_dashboard,
             'sales_by_payment' => $sales_by_payment,
             'stock_value' => $stock_value,
+            'daily_sales' => $daily_sales_and_returns['sales'],
+            'daily_sale_returns' => $daily_sales_and_returns['returns'],
+            'daily_purchases' => $daily_purchases_and_returns['purchases'],
+            'daily_purchase_returns' => $daily_purchases_and_returns['returns'],
         ]);
 
+    }
+
+    private function DailySalesAndReturns($warehouse_id, array $array_warehouses_id, $from = null, $to = null): array
+    {
+        $user = Auth::user();
+        $view_records = $user->hasRecordView();
+        $start = $from ? Carbon::parse($from)->toDateString() : Carbon::today()->toDateString();
+        $end = $to ? Carbon::parse($to)->toDateString() : Carbon::today()->toDateString();
+
+        $sales = Sale::with(['client:id,name', 'user:id,firstname,lastname,username', 'salesAgent:id,name'])
+            ->whereNull('deleted_at')
+            ->whereBetween('date', [$start, $end])
+            ->when(! $view_records, fn ($query) => $query->where('user_id', $user->id))
+            ->when(
+                $warehouse_id !== 0,
+                fn ($query) => $query->where('warehouse_id', $warehouse_id),
+                fn ($query) => $query->whereIn('warehouse_id', $array_warehouses_id)
+            )
+            ->latest('id')
+            ->limit(20)
+            ->get()
+            ->map(function ($sale) {
+                $userName = trim(($sale->user?->firstname ?? '').' '.($sale->user?->lastname ?? ''));
+
+                return [
+                    'id' => $sale->id,
+                    'reference' => $sale->Ref,
+                    'customer_name' => $sale->client?->name ?: 'Walk-in Customer',
+                    'salesman' => $sale->salesAgent?->name ?: ($userName ?: ($sale->user?->username ?: '-')),
+                    'total' => (float) $sale->GrandTotal,
+                ];
+            })->values();
+
+        $returns = SaleReturn::with([
+            'client:id,name',
+            'user:id,firstname,lastname,username',
+            'sale.salesAgent:id,name',
+            'sale.user:id,firstname,lastname,username',
+        ])
+            ->whereNull('deleted_at')
+            ->whereBetween('date', [$start, $end])
+            ->when(! $view_records, fn ($query) => $query->where('user_id', $user->id))
+            ->when(
+                $warehouse_id !== 0,
+                fn ($query) => $query->where('warehouse_id', $warehouse_id),
+                fn ($query) => $query->whereIn('warehouse_id', $array_warehouses_id)
+            )
+            ->latest('id')
+            ->limit(20)
+            ->get()
+            ->map(function ($return) {
+                $returnUserName = trim(($return->user?->firstname ?? '').' '.($return->user?->lastname ?? ''));
+                $saleUserName = trim(($return->sale?->user?->firstname ?? '').' '.($return->sale?->user?->lastname ?? ''));
+
+                return [
+                    'id' => $return->id,
+                    'reference' => $return->Ref,
+                    'customer_name' => $return->client?->name ?: 'Walk-in Customer',
+                    'salesman' => $return->sale?->salesAgent?->name
+                        ?: ($returnUserName ?: ($return->user?->username ?: ($saleUserName ?: ($return->sale?->user?->username ?: '-')))),
+                    'total' => (float) $return->GrandTotal,
+                ];
+            })->values();
+
+        return ['sales' => $sales, 'returns' => $returns];
+    }
+
+    private function DailyPurchasesAndReturns($warehouse_id, array $array_warehouses_id, $from = null, $to = null): array
+    {
+        $user = Auth::user();
+        $view_records = $user->hasRecordView();
+        $start = $from ? Carbon::parse($from)->toDateString() : Carbon::today()->toDateString();
+        $end = $to ? Carbon::parse($to)->toDateString() : Carbon::today()->toDateString();
+
+        $purchases = Purchase::with(['provider:id,name', 'user:id,firstname,lastname,username'])
+            ->whereNull('deleted_at')
+            ->whereBetween('date', [$start, $end])
+            ->when(! $view_records, fn ($query) => $query->where('user_id', $user->id))
+            ->when(
+                $warehouse_id !== 0,
+                fn ($query) => $query->where('warehouse_id', $warehouse_id),
+                fn ($query) => $query->whereIn('warehouse_id', $array_warehouses_id)
+            )
+            ->latest('id')
+            ->limit(20)
+            ->get()
+            ->map(function ($purchase) {
+                $userName = trim(($purchase->user?->firstname ?? '').' '.($purchase->user?->lastname ?? ''));
+
+                return [
+                    'id' => $purchase->id,
+                    'reference' => $purchase->Ref,
+                    'supplier_name' => $purchase->provider?->name ?: '-',
+                    'user_name' => $userName ?: ($purchase->user?->username ?: '-'),
+                    'total' => (float) $purchase->GrandTotal,
+                ];
+            })->values();
+
+        $returns = PurchaseReturn::with(['provider:id,name', 'user:id,firstname,lastname,username'])
+            ->whereNull('deleted_at')
+            ->whereBetween('date', [$start, $end])
+            ->when(! $view_records, fn ($query) => $query->where('user_id', $user->id))
+            ->when(
+                $warehouse_id !== 0,
+                fn ($query) => $query->where('warehouse_id', $warehouse_id),
+                fn ($query) => $query->whereIn('warehouse_id', $array_warehouses_id)
+            )
+            ->latest('id')
+            ->limit(20)
+            ->get()
+            ->map(function ($return) {
+                $userName = trim(($return->user?->firstname ?? '').' '.($return->user?->lastname ?? ''));
+
+                return [
+                    'id' => $return->id,
+                    'reference' => $return->Ref,
+                    'supplier_name' => $return->provider?->name ?: '-',
+                    'user_name' => $userName ?: ($return->user?->username ?: '-'),
+                    'total' => (float) $return->GrandTotal,
+                ];
+            })->values();
+
+        return ['purchases' => $purchases, 'returns' => $returns];
     }
 
     // ----------------- Sales Chart js -----------------------\\

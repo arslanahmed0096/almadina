@@ -804,8 +804,8 @@
                       </td>
                       <td class="align-middle font-weight-bold">{{ item.product_name }}</td>
                       <td class="align-middle">{{ item.product_code || '—' }}</td>
-                      <td class="text-right align-middle">{{ formatNumber(item.quantity, 2) }}</td>
-                      <td><b-form-input v-model.number="shipmentQuantities[item.sale_detail_id]" type="number" min="0.01" :max="item.remaining_quantity" step="0.01" size="sm" :disabled="shipmentItemDisabled(item)" /></td>
+                      <td class="text-right align-middle">{{ formatNumber(item.quantity, 0) }}</td>
+                      <td><b-form-input v-model.number="shipmentQuantities[item.sale_detail_id]" type="number" min="1" :max="shipmentItemMaxQuantity(item)" step="1" size="sm" :disabled="shipmentItemDisabled(item)" @blur="normalizeShipmentQuantity(item)" /></td>
                       <td class="text-right align-middle">{{ shipmentMoney(item.item_total) }}</td>
                       <td class="text-right align-middle text-success">{{ shipmentMoney(item.paid_amount) }}</td>
                       <td class="text-right align-middle" :class="item.outstanding_amount > 0 ? 'text-danger' : 'text-success'">
@@ -2585,6 +2585,27 @@ export default {
       return requiredCredit > this.shipmentAvailableCredit + 0.005;
     },
 
+    shipmentItemMaxQuantity(item) {
+      return Math.max(1, Math.floor(Number(item.remaining_quantity || item.quantity || 1)));
+    },
+
+    normalizeShipmentQuantity(item) {
+      const maximum = this.shipmentItemMaxQuantity(item);
+      const requested = Math.floor(Number(this.shipmentQuantities[item.sale_detail_id]));
+      this.$set(
+        this.shipmentQuantities,
+        item.sale_detail_id,
+        Number.isFinite(requested) ? Math.min(Math.max(requested, 1), maximum) : maximum
+      );
+    },
+
+    initializeShipmentQuantities() {
+      this.shipmentQuantities = {};
+      this.remainingShipmentItems.forEach(item => {
+        this.$set(this.shipmentQuantities, item.sale_detail_id, this.shipmentItemMaxQuantity(item));
+      });
+    },
+
     selectAllShipmentItems() {
       const selected = [];
       let selectedTotal = 0;
@@ -3735,8 +3756,7 @@ export default {
             .then(response => {
                 this.shipment   = response.data.shipment;
                 this.shipmentEligibility = response.data.eligibility || {};
-                this.shipmentQuantities = {};
-                this.remainingShipmentItems.forEach(item => { this.$set(this.shipmentQuantities, item.sale_detail_id, Math.min(1, Number(item.remaining_quantity || item.quantity || 0))); });
+                this.initializeShipmentQuantities();
                 this.shipmentEligibilityLoading = false;
 
                  setTimeout(() => {

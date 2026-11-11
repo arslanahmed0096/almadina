@@ -38,6 +38,18 @@
                       </template>
                     </v-select>
                   </div>
+                  <div class="dashboard-period-filter" role="group" aria-label="Dashboard period">
+                    <button
+                      type="button"
+                      :class="['dashboard-period-btn', { active: periodMode === 'daily' }]"
+                      @click="setDashboardPeriod('daily')"
+                    >Daily</button>
+                    <button
+                      type="button"
+                      :class="['dashboard-period-btn', { active: periodMode === 'monthly' }]"
+                      @click="setDashboardPeriod('monthly')"
+                    >Monthly</button>
+                  </div>
                   <div class="date-range-filter">
                     <date-range-picker
                       v-model="dateRange"
@@ -87,7 +99,7 @@
             <router-link to="/app/sales/list" class="stat-card sales-card h-100">
               <div class="stat-card-icon"><lucide-icon name="shopping-cart" /></div>
               <div class="stat-card-content">
-                <p class="stat-card-label">{{ $t('Sales') }}</p>
+                <p class="stat-card-label">{{ $t('Sales') }} · {{ summaryPeriodLabel }}</p>
                 <h3 class="stat-card-value">{{ formatPriceWithSymbol(currentUser && currentUser.currency, report_today.today_sales || 0, 2) }}</h3>
               </div>
             </router-link>
@@ -96,7 +108,7 @@
             <router-link to="/app/purchases/list" class="stat-card purchases-card h-100">
               <div class="stat-card-icon"><lucide-icon name="shopping-cart" /></div>
               <div class="stat-card-content">
-                <p class="stat-card-label">{{ $t('Purchases') }}</p>
+                <p class="stat-card-label">{{ $t('Purchases') }} · {{ summaryPeriodLabel }}</p>
                 <h3 class="stat-card-value">{{ formatPriceWithSymbol(currentUser && currentUser.currency, report_today.today_purchases || 0, 2) }}</h3>
               </div>
             </router-link>
@@ -105,7 +117,7 @@
             <router-link to="/app/sale_return/list" class="stat-card returns-card h-100">
               <div class="stat-card-icon"><lucide-icon name="chevron-right" /></div>
               <div class="stat-card-content">
-                <p class="stat-card-label">{{ $t('SalesReturn') }}</p>
+                <p class="stat-card-label">{{ $t('SalesReturn') }} · {{ summaryPeriodLabel }}</p>
                 <h3 class="stat-card-value">{{ formatPriceWithSymbol(currentUser && currentUser.currency, report_today.return_sales || 0, 2) }}</h3>
               </div>
             </router-link>
@@ -114,7 +126,7 @@
             <router-link to="/app/purchase_return/list" class="stat-card revenue-card h-100">
               <div class="stat-card-icon"><lucide-icon name="chevron-left" /></div>
               <div class="stat-card-content">
-                <p class="stat-card-label">{{ $t('PurchasesReturn') }}</p>
+                <p class="stat-card-label">{{ $t('PurchasesReturn') }} · {{ summaryPeriodLabel }}</p>
                 <h3 class="stat-card-value">{{ formatPriceWithSymbol(currentUser && currentUser.currency, report_today.return_purchases || 0, 2) }}</h3>
               </div>
             </router-link>
@@ -127,7 +139,7 @@
             <router-link to="/app/sales/list" class="stat-card sales-due-card h-100">
               <div class="stat-card-icon"><lucide-icon name="banknote" /></div>
               <div class="stat-card-content">
-                <p class="stat-card-label">{{ $t('Sales_Due') }}</p>
+                <p class="stat-card-label">{{ $t('Sales_Due') }} · {{ summaryPeriodLabel }}</p>
                 <h3 class="stat-card-value">{{ formatPriceWithSymbol(currentUser && currentUser.currency, report_today.sales_due || 0, 2) }}</h3>
               </div>
             </router-link>
@@ -136,7 +148,7 @@
             <router-link to="/app/purchases/list" class="stat-card purchase-due-card h-100">
               <div class="stat-card-icon"><lucide-icon name="wallet" /></div>
               <div class="stat-card-content">
-                <p class="stat-card-label">{{ $t('Total_Purchase_Due') }}</p>
+                <p class="stat-card-label">{{ $t('Total_Purchase_Due') }} · {{ summaryPeriodLabel }}</p>
                 <h3 class="stat-card-value">{{ formatPriceWithSymbol(currentUser && currentUser.currency, report_today.purchase_due || 0, 2) }}</h3>
               </div>
             </router-link>
@@ -145,7 +157,7 @@
             <router-link to="/app/sales/list" class="stat-card invoices-card h-100">
               <div class="stat-card-icon"><lucide-icon name="file-text" /></div>
               <div class="stat-card-content">
-                <p class="stat-card-label">{{ $t('Invoice') }}</p>
+                <p class="stat-card-label">{{ $t('Invoice') }} · {{ summaryPeriodLabel }}</p>
                 <h3 class="stat-card-value">{{ report_today.today_invoices ? report_today.today_invoices : 0 }}</h3>
               </div>
             </router-link>
@@ -154,23 +166,156 @@
             <router-link to="/app/reports/profit_and_loss" class="stat-card profit-card h-100">
               <div class="stat-card-icon"><lucide-icon name="banknote" /></div>
               <div class="stat-card-content">
-                <p class="stat-card-label">{{ $t('Profit') }}</p>
+                <p class="stat-card-label">{{ $t('Profit') }} · {{ summaryPeriodLabel }}</p>
                 <h3 class="stat-card-value">{{ formatPriceWithSymbol(currentUser && currentUser.currency, report_today.today_profit || 0, 2) }}</h3>
               </div>
             </router-link>
           </b-col>
         </b-row>
 
-          <!-- Chart: Sales & Purchases -->
+        <!-- Daily Sales & Sale Returns (legacy id preserves saved widget ordering) -->
         <b-row v-else-if="sectionId === 'chart_sales_purchases'" :key="sectionId" class="mb-3 align-items-stretch">
-          <b-col cols="12">
-            <div class="chart-card h-100">
-              <div class="chart-card-header">
-                <h4 class="chart-card-title">{{ $t('Sales') }} &amp; {{ $t('Purchases') }}</h4>
+          <b-col lg="6" cols="12" class="mb-3 mb-lg-0">
+            <div class="chart-card dashboard-transaction-card h-100">
+              <div class="chart-card-header dashboard-transaction-header">
+                <div>
+                  <h4 class="chart-card-title">Daily Sales</h4>
+                  <small class="text-muted">{{ startDate }} to {{ endDate }}</small>
+                </div>
+                <router-link to="/app/sales/list" class="btn btn-sm btn-outline-primary">View all</router-link>
               </div>
-              <div class="chart-card-body">
-                <apexchart v-if="!loading" type="bar" :height="chartHeight" :options="chartSalesOptions" :series="chartSalesSeries"></apexchart>
-                <div v-else class="text-center py-5"><div class="spinner spinner-primary"></div></div>
+              <div class="dashboard-transaction-table-wrap">
+                <table class="table table-hover dashboard-transaction-table mb-0">
+                  <thead><tr><th>Sale ID</th><th>Customer</th><th>Salesman</th><th class="text-right">Total Amount</th><th class="text-center">Details</th></tr></thead>
+                  <tbody>
+                    <tr v-for="sale in dailySales" :key="sale.id">
+                      <td class="font-weight-semibold">{{ sale.reference }}</td>
+                      <td>{{ sale.customer_name }}</td>
+                      <td>{{ sale.salesman }}</td>
+                      <td class="text-right text-nowrap">{{ formatPriceWithSymbol(currentUser && currentUser.currency, sale.total, 2) }}</td>
+                      <td class="text-center">
+                        <a
+                          :href="'/app/sales/detail/' + sale.id"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="btn btn-sm btn-outline-primary dashboard-detail-icon"
+                          title="View sale details"
+                          aria-label="View sale details"
+                        ><lucide-icon name="eye" /></a>
+                      </td>
+                    </tr>
+                    <tr v-if="!dailySales.length"><td colspan="5" class="text-center text-muted py-4">No sales found for this period.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </b-col>
+          <b-col lg="6" cols="12">
+            <div class="chart-card dashboard-transaction-card h-100">
+              <div class="chart-card-header dashboard-transaction-header">
+                <div>
+                  <h4 class="chart-card-title">Daily Sale Returns</h4>
+                  <small class="text-muted">{{ startDate }} to {{ endDate }}</small>
+                </div>
+                <router-link to="/app/sale_return/list" class="btn btn-sm btn-outline-warning">View all</router-link>
+              </div>
+              <div class="dashboard-transaction-table-wrap">
+                <table class="table table-hover dashboard-transaction-table mb-0">
+                  <thead><tr><th>Return ID</th><th>Customer</th><th>Salesman</th><th class="text-right">Total Amount</th><th class="text-center">Details</th></tr></thead>
+                  <tbody>
+                    <tr v-for="saleReturn in dailySaleReturns" :key="saleReturn.id">
+                      <td class="font-weight-semibold">{{ saleReturn.reference }}</td>
+                      <td>{{ saleReturn.customer_name }}</td>
+                      <td>{{ saleReturn.salesman }}</td>
+                      <td class="text-right text-nowrap">{{ formatPriceWithSymbol(currentUser && currentUser.currency, saleReturn.total, 2) }}</td>
+                      <td class="text-center">
+                        <a
+                          :href="'/app/sale_return/detail/' + saleReturn.id"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="btn btn-sm btn-outline-warning dashboard-detail-icon"
+                          title="View sale return details"
+                          aria-label="View sale return details"
+                        ><lucide-icon name="eye" /></a>
+                      </td>
+                    </tr>
+                    <tr v-if="!dailySaleReturns.length"><td colspan="5" class="text-center text-muted py-4">No sale returns found for this period.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </b-col>
+        </b-row>
+
+        <!-- Daily Purchases & Purchase Returns -->
+        <b-row v-else-if="sectionId === 'daily_purchases_returns'" :key="sectionId" class="mb-3 align-items-stretch">
+          <b-col lg="6" cols="12" class="mb-3 mb-lg-0">
+            <div class="chart-card dashboard-transaction-card h-100">
+              <div class="chart-card-header dashboard-transaction-header">
+                <div>
+                  <h4 class="chart-card-title">Daily Purchases</h4>
+                  <small class="text-muted">{{ startDate }} to {{ endDate }}</small>
+                </div>
+                <router-link to="/app/purchases/list" class="btn btn-sm btn-outline-success">View all</router-link>
+              </div>
+              <div class="dashboard-transaction-table-wrap">
+                <table class="table table-hover dashboard-transaction-table mb-0">
+                  <thead><tr><th>Purchase ID</th><th>Supplier</th><th>Created By</th><th class="text-right">Total Amount</th><th class="text-center">Details</th></tr></thead>
+                  <tbody>
+                    <tr v-for="purchase in dailyPurchases" :key="purchase.id">
+                      <td class="font-weight-semibold">{{ purchase.reference }}</td>
+                      <td>{{ purchase.supplier_name }}</td>
+                      <td>{{ purchase.user_name }}</td>
+                      <td class="text-right text-nowrap">{{ formatPriceWithSymbol(currentUser && currentUser.currency, purchase.total, 2) }}</td>
+                      <td class="text-center">
+                        <a
+                          :href="'/app/purchases/detail/' + purchase.id"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="btn btn-sm btn-outline-success dashboard-detail-icon"
+                          title="View purchase details"
+                          aria-label="View purchase details"
+                        ><lucide-icon name="eye" /></a>
+                      </td>
+                    </tr>
+                    <tr v-if="!dailyPurchases.length"><td colspan="5" class="text-center text-muted py-4">No purchases found for this period.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </b-col>
+          <b-col lg="6" cols="12">
+            <div class="chart-card dashboard-transaction-card h-100">
+              <div class="chart-card-header dashboard-transaction-header">
+                <div>
+                  <h4 class="chart-card-title">Daily Purchase Returns</h4>
+                  <small class="text-muted">{{ startDate }} to {{ endDate }}</small>
+                </div>
+                <router-link to="/app/purchase_return/list" class="btn btn-sm btn-outline-danger">View all</router-link>
+              </div>
+              <div class="dashboard-transaction-table-wrap">
+                <table class="table table-hover dashboard-transaction-table mb-0">
+                  <thead><tr><th>Return ID</th><th>Supplier</th><th>Created By</th><th class="text-right">Total Amount</th><th class="text-center">Details</th></tr></thead>
+                  <tbody>
+                    <tr v-for="purchaseReturn in dailyPurchaseReturns" :key="purchaseReturn.id">
+                      <td class="font-weight-semibold">{{ purchaseReturn.reference }}</td>
+                      <td>{{ purchaseReturn.supplier_name }}</td>
+                      <td>{{ purchaseReturn.user_name }}</td>
+                      <td class="text-right text-nowrap">{{ formatPriceWithSymbol(currentUser && currentUser.currency, purchaseReturn.total, 2) }}</td>
+                      <td class="text-center">
+                        <a
+                          :href="'/app/purchase_return/detail/' + purchaseReturn.id"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="btn btn-sm btn-outline-danger dashboard-detail-icon"
+                          title="View purchase return details"
+                          aria-label="View purchase return details"
+                        ><lucide-icon name="eye" /></a>
+                      </td>
+                    </tr>
+                    <tr v-if="!dailyPurchaseReturns.length"><td colspan="5" class="text-center text-muted py-4">No purchase returns found for this period.</td></tr>
+                  </tbody>
+                </table>
               </div>
             </div>
           </b-col>
@@ -424,12 +569,13 @@ export default {
   data() {
     // Initial range (will be overwritten from setting in mounted)
     const end = moment().endOf("day");
-    const start = end.clone().subtract(6, "days").startOf("day");
+    const start = end.clone().startOf("day");
     return {
       dateRange: { startDate: start.toDate(), endDate: end.toDate() },
       startDate: start.format("YYYY-MM-DD"),
       endDate: end.format("YYYY-MM-DD"),
-      defaultDateRange: "week",
+      defaultDateRange: "today",
+      periodMode: "daily",
       locale: {
         Label: this.$t("Apply") || "Apply",
         cancelLabel: this.$t("Cancel") || "Cancel",
@@ -442,6 +588,10 @@ export default {
       today_mode: true,
 
       sales: [],
+      dailySales: [],
+      dailySaleReturns: [],
+      dailyPurchases: [],
+      dailyPurchaseReturns: [],
       warehouses: [],
       warehouse_id: "",
       stock_alerts: [],
@@ -537,6 +687,7 @@ export default {
         "stat_cards_1",
         "stat_cards_2",
         "chart_sales_purchases",
+        "daily_purchases_returns",
         "chart_top_selling",
         "sales_by_payment_stock_value",
         "chart_payment_sent_received",
@@ -563,6 +714,13 @@ export default {
       defaultIds.forEach(id => {
         if (byId[id]) ordered.push(id);
       });
+      const purchaseSectionId = "daily_purchases_returns";
+      if (!saved.includes(purchaseSectionId)) {
+        const currentIndex = ordered.indexOf(purchaseSectionId);
+        if (currentIndex !== -1) ordered.splice(currentIndex, 1);
+        const salesIndex = ordered.indexOf("chart_sales_purchases");
+        ordered.splice(salesIndex === -1 ? ordered.length : salesIndex + 1, 0, purchaseSectionId);
+      }
       return ordered.length ? ordered : defaultIds;
     },
 
@@ -571,6 +729,12 @@ export default {
       if (this.dashboardFontSize) s.fontSize = this.dashboardFontSize + "px";
       if (this.dashboardFontFamily) s.fontFamily = this.dashboardFontFamily;
       return s;
+    },
+
+    summaryPeriodLabel() {
+      if (this.periodMode === "daily") return "Daily";
+      if (this.periodMode === "monthly") return "Monthly";
+      return "Selected Range";
     }
   },
   methods: {
@@ -592,7 +756,15 @@ export default {
       this.dateRange = { startDate: start.toDate(), endDate: end.toDate() };
       this.startDate = start.format("YYYY-MM-DD");
       this.endDate = end.format("YYYY-MM-DD");
+      if (key === "today") this.periodMode = "daily";
+      else if (key === "mtd") this.periodMode = "monthly";
+      else this.periodMode = "custom";
       this.all_dashboard_data();
+    },
+
+    setDashboardPeriod(mode) {
+      if (mode === "daily") this.quick("today");
+      else if (mode === "monthly") this.quick("mtd");
     },
 
     Submit_filter_dateRange() {
@@ -600,6 +772,7 @@ export default {
       const e = moment(this.dateRange.endDate);
       this.startDate = s.format("YYYY-MM-DD");
       this.endDate = e.format("YYYY-MM-DD");
+      this.periodMode = "custom";
       this.all_dashboard_data();
     },
 
@@ -610,12 +783,16 @@ export default {
         const range = this.defaultDateRange || "week";
         if (range === "today") {
           start = end.clone().startOf("day");
+          this.periodMode = "daily";
         } else if (range === "week") {
           start = end.clone().subtract(6, "days").startOf("day");
+          this.periodMode = "custom";
         } else if (range === "month") {
           start = moment().startOf("month");
+          this.periodMode = "monthly";
         } else {
-          start = end.clone().subtract(6, "days").startOf("day");
+          start = end.clone().startOf("day");
+          this.periodMode = "daily";
         }
         this.startDate = start.format("YYYY-MM-DD");
         this.endDate = end.format("YYYY-MM-DD");
@@ -662,6 +839,10 @@ export default {
           this.stock_alerts = response.data.report_dashboard.original.stock_alert;
           this.products = response.data.report_dashboard.original.products;
           this.sales = response.data.report_dashboard.original.last_sales;
+          this.dailySales = Array.isArray(response.data.daily_sales) ? response.data.daily_sales : [];
+          this.dailySaleReturns = Array.isArray(response.data.daily_sale_returns) ? response.data.daily_sale_returns : [];
+          this.dailyPurchases = Array.isArray(response.data.daily_purchases) ? response.data.daily_purchases : [];
+          this.dailyPurchaseReturns = Array.isArray(response.data.daily_purchase_returns) ? response.data.daily_purchase_returns : [];
 
           // Process Sales by Payment data (filtered by date and warehouse)
           if (response.data.sales_by_payment && Array.isArray(response.data.sales_by_payment)) {
@@ -1046,7 +1227,7 @@ export default {
           if (value === "today" || value === "week" || value === "month") {
             this.defaultDateRange = value;
           } else {
-            this.defaultDateRange = "week";
+            this.defaultDateRange = "today";
           }
           // Apply dashboard widget order from System Settings
           const raw = settings.dashboard_section_order;
@@ -1061,8 +1242,8 @@ export default {
           return this.defaultDateRange;
         })
         .catch(() => {
-          this.defaultDateRange = "week";
-          return "week";
+          this.defaultDateRange = "today";
+          return "today";
         });
     },
   },
@@ -1315,7 +1496,36 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
+}
+
+.dashboard-period-filter {
+  display: inline-flex;
+  flex: 0 0 auto;
+  padding: 3px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.dashboard-period-btn {
+  min-width: 72px;
+  padding: 0.45rem 0.7rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dashboard-period-btn.active {
+  background: white;
+  color: #6f42c1;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.14);
+}
+
+.dashboard-period-btn:focus {
+  outline: none;
 }
 
 .warehouse-filter {
@@ -1901,6 +2111,52 @@ onBeforeUnmount(() => {
   margin: 0;
 }
 
+.dashboard-transaction-card {
+  min-height: 390px;
+  overflow: hidden;
+}
+
+.dashboard-transaction-header {
+  flex-wrap: nowrap;
+}
+
+.dashboard-transaction-table-wrap {
+  flex: 1;
+  max-height: 430px;
+  overflow: auto;
+}
+
+.dashboard-transaction-table {
+  min-width: 620px;
+  font-size: 0.82rem;
+}
+
+.dashboard-transaction-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0.75rem;
+  border-top: 0;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.dashboard-transaction-table tbody td {
+  padding: 0.75rem;
+  vertical-align: middle;
+}
+
+.dashboard-detail-icon {
+  width: 34px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
 .chart-card-legend {
   display: flex;
   gap: 1rem;
@@ -2195,6 +2451,14 @@ onBeforeUnmount(() => {
     width: 100%;
     flex: 1 1 auto;
   }
+
+  .dashboard-period-filter {
+    width: 100%;
+  }
+
+  .dashboard-period-btn {
+    flex: 1;
+  }
 }
 
 /* Responsive - Mobile (< md / 768px breakpoint) */
@@ -2216,6 +2480,14 @@ onBeforeUnmount(() => {
     max-width: 100%;
     width: 100%;
     margin-left: 0;
+  }
+
+  .dashboard-period-filter {
+    width: 100%;
+  }
+
+  .dashboard-period-btn {
+    flex: 1;
   }
 
   .stat-card {

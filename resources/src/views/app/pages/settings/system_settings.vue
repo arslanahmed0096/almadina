@@ -739,7 +739,7 @@
                                 <lucide-icon name="grip-vertical" />
                               </span>
                               <span class="widget-order-number">{{ index + 1 }}</span>
-                              <span class="widget-order-label">{{ $t(item.labelKey) || item.labelKey }}</span>
+                              <span class="widget-order-label">{{ item.label || $t(item.labelKey) || item.labelKey }}</span>
                             </li>
                           </draggable>
                         </div>
@@ -3509,9 +3509,9 @@ export default {
         { label: 'YYYY-MM-DD', value: 'YYYY-MM-DD' },
       ],
       dashboardDateRangeOptions: [
-        { value: 'today', text: 'Today' },
-        { value: 'week', text: 'This Week' },
-        { value: 'month', text: 'This Month' },
+        { value: 'today', text: 'Daily' },
+        { value: 'week', text: 'Weekly' },
+        { value: 'month', text: 'Monthly' },
       ],
       dashboardFontSizeOptions: [
         { value: '', text: 'Default' },
@@ -3535,7 +3535,8 @@ export default {
         { id: 'header', labelKey: 'Dashboard_Header' },
         { id: 'stat_cards_1', labelKey: 'Dashboard_Stat_Cards_1' },
         { id: 'stat_cards_2', labelKey: 'Dashboard_Stat_Cards_2' },
-        { id: 'chart_sales_purchases', labelKey: 'Dashboard_Chart_Sales_Purchases' },
+        { id: 'chart_sales_purchases', labelKey: 'Dashboard_Chart_Sales_Purchases', label: 'Daily Sales & Sale Returns' },
+        { id: 'daily_purchases_returns', labelKey: 'Dashboard_Daily_Purchases_Returns', label: 'Daily Purchases & Purchase Returns' },
         { id: 'chart_top_selling', labelKey: 'Dashboard_Chart_Top_Selling' },
         { id: 'sales_by_payment_stock_value', labelKey: 'Dashboard_Sales_By_Payment_Stock' },
         { id: 'chart_payment_sent_received', labelKey: 'Dashboard_Chart_Payment_Sent_Received' },
@@ -3589,7 +3590,7 @@ export default {
         show_language:'',
         point_to_amount_rate:'',
         default_tax: 0,
-        default_dashboard_date_range: 'week',
+        default_dashboard_date_range: 'today',
         dashboard_section_order: null,
         dashboard_font_size: '',
         dashboard_font_family: '',
@@ -4422,9 +4423,15 @@ export default {
       this.defaultDashboardSections.forEach(s => { byId[s.id] = s; });
       const ordered = [];
       order.forEach(id => {
-        if (byId[id]) { ordered.push({ id: byId[id].id, labelKey: byId[id].labelKey }); delete byId[id]; }
+        if (byId[id]) { ordered.push({ ...byId[id] }); delete byId[id]; }
       });
       Object.keys(byId).forEach(id => ordered.push(byId[id]));
+      if (!order.includes('daily_purchases_returns')) {
+        const currentIndex = ordered.findIndex(item => item.id === 'daily_purchases_returns');
+        const [purchaseSection] = currentIndex === -1 ? [null] : ordered.splice(currentIndex, 1);
+        const salesIndex = ordered.findIndex(item => item.id === 'chart_sales_purchases');
+        if (purchaseSection) ordered.splice(salesIndex === -1 ? ordered.length : salesIndex + 1, 0, purchaseSection);
+      }
       this.dashboardSectionOrderList = ordered;
     },
 
@@ -4433,7 +4440,7 @@ export default {
     },
 
     resetDashboardSectionOrder() {
-      this.dashboardSectionOrderList = this.defaultDashboardSections.map(s => ({ id: s.id, labelKey: s.labelKey }));
+      this.dashboardSectionOrderList = this.defaultDashboardSections.map(s => ({ ...s }));
       this.setting.dashboard_section_order = JSON.stringify(this.dashboardSectionOrderList.map(x => x.id));
       this.$bvToast && this.$bvToast.toast(this.$t('Dashboard_order_reset') || 'Dashboard section order reset to default.', { title: this.$t('Success') || 'Success', variant: 'success' });
     },
@@ -4483,7 +4490,7 @@ export default {
       self.data.append("price_format", self.setting.price_format || "");
       self.data.append("point_to_amount_rate", self.setting.point_to_amount_rate);
       self.data.append("default_tax", self.setting.default_tax || 0);
-      self.data.append("default_dashboard_date_range", self.setting.default_dashboard_date_range || "week");
+      self.data.append("default_dashboard_date_range", self.setting.default_dashboard_date_range || "today");
       self.data.append("dashboard_section_order", typeof self.setting.dashboard_section_order === 'string' ? self.setting.dashboard_section_order : JSON.stringify(self.setting.dashboard_section_order || []));
       self.data.append("dashboard_font_size", self.setting.dashboard_font_size || "");
       self.data.append("dashboard_font_family", self.setting.dashboard_font_family || "");
