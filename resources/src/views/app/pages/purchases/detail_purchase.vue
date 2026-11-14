@@ -172,12 +172,13 @@
             <thead>
               <tr class="invoice-products-header">
                 <th class="invoice-products-th-left">PRODUCT</th>
+                <th class="invoice-products-th-right">RP PRICE (PER ITEM)</th>
                 <th class="invoice-products-th-right">TOTAL RP PRICE</th>
                 <th class="invoice-products-th-right">GST TAX</th>
                 <th class="invoice-products-th-right">DISC</th>
                 <th class="invoice-products-th-right">WHT TAX</th>
                 <th class="invoice-products-th-right">QTY</th>
-                <th class="invoice-products-th-right">RP PRICE (PER ITEM)</th>
+                <th class="invoice-products-th-right">INVOICE PRICE (PER ITEM)</th>
                 <th class="invoice-products-th-right">TOTAL</th>
               </tr>
             </thead>
@@ -189,6 +190,7 @@
                     <div class="invoice-product-code">Code: {{detail.code}}</div>
                     <div v-if="detail.is_imei && detail.imei_number !== null" class="invoice-product-imei">SN: {{detail.imei_number}}</div>
                   </td>
+                  <td class="invoice-product-price-cell">{{ formatPriceDisplay(detail.company_rb_price, 2) }}</td>
                   <td class="invoice-product-price-cell">{{ formatPriceDisplay(detail.company_rb_price * detail.quantity, 2) }}</td>
                   <td class="invoice-product-price-cell">
                     <div>{{ formatPriceDisplay(detail.gst_tax, 2) }}</div>
@@ -203,7 +205,7 @@
                     <div class="invoice-product-tax-rate">WHT ({{ formatNumber(detail.wht_rate, 2) }}%)</div>
                   </td>
                   <td class="invoice-product-price-cell">{{formatNumber(detail.quantity,2)}} {{detail.unit_purchase}}</td>
-                  <td class="invoice-product-price-cell">{{ formatPriceDisplay(detail.company_rb_price, 2) }}</td>
+                  <td class="invoice-product-price-cell">{{ formatPriceDisplay(invoicePricePerItem(detail), 2) }}</td>
                   <td class="invoice-product-total-cell">{{ formatPriceDisplay(detail.total, 2) }}</td>
                 </tr>
                 <tr
@@ -211,7 +213,7 @@
                   :key="'b-' + index"
                   class="invoice-batches-row"
                 >
-                  <td colspan="8" style="padding: 0; background: #ffffff;">
+                  <td colspan="9" style="padding: 0; background: #ffffff;">
                     <div
                       style="
                         margin: 6px 8px 10px 8px;
@@ -339,6 +341,10 @@
                 </div>
                 <div class="invoice-product-card-details">
                   <div class="invoice-product-card-detail-item">
+                    <span class="invoice-product-card-detail-label">RP Price (Per Item):</span>
+                    <span class="invoice-product-card-detail-value">{{ formatPriceDisplay(detail.company_rb_price, 2) }}</span>
+                  </div>
+                  <div class="invoice-product-card-detail-item">
                     <span class="invoice-product-card-detail-label">Total RP Price:</span>
                     <span class="invoice-product-card-detail-value">{{ formatPriceDisplay(detail.company_rb_price * detail.quantity, 2) }}</span>
                   </div>
@@ -359,8 +365,8 @@
                     <span class="invoice-product-card-detail-value">{{formatNumber(detail.quantity,2)}} {{detail.unit_purchase}}</span>
                   </div>
                   <div class="invoice-product-card-detail-item">
-                    <span class="invoice-product-card-detail-label">RP Price (Per Item):</span>
-                    <span class="invoice-product-card-detail-value">{{ formatPriceDisplay(detail.company_rb_price, 2) }}</span>
+                    <span class="invoice-product-card-detail-label">Invoice Price (Per Item):</span>
+                    <span class="invoice-product-card-detail-value">{{ formatPriceDisplay(invoicePricePerItem(detail), 2) }}</span>
                   </div>
                 </div>
                 <div
@@ -600,6 +606,12 @@ export default {
 
     activeThemeColor() {
       return this.getPrimaryColor || "#663399";
+    },
+
+    invoicePricePerItem(detail) {
+      const quantity = Number(detail && detail.quantity);
+      const total = Number(detail && detail.total);
+      return quantity > 0 && Number.isFinite(total) ? total / quantity : 0;
     },
 
     //----------------------------------- print Purchase -------------------------\\
