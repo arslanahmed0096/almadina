@@ -46,7 +46,9 @@ class PurchaseMarginAutoSyncTest extends TestCase
 
         Schema::create('purchases', function (Blueprint $table) {
             $table->increments('id');
+            $table->date('date')->nullable();
             $table->decimal('GrandTotal', 15, 2)->default(0);
+            $table->softDeletes();
             $table->timestamps();
         });
 
@@ -63,7 +65,7 @@ class PurchaseMarginAutoSyncTest extends TestCase
         });
     }
 
-    public function test_new_purchase_cost_recalculates_fixed_and_percentage_margin_prices(): void
+    public function test_invoice_price_per_item_recalculates_fixed_and_percentage_margin_prices(): void
     {
         $product = Product::create([
             'name' => 'Automatically repriced product',
@@ -82,22 +84,21 @@ class PurchaseMarginAutoSyncTest extends TestCase
             'product_id' => $product->id,
             'quantity' => 1,
             'cost' => 21000,
-            // Deliberately differs because a line total may include discount/GST.
             'total' => 25000,
         ]);
 
         (new ProductMarginPricingService)->syncPurchase($purchase);
 
         $product->refresh();
-        $this->assertSame(21000.0, $product->purchase_price);
-        $this->assertSame(21500.0, $product->min_price);
-        $this->assertSame(21700.0, $product->wholesale_price);
-        $this->assertSame(22000.0, $product->price);
-        $this->assertSame(22050.0, $product->fix_price);
-        $this->assertSame(1050.0, (float) $product->pricing_margins[3]['profit']);
+        $this->assertSame(25000.0, $product->purchase_price);
+        $this->assertSame(25500.0, $product->min_price);
+        $this->assertSame(25700.0, $product->wholesale_price);
+        $this->assertSame(26000.0, $product->price);
+        $this->assertSame(26250.0, $product->fix_price);
+        $this->assertSame(1250.0, (float) $product->pricing_margins[3]['profit']);
     }
 
-    public function test_purchase_cost_is_converted_from_purchase_unit_to_base_unit(): void
+    public function test_invoice_price_per_item_uses_invoice_total_divided_by_invoice_quantity(): void
     {
         $product = Product::create([
             'name' => 'Carton product',
@@ -124,7 +125,32 @@ class PurchaseMarginAutoSyncTest extends TestCase
         (new ProductMarginPricingService)->syncPurchase($purchase);
 
         $product->refresh();
-        $this->assertSame(2100.0, $product->purchase_price);
-        $this->assertSame(2200.0, $product->min_price);
+        $this->assertSame(21000.0, $product->purchase_price);
+        $this->assertSame(21100.0, $product->min_price);
+    }
+
+    public function test_effective_price_prefers_latest_invoice_total_per_item_over_stored_value(): void
+    {
+        $product = Product::create([
+            'name' => 'Existing product',
+            'type' => 'is_single',
+            'purchase_price' => 999,
+        ]);
+        $purchase = Purchase::create([
+            'date' => '2026-11-14',
+            'GrandTotal' => 200,
+        ]);
+        PurchaseDetail::create([
+            'purchase_id' => $purchase->id,
+            'product_id' => $product->id,
+            'quantity' => 4,
+            'cost' => 40,
+            'total' => 200,
+        ]);
+
+        $effective = (new ProductMarginPricingService)->effectivePurchasePrice($product);
+
+        $this->assertSame(50.0, $effective['price']);
+        $this->assertSame('invoice', $effective['source']);
     }
 }

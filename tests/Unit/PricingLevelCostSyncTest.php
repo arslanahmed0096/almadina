@@ -92,9 +92,27 @@ class PricingLevelCostSyncTest extends TestCase
             $table->decimal('previous_min_price', 15, 2)->nullable();
             $table->timestamps();
         });
+
+        Schema::create('purchases', function (Blueprint $table) {
+            $table->increments('id');
+            $table->date('date')->nullable();
+            $table->decimal('GrandTotal', 15, 2)->default(0);
+            $table->softDeletes();
+            $table->timestamps();
+        });
+
+        Schema::create('purchase_details', function (Blueprint $table) {
+            $table->increments('id');
+            $table->unsignedInteger('purchase_id');
+            $table->unsignedInteger('product_id')->nullable();
+            $table->unsignedInteger('product_variant_id')->nullable();
+            $table->decimal('quantity', 15, 6);
+            $table->decimal('total', 15, 2);
+            $table->timestamps();
+        });
     }
 
-    public function test_changed_product_cost_replaces_existing_purchase_price_and_updates_margins(): void
+    public function test_changed_product_cost_does_not_replace_invoice_price_and_updates_margins(): void
     {
         $product = Product::create([
             'name' => 'Test product',
@@ -114,16 +132,16 @@ class PricingLevelCostSyncTest extends TestCase
         $detail = PricingLevelDetail::firstOrFail();
 
         $this->assertSame(150.0, $product->cost);
-        $this->assertSame(150.0, $product->purchase_price);
-        $this->assertSame(160.0, $product->min_price);
-        $this->assertSame(150.0, $detail->purchase_price);
+        $this->assertSame(120.0, $product->purchase_price);
+        $this->assertSame(130.0, $product->min_price);
+        $this->assertSame(120.0, $detail->purchase_price);
         $this->assertSame(100.0, $detail->previous_cost);
         $this->assertSame(120.0, $detail->previous_purchase_price);
         $this->assertSame(0.0, $detail->previous_min_price);
         $this->assertSame('Previous margin', $detail->previous_pricing_margins[0]['label']);
     }
 
-    public function test_changed_variant_cost_replaces_its_existing_purchase_price(): void
+    public function test_changed_variant_cost_does_not_replace_its_invoice_price(): void
     {
         $product = Product::create(['name' => 'Variant product', 'type' => 'is_variant']);
         $variant = ProductVariant::create([
@@ -134,11 +152,11 @@ class PricingLevelCostSyncTest extends TestCase
 
         $this->savePricing($product->id, $variant->id, 80);
 
-        $this->assertSame(80.0, $variant->fresh()->purchase_price);
-        $this->assertSame(80.0, PricingLevelDetail::firstOrFail()->purchase_price);
+        $this->assertSame(90.0, $variant->fresh()->purchase_price);
+        $this->assertSame(90.0, PricingLevelDetail::firstOrFail()->purchase_price);
     }
 
-    public function test_unchanged_cost_preserves_existing_purchase_price_unless_explicitly_entered(): void
+    public function test_unchanged_cost_always_preserves_existing_invoice_price(): void
     {
         $product = Product::create([
             'name' => 'Unchanged product',
@@ -154,7 +172,7 @@ class PricingLevelCostSyncTest extends TestCase
         $this->assertSame(120.0, $product->fresh()->purchase_price);
 
         $this->savePricing($product->id, null, 100, true);
-        $this->assertSame(100.0, $product->fresh()->purchase_price);
+        $this->assertSame(120.0, $product->fresh()->purchase_price);
     }
 
     public function test_pricing_level_displays_current_product_prices_after_purchase_price_changes(): void

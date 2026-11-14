@@ -391,14 +391,10 @@ class PricingLevelController extends Controller
             $previousMargins = $model->pricing_margins ?: [];
             $previousFurtherDiscounts = $model->further_discounts ?: [];
 
-            $costChanged = (float) ($model->cost ?? 0) !== (float) $prices['cost'];
             $model->fill($attributes);
-            if ($costChanged || $detail['cost_updated'] ||
-                ((float) ($model->purchase_price ?? 0) <= 0 && (float) $prices['cost'] > 0)) {
-                $model->purchase_price = $prices['cost'];
-            } else {
-                $model->purchase_price = $pricingService->effectivePurchasePrice($model)['price'];
-            }
+            // Product Cost is an independent pricing-level field. The purchase
+            // price displayed here is always the invoice total divided by qty.
+            $model->purchase_price = $pricingService->effectivePurchasePrice($model)['price'];
             $margins = $detail['pricing_margins'] ?? ($model->pricing_margins ?: []);
             $model->further_discounts = $detail['further_discounts'] ?? ($model->further_discounts ?: []);
             $pricingService->apply($model, $margins);
@@ -452,7 +448,7 @@ class PricingLevelController extends Controller
         }
 
         $prices['purchase_price'] = $model
-            ? (float) ($model->purchase_price ?? 0)
+            ? (float) app(ProductMarginPricingService::class)->effectivePurchasePrice($model)['price']
             : (float) ($detail->purchase_price ?? 0);
         $prices['pricing_margins'] = $model
             ? ($model->pricing_margins ?: [])

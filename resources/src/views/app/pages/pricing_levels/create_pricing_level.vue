@@ -96,7 +96,7 @@
               <th rowspan="2">Code</th>
               <th rowspan="2">Brand</th>
               <th rowspan="2">Category</th>
-              <th rowspan="2">Purchase Price</th>
+              <th rowspan="2">Invoice Price (Per Item)</th>
               <th rowspan="2">Further Discounted Price</th>
               <th colspan="8" class="pricing-group-heading">Pricing Level</th>
               <th rowspan="2" class="margin-icon-heading"><lucide-icon name="percent" /></th>
@@ -181,7 +181,7 @@
       dialog-class="pricing-margin-dialog"
       centered
       hide-footer
-      title="Further Discounts & Purchase Price Margins"
+      title="Further Discounts & Invoice Price Margins"
       @hidden="closeMarginModal"
     >
       <template v-if="activeMarginRow">
@@ -196,7 +196,7 @@
             </div>
           </div>
           <div class="margin-modal-product__price">
-            <small>PURCHASE PRICE</small>
+            <small>INVOICE PRICE (PER ITEM)</small>
             <strong>{{ decimalPrice(activePurchasePrice(activeMarginRow)) }}</strong>
             <small class="mt-2">FURTHER DISCOUNTED PRICE</small>
             <strong class="discounted-price-value">{{ decimalPrice(discountedPurchasePrice(activeMarginRow, discountDraft)) }}</strong>
@@ -206,13 +206,13 @@
         <div class="margin-modal-heading discount-heading">
           <div>
             <h5>Further Discounts</h5>
-            <p>Discounts are imported from the matching active supplier target. Percentages use the original purchase price.</p>
+            <p>Discounts are imported from the matching active supplier target. Percentages use the original invoice price per item.</p>
           </div>
           <span v-if="discountsFromTarget" class="badge badge-success p-2">Imported from Active Target</span>
         </div>
 
         <div v-if="!discountDraft.length" class="margin-modal-empty discount-empty">
-          No active target further discounts found. Margins will use the original purchase price.
+          No active target further discounts found. Margins will use the original invoice price per item.
         </div>
 
         <b-row
@@ -272,7 +272,7 @@
         </div>
 
         <div v-if="!Number(activePurchasePrice(activeMarginRow))" class="alert alert-warning">
-          Enter Product Cost in the pricing row first. It will become the Purchase Price when saved.
+          An invoice price per item is required before margins can be applied.
         </div>
         <div v-else-if="!marginDraft.length" class="margin-modal-empty">
           No margins added. Click Add margin to begin.
@@ -613,7 +613,7 @@ export default {
       if (!discounts.length) return true;
       const purchasePrice = Number(this.activePurchasePrice(row));
       if (!(purchasePrice > 0)) {
-        this.makeToast("danger", `Purchase Price is required for ${row.name}.`, this.$t("Failed"));
+        this.makeToast("danger", `Invoice Price (Per Item) is required for ${row.name}.`, this.$t("Failed"));
         return false;
       }
 
@@ -633,7 +633,7 @@ export default {
         }
       }
       if (this.totalFurtherDiscount(row, discounts) > purchasePrice) {
-        this.makeToast("danger", `Total further discount cannot exceed the purchase price for ${row.name}.`, this.$t("Failed"));
+        this.makeToast("danger", `Total further discount cannot exceed the invoice price per item for ${row.name}.`, this.$t("Failed"));
         return false;
       }
       return true;
@@ -715,7 +715,6 @@ export default {
               variant_name: variant.name,
               code: variant.code || product.code,
               purchase_price: this.numericValue(variant.purchase_price),
-              purchase_price_tracks_cost: ["none", "cost"].includes(variant.purchase_price_source),
               cost_updated: false,
               pricing_margins: this.normalizeMargins(variant.pricing_margins),
               further_discounts: this.normalizeFurtherDiscounts(variant.further_discounts),
@@ -738,7 +737,6 @@ export default {
           variant_name: "",
           code: product.code,
           purchase_price: this.numericValue(product.purchase_price),
-          purchase_price_tracks_cost: ["none", "cost"].includes(product.purchase_price_source),
           cost_updated: false,
           pricing_margins: this.normalizeMargins(product.pricing_margins),
           further_discounts: this.normalizeFurtherDiscounts(product.further_discounts),
@@ -759,12 +757,7 @@ export default {
     },
     onPriceInput(row, field) {
       if (field === "cost") {
-        this.$set(row, "purchase_price", this.numericValue(row.cost));
-        this.$set(row, "purchase_price_tracks_cost", true);
         this.$set(row, "cost_updated", true);
-        this.$set(row, "further_discounted_price",
-          this.discountedPurchasePrice(row, row.further_discounts || []));
-        this.applyMarginPrices(row);
       }
       this.markDirty(row.product_id);
     },

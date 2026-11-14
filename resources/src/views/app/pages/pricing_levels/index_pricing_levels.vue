@@ -114,7 +114,7 @@
             <div>
               <span class="pricing-view-header__eyebrow">PRODUCT PRICING</span>
               <h3>Pricing Level Details</h3>
-              <p>Review current purchase prices, sale prices, and margin rules.</p>
+              <p>Review current invoice prices per item, sale prices, and margin rules.</p>
             </div>
           </div>
           <button type="button" class="pricing-view-close" aria-label="Close" @click="$bvModal.hide('pricing-level-view-modal')">
@@ -143,7 +143,7 @@
                 <table class="table table-hover pricing-view-table mb-0">
                   <thead>
                     <tr>
-                      <th>Product</th><th>Code</th><th>Purchase Price</th><th>Further Discounted Price</th><th>Fixed Price</th><th>Product Cost</th>
+                      <th>Product</th><th>Code</th><th>Invoice Price (Per Item)</th><th>Further Discounted Price</th><th>Fixed Price</th><th>Product Cost</th>
                       <th>Regular Price</th><th>Al-Madina Price</th><th>Wholesale</th><th>Minimum</th><th>Further Discounts</th><th>Margins</th>
                     </tr>
                   </thead>

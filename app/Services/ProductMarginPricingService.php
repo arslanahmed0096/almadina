@@ -6,7 +6,6 @@ use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Purchase;
 use App\Models\PurchaseDetail;
-use App\Models\Unit;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -90,7 +89,7 @@ class ProductMarginPricingService
         $purchasePrice = round($purchasePrice, 2);
         if ($rows && $purchasePrice <= 0) {
             throw ValidationException::withMessages([
-                'further_discounts' => 'A purchase price is required before further discounts can be applied.',
+                'further_discounts' => 'An invoice price per item is required before further discounts can be applied.',
             ]);
         }
 
@@ -120,12 +119,12 @@ class ProductMarginPricingService
             }
 
             // Supplier discount percentages are independent benefits and are each
-            // calculated from the original purchase price, not compounded.
+            // calculated from the original invoice price per item, not compounded.
             $amount = round($type === 'percentage' ? $purchasePrice * $value / 100 : $value, 2);
             $totalDiscount = round($totalDiscount + $amount, 2);
             if ($totalDiscount > $purchasePrice) {
                 throw ValidationException::withMessages([
-                    'further_discounts' => 'The total further discount cannot exceed the purchase price.',
+                    'further_discounts' => 'The total further discount cannot exceed the invoice price per item.',
                 ]);
             }
 
@@ -150,10 +149,6 @@ class ProductMarginPricingService
 
     public function effectivePurchasePrice(Model $product): array
     {
-        if ((float) ($product->purchase_price ?? 0) > 0) {
-            return ['price' => (float) $product->purchase_price, 'source' => 'stored'];
-        }
-
         $isVariant = $product instanceof ProductVariant;
         $purchase = Purchase::whereNull('deleted_at')
             ->whereHas('details', function ($query) use ($product, $isVariant) {
@@ -162,48 +157,35 @@ class ProductMarginPricingService
                 } else {
                     $query->where('product_id', $product->id)->whereNull('product_variant_id');
                 }
+                $query->where('quantity', '>', 0)->where('total', '>', 0);
             })
             ->orderByDesc('date')
             ->orderByDesc('id')
             ->first();
 
-        if ($purchase && (float) $purchase->GrandTotal > 0) {
+        if ($purchase) {
             $lines = $purchase->details()->get();
-            $lineSum = (float) $lines->sum('total');
-            if ($lineSum > 0) {
-                $units = Unit::whereIn('id', $lines->pluck('purchase_unit_id')->filter()->unique())
-                    ->get()->keyBy('id');
-                $amount = 0;
-                $quantity = 0;
-                foreach ($lines as $line) {
-                    $matches = $isVariant
-                        ? (int) $line->product_variant_id === (int) $product->id
-                        : (int) $line->product_id === (int) $product->id && ! $line->product_variant_id;
-                    $lineCost = (float) $line->cost;
-                    $originalQuantity = (float) $line->quantity;
-                    if (! $matches || $lineCost <= 0 || $originalQuantity <= 0) {
-                        continue;
-                    }
-                    $lineQuantity = $originalQuantity;
-                    $unit = $units->get($line->purchase_unit_id);
-                    if ($unit && (float) $unit->operator_value > 0) {
-                        $lineQuantity = $unit->operator === '/'
-                            ? $lineQuantity / (float) $unit->operator_value
-                            : $lineQuantity * (float) $unit->operator_value;
-                    }
-                    if ($lineQuantity <= 0) {
-                        continue;
-                    }
-                    // PurchaseDetail.cost is the supplier/RB price entered for one
-                    // selected purchase unit. The line total also contains trade
-                    // discount and GST, so it must not be used as the margin base.
-                    $amount += $lineCost * $originalQuantity;
-                    $quantity += $lineQuantity;
+            $amount = 0;
+            $quantity = 0;
+            foreach ($lines as $line) {
+                $matches = $isVariant
+                    ? (int) $line->product_variant_id === (int) $product->id
+                    : (int) $line->product_id === (int) $product->id && ! $line->product_variant_id;
+                $lineTotal = (float) $line->total;
+                $lineQuantity = (float) $line->quantity;
+                if (! $matches || $lineTotal <= 0 || $lineQuantity <= 0) {
+                    continue;
                 }
-                if ($quantity > 0) {
-                    return ['price' => round($amount / $quantity, 2), 'source' => 'invoice'];
-                }
+                $amount += $lineTotal;
+                $quantity += $lineQuantity;
             }
+            if ($quantity > 0) {
+                return ['price' => round($amount / $quantity, 2), 'source' => 'invoice'];
+            }
+        }
+
+        if ((float) ($product->purchase_price ?? 0) > 0) {
+            return ['price' => (float) $product->purchase_price, 'source' => 'stored'];
         }
 
         $cost = (float) ($product->cost ?? 0);
@@ -217,21 +199,11 @@ class ProductMarginPricingService
             return;
         }
 
-        $units = Unit::whereIn('id', $lines->pluck('purchase_unit_id')->filter()->unique())
-            ->get()->keyBy('id');
-
         $allocations = [];
         foreach ($lines as $line) {
-            $originalQuantity = (float) $line->quantity;
-            $quantity = $originalQuantity;
-            $unit = $units->get($line->purchase_unit_id);
-            if ($unit && (float) $unit->operator_value > 0) {
-                $quantity = $unit->operator === '/'
-                    ? $quantity / (float) $unit->operator_value
-                    : $quantity * (float) $unit->operator_value;
-            }
-            $unitCost = (float) $line->cost;
-            if ($quantity <= 0 || $unitCost <= 0) {
+            $quantity = (float) $line->quantity;
+            $lineTotal = (float) $line->total;
+            if ($quantity <= 0 || $lineTotal <= 0) {
                 continue;
             }
 
@@ -244,11 +216,9 @@ class ProductMarginPricingService
             if (! isset($allocations[$key])) {
                 $allocations[$key] = ['id' => $id, 'variant' => $isVariant, 'amount' => 0, 'quantity' => 0];
             }
-            // The entered cost is per selected purchase unit. Multiply it by the
-            // original line quantity, then divide the grouped amount by the
-            // converted base-unit quantity. Do not use line.total because it
-            // includes purchase discounts and GST.
-            $allocations[$key]['amount'] += $unitCost * $originalQuantity;
+            // Invoice price per item is the invoiced line total divided by the
+            // quantity shown on that purchase invoice.
+            $allocations[$key]['amount'] += $lineTotal;
             $allocations[$key]['quantity'] += $quantity;
         }
 
