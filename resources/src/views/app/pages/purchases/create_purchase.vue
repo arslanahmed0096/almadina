@@ -294,6 +294,7 @@
                           </th>
                           <th scope="col">{{$t('ProductName')}}</th>
                           <th scope="col" class="purchase-quantity-column">{{$t('Qty')}}</th>
+                          <th scope="col">RP Price / Unit</th>
                           <th scope="col">Total RP Price</th>
                           <th scope="col">Trade Discount</th>
                           <th scope="col">Net Value Without Tax</th>
@@ -302,14 +303,14 @@
                           <th scope="col">MRP Without Tax</th>
                           <th scope="col">MRP With Tax</th>
                           <th scope="col">I.Tax Withholding Amount</th>
-                          <th scope="col">RP Price (Per Item)</th>
+                          <th scope="col">Invoice Price / Unit</th>
                           <th scope="col">Grand Total</th>
                           <th scope="col" class="text-center">Edit</th>
                         </tr>
                       </thead>
                       <tbody>
                         <tr v-if="details.length <=0">
-                          <td colspan="14">{{$t('NodataAvailable')}}</td>
+                          <td colspan="15">{{$t('NodataAvailable')}}</td>
                         </tr>
                         <template v-for="detail in details">
                         <tr
@@ -365,6 +366,7 @@
                               >+</button>
                             </div>
                           </td>
+                          <td>{{currentUser.currency}} {{formatNumber(detail.company_rb_price, 2)}}</td>
                           <td>{{currentUser.currency}} {{formatNumber(detail.company_rb_price * detail.quantity, 2)}}</td>
                           <td>{{currentUser.currency}} {{formatNumber(detail.DiscountNet * detail.quantity, 2)}}</td>
                           <td>{{currentUser.currency}} {{formatNumber(detail.Net_cost * detail.quantity, 2)}}</td>
@@ -373,14 +375,14 @@
                           <td>{{currentUser.currency}} {{formatNumber(detail.mrp_price * detail.quantity, 2)}}</td>
                           <td>{{currentUser.currency}} {{formatNumber(pricingPreview(detail).mrpWithTax * detail.quantity, 2)}}</td>
                           <td>{{currentUser.currency}} {{formatNumber(detail.withholding_tax * detail.quantity, 2)}}</td>
-                          <td>{{currentUser.currency}} {{formatNumber(detail.company_rb_price, 2)}}</td>
+                          <td>{{currentUser.currency}} {{formatNumber(invoicePricePerUnit(detail), 2)}}</td>
                           <td class="font-weight-bold">{{currentUser.currency}} {{formatNumber(pricingPreview(detail).netPayable * detail.quantity, 2)}}</td>
                           <td class="text-center">
                             <lucide-icon class="text-25 text-success" name="pencil" v-if="currentUserPermissions && currentUserPermissions.includes('edit_product_purchase')" @click="Modal_Updat_Detail(detail)" />
                           </td>
                         </tr>
                         <tr v-if="detail.is_batch_tracked" :key="'batches-'+detail.detail_id" :style="{ background: 'transparent' }">
-                          <td colspan="14" :style="{ padding: '0 8px 16px 8px', border: 'none' }">
+                          <td colspan="15" :style="{ padding: '0 8px 16px 8px', border: 'none' }">
                             <div
                               :style="{
                                 background: 'linear-gradient(135deg, #f0f9ff 0%, #eef2ff 100%)',
@@ -580,12 +582,12 @@
                         <tr v-if="details.length" class="font-weight-bold bg-light">
                           <td class="text-right">Total Items</td>
                           <td class="purchase-quantity-column">{{ totalItems }}</td>
-                          <td colspan="12"></td>
+                          <td colspan="13"></td>
                         </tr>
                         <tr v-if="details.length" class="font-weight-bold bg-light">
                           <td class="text-right">Total Item Qty</td>
                           <td class="purchase-quantity-column">{{ formatNumber(totalQuantity, 2) }}</td>
-                          <td colspan="12"></td>
+                          <td colspan="13"></td>
                         </tr>
                       </tbody>
                     </table>
@@ -1685,6 +1687,13 @@ export default {
       this.detail.discount = 0;
     },
 
+    invoicePricePerUnit(detail) {
+      const quantity = Number(detail && detail.quantity);
+      if (!(quantity > 0)) return 0;
+      const lineTotal = this.pricingPreview(detail).netPayable * quantity;
+      return lineTotal / quantity;
+    },
+
     pricingPreview(detail) {
       const rbPrice = Math.max(Number(detail && detail.Unit_cost) || 0, 0);
       const mrpWithoutTax = Math.max(Number(detail && detail.mrp_price) || 0, 0);
@@ -2093,7 +2102,7 @@ export default {
   }
 
   .purchase-products-table {
-    min-width: 1760px;
+    min-width: 1900px;
   }
 
   .purchase-products-table .purchase-quantity-column {
