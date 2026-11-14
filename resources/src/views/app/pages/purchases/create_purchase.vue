@@ -294,7 +294,7 @@
                           </th>
                           <th scope="col">{{$t('ProductName')}}</th>
                           <th scope="col" class="purchase-quantity-column">{{$t('Qty')}}</th>
-                          <th scope="col">RB Price</th>
+                          <th scope="col">Total RP Price</th>
                           <th scope="col">Trade Discount</th>
                           <th scope="col">Net Value Without Tax</th>
                           <th scope="col">GST Tax ({{formatNumber(purchase.tax_rate, 2)}}%)</th>
@@ -302,13 +302,14 @@
                           <th scope="col">MRP Without Tax</th>
                           <th scope="col">MRP With Tax</th>
                           <th scope="col">I.Tax Withholding Amount</th>
+                          <th scope="col">RP Price (Per Item)</th>
                           <th scope="col">Grand Total</th>
                           <th scope="col" class="text-center">Edit</th>
                         </tr>
                       </thead>
                       <tbody>
                         <tr v-if="details.length <=0">
-                          <td colspan="12">{{$t('NodataAvailable')}}</td>
+                          <td colspan="14">{{$t('NodataAvailable')}}</td>
                         </tr>
                         <template v-for="detail in details">
                         <tr
@@ -372,13 +373,14 @@
                           <td>{{currentUser.currency}} {{formatNumber(detail.mrp_price * detail.quantity, 2)}}</td>
                           <td>{{currentUser.currency}} {{formatNumber(pricingPreview(detail).mrpWithTax * detail.quantity, 2)}}</td>
                           <td>{{currentUser.currency}} {{formatNumber(detail.withholding_tax * detail.quantity, 2)}}</td>
+                          <td>{{currentUser.currency}} {{formatNumber(detail.company_rb_price, 2)}}</td>
                           <td class="font-weight-bold">{{currentUser.currency}} {{formatNumber(pricingPreview(detail).netPayable * detail.quantity, 2)}}</td>
                           <td class="text-center">
                             <lucide-icon class="text-25 text-success" name="pencil" v-if="currentUserPermissions && currentUserPermissions.includes('edit_product_purchase')" @click="Modal_Updat_Detail(detail)" />
                           </td>
                         </tr>
                         <tr v-if="detail.is_batch_tracked" :key="'batches-'+detail.detail_id" :style="{ background: 'transparent' }">
-                          <td colspan="12" :style="{ padding: '0 8px 16px 8px', border: 'none' }">
+                          <td colspan="14" :style="{ padding: '0 8px 16px 8px', border: 'none' }">
                             <div
                               :style="{
                                 background: 'linear-gradient(135deg, #f0f9ff 0%, #eef2ff 100%)',
@@ -578,12 +580,12 @@
                         <tr v-if="details.length" class="font-weight-bold bg-light">
                           <td class="text-right">Total Items</td>
                           <td class="purchase-quantity-column">{{ totalItems }}</td>
-                          <td colspan="10"></td>
+                          <td colspan="12"></td>
                         </tr>
                         <tr v-if="details.length" class="font-weight-bold bg-light">
                           <td class="text-right">Total Item Qty</td>
                           <td class="purchase-quantity-column">{{ formatNumber(totalQuantity, 2) }}</td>
-                          <td colspan="10"></td>
+                          <td colspan="12"></td>
                         </tr>
                       </tbody>
                     </table>
@@ -667,16 +669,16 @@
       <b-modal hide-footer size="xl" dialog-class="purchase-detail-dialog" id="form_Update_Detail" :title="detail.name">
         <b-form @submit.prevent="submit_Update_Detail">
           <b-row>
-            <!-- RB Price -->
+            <!-- RP Price -->
             <b-col lg="6" md="6" sm="12">
               <validation-provider
-                name="RB Price"
+                name="RP Price"
                 :rules="{ required: true , regex: /^\d*\.?\d*$/}"
                 v-slot="validationContext"
               >
-                <b-form-group label="RB Price *" id="cost-input">
+                <b-form-group label="RP Price *" id="cost-input">
                   <b-form-input
-                    label="RB Price"
+                    label="RP Price"
                     v-model.number="detail.Unit_cost"
                     :state="getValidationState(validationContext)"
                     aria-describedby="cost-feedback"

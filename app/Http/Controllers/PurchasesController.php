@@ -1332,6 +1332,12 @@ class PurchasesController extends BaseController
             ->findOrFail($id);
 
         $details = [];
+        $purchaseTaxes = \App\Models\TransactionTaxSnapshot::where('transaction_type', 'purchase')
+            ->where('transaction_id', $id)
+            ->where('is_reversal', false)
+            ->orderBy('priority')
+            ->get();
+        $purchaseTaxesByLine = $purchaseTaxes->groupBy(fn ($tax) => (int) $tax->transaction_line_id);
 
         // Check If User Has Permission view All Records
         if (! $view_records) {
@@ -1371,6 +1377,10 @@ class PurchasesController extends BaseController
         }
 
         foreach ($purchase['details'] as $detail) {
+            $lineTaxes = $this->purchaseLineTaxDisplay(
+                $purchaseTaxesByLine->get((int) $detail->id, collect()),
+                $detail
+            );
 
             // -------check if detail has purchase_unit_id Or Null
             if ($detail->purchase_unit_id !== null) {
@@ -1398,6 +1408,7 @@ class PurchasesController extends BaseController
             $data['quantity'] = $detail->quantity;
             $data['total'] = $detail->total;
             $data['cost'] = $detail->cost;
+            $data['company_rb_price'] = $detail->company_rb_price ?: $detail->cost;
             $data['unit_purchase'] = $unit->ShortName;
 
             if ($detail->discount_method == '2') {
@@ -1409,6 +1420,12 @@ class PurchasesController extends BaseController
             $tax_cost = $detail->TaxNet * (($detail->cost - $data['DiscountNet']) / 100);
             $data['Unit_cost'] = $detail->cost;
             $data['discount'] = $detail->discount;
+            $data['discount_method'] = (string) $detail->discount_method;
+            $data['tax_rate'] = (float) $detail->TaxNet;
+            $data['gst_tax'] = $lineTaxes['gst_amount'];
+            $data['gst_rate'] = $lineTaxes['gst_rate'];
+            $data['wht_tax'] = $lineTaxes['wht_amount'];
+            $data['wht_rate'] = $lineTaxes['wht_rate'];
 
             if ($detail->tax_method == '1') {
 
@@ -1447,7 +1464,7 @@ class PurchasesController extends BaseController
             'details' => $details,
             'purchase' => $purchase_data,
             'company' => $company,
-            'taxes' => \App\Models\TransactionTaxSnapshot::where('transaction_type', 'purchase')->where('transaction_id', $id)->orderBy('priority')->get(),
+            'taxes' => $purchaseTaxes,
         ]);
 
     }
@@ -1552,6 +1569,11 @@ class PurchasesController extends BaseController
 
         $purchaseBatchesByDetail = app(BatchService::class)
             ->batchesForPurchaseDetails($Purchase_data['details']);
+        $purchaseTaxesByLine = \App\Models\TransactionTaxSnapshot::where('transaction_type', 'purchase')
+            ->where('transaction_id', $Purchase_data->id)
+            ->where('is_reversal', false)
+            ->get()
+            ->groupBy(fn ($tax) => (int) $tax->transaction_line_id);
 
         $purchase['supplier_name'] = $Purchase_data['provider']->name;
         $purchase['supplier_phone'] = $Purchase_data['provider']->phone;
@@ -1573,6 +1595,10 @@ class PurchasesController extends BaseController
 
         $detail_id = 0;
         foreach ($Purchase_data['details'] as $detail) {
+            $lineTaxes = $this->purchaseLineTaxDisplay(
+                $purchaseTaxesByLine->get((int) $detail->id, collect()),
+                $detail
+            );
 
             // -------check if detail has purchase_unit_id Or Null
             if ($detail->purchase_unit_id !== null) {
@@ -1601,6 +1627,8 @@ class PurchasesController extends BaseController
             $data['total'] = number_format($detail->total, 2, '.', '');
             $data['unit_purchase'] = $unit->ShortName;
             $data['cost'] = number_format($detail->cost, 2, '.', '');
+            $data['company_rb_price'] = number_format($detail->company_rb_price ?: $detail->cost, 2, '.', '');
+            $data['total_rb_price'] = number_format(($detail->company_rb_price ?: $detail->cost) * $detail->quantity, 2, '.', '');
 
             if ($detail->discount_method == '2') {
                 $data['DiscountNet'] = number_format($detail->discount, 2, '.', '');
@@ -1611,6 +1639,12 @@ class PurchasesController extends BaseController
             $tax_cost = $detail->TaxNet * (($detail->cost - $data['DiscountNet']) / 100);
             $data['Unit_cost'] = number_format($detail->cost, 2, '.', '');
             $data['discount'] = number_format($detail->discount, 2, '.', '');
+            $data['discount_method'] = (string) $detail->discount_method;
+            $data['tax_rate'] = number_format($detail->TaxNet, 2, '.', '');
+            $data['gst_tax'] = number_format($lineTaxes['gst_amount'], 2, '.', '');
+            $data['gst_rate'] = number_format($lineTaxes['gst_rate'], 2, '.', '');
+            $data['wht_tax'] = number_format($lineTaxes['wht_amount'], 2, '.', '');
+            $data['wht_rate'] = number_format($lineTaxes['wht_rate'], 2, '.', '');
 
             if ($detail->tax_method == '1') {
 
@@ -1631,12 +1665,14 @@ class PurchasesController extends BaseController
 
         $settings = Setting::where('deleted_at', '=', null)->first();
         $symbol = $helpers->Get_Currency_Code();
+        $themeColor = $this->requestedThemeColor($request);
 
         $Html = view('pdf.purchase_pdf', [
             'symbol' => $symbol,
             'setting' => $settings,
             'purchase' => $purchase,
             'details' => $details,
+            'themeColor' => $themeColor,
             'taxes' => \App\Models\TransactionTaxSnapshot::where('transaction_type', 'purchase')->where('transaction_id', $Purchase_data->id)->orderBy('priority')->get(),
         ])->render();
 
@@ -1677,6 +1713,11 @@ class PurchasesController extends BaseController
 
         $purchaseBatchesByDetail = app(BatchService::class)
             ->batchesForPurchaseDetails($Purchase_data['details']);
+        $purchaseTaxesByLine = \App\Models\TransactionTaxSnapshot::where('transaction_type', 'purchase')
+            ->where('transaction_id', $Purchase_data->id)
+            ->where('is_reversal', false)
+            ->get()
+            ->groupBy(fn ($tax) => (int) $tax->transaction_line_id);
 
         $purchase['supplier_name'] = $Purchase_data['provider']->name;
         $purchase['supplier_phone'] = $Purchase_data['provider']->phone;
@@ -1698,6 +1739,10 @@ class PurchasesController extends BaseController
 
         $detail_id = 0;
         foreach ($Purchase_data['details'] as $detail) {
+            $lineTaxes = $this->purchaseLineTaxDisplay(
+                $purchaseTaxesByLine->get((int) $detail->id, collect()),
+                $detail
+            );
 
             // -------check if detail has purchase_unit_id Or Null
             if ($detail->purchase_unit_id !== null) {
@@ -1726,6 +1771,8 @@ class PurchasesController extends BaseController
             $data['total'] = number_format($detail->total, 2, '.', '');
             $data['unit_purchase'] = $unit ? $unit->ShortName : '';
             $data['cost'] = number_format($detail->cost, 2, '.', '');
+            $data['company_rb_price'] = number_format($detail->company_rb_price ?: $detail->cost, 2, '.', '');
+            $data['total_rb_price'] = number_format(($detail->company_rb_price ?: $detail->cost) * $detail->quantity, 2, '.', '');
 
             if ($detail->discount_method == '2') {
                 $data['DiscountNet'] = number_format($detail->discount, 2, '.', '');
@@ -1736,6 +1783,12 @@ class PurchasesController extends BaseController
             $tax_cost = $detail->TaxNet * (($detail->cost - $data['DiscountNet']) / 100);
             $data['Unit_cost'] = number_format($detail->cost, 2, '.', '');
             $data['discount'] = number_format($detail->discount, 2, '.', '');
+            $data['discount_method'] = (string) $detail->discount_method;
+            $data['tax_rate'] = number_format($detail->TaxNet, 2, '.', '');
+            $data['gst_tax'] = number_format($lineTaxes['gst_amount'], 2, '.', '');
+            $data['gst_rate'] = number_format($lineTaxes['gst_rate'], 2, '.', '');
+            $data['wht_tax'] = number_format($lineTaxes['wht_amount'], 2, '.', '');
+            $data['wht_rate'] = number_format($lineTaxes['wht_rate'], 2, '.', '');
 
             if ($detail->tax_method == '1') {
 
@@ -1756,12 +1809,14 @@ class PurchasesController extends BaseController
 
         $settings = Setting::where('deleted_at', '=', null)->first();
         $symbol = $helpers->Get_Currency_Code();
+        $themeColor = $this->requestedThemeColor($request);
 
         $Html = view('pdf.purchase_pdf', [
             'symbol' => $symbol,
             'setting' => $settings,
             'purchase' => $purchase,
             'details' => $details,
+            'themeColor' => $themeColor,
             'taxes' => \App\Models\TransactionTaxSnapshot::where('transaction_type', 'purchase')->where('transaction_id', $Purchase_data->id)->orderBy('priority')->get(),
         ])->render();
 
@@ -1792,6 +1847,41 @@ class PurchasesController extends BaseController
 
         // Return raw HTML so the print popup can inject it and call window.print().
         return response($Html);
+    }
+
+    private function requestedThemeColor(Request $request): string
+    {
+        $color = (string) $request->query('theme_color', '#663399');
+
+        return preg_match('/^#[0-9a-fA-F]{6}$/', $color) ? $color : '#663399';
+    }
+
+    private function purchaseLineTaxDisplay($snapshots, PurchaseDetail $detail): array
+    {
+        $rows = collect($snapshots);
+        $gstRows = $rows->filter(fn ($tax) => strtoupper((string) $tax->tax_code) === 'GST');
+        $whtRows = $rows->filter(fn ($tax) => strtoupper((string) $tax->tax_code) === 'WHT');
+
+        $gstAmount = $gstRows->isNotEmpty()
+            ? (float) $gstRows->sum('tax_amount')
+            : (float) ($detail->sales_tax ?? 0);
+        $whtAmount = $whtRows->isNotEmpty()
+            ? (float) $whtRows->sum('tax_amount')
+            : (float) ($detail->withholding_tax ?? 0);
+
+        $gstRate = $gstRows->isNotEmpty()
+            ? (float) $gstRows->unique('tax_id')->sum(fn ($tax) => (float) $tax->rate)
+            : (float) ($detail->TaxNet ?? 0);
+        $whtRate = $whtRows->isNotEmpty()
+            ? (float) $whtRows->unique('tax_id')->sum(fn ($tax) => (float) $tax->rate)
+            : 0.0;
+
+        return [
+            'gst_amount' => $gstAmount,
+            'gst_rate' => $gstRate,
+            'wht_amount' => $whtAmount,
+            'wht_rate' => $whtRate,
+        ];
     }
 
     // ---------------- Show Form Create Purchase ---------------\\

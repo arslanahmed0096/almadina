@@ -172,10 +172,12 @@
             <thead>
               <tr class="invoice-products-header">
                 <th class="invoice-products-th-left">PRODUCT</th>
-                <th class="invoice-products-th-right">COST</th>
-                <th class="invoice-products-th-right">QTY</th>
+                <th class="invoice-products-th-right">TOTAL RP PRICE</th>
+                <th class="invoice-products-th-right">GST TAX</th>
                 <th class="invoice-products-th-right">DISC</th>
-                <th class="invoice-products-th-right">TAX</th>
+                <th class="invoice-products-th-right">WHT TAX</th>
+                <th class="invoice-products-th-right">QTY</th>
+                <th class="invoice-products-th-right">RP PRICE (PER ITEM)</th>
                 <th class="invoice-products-th-right">TOTAL</th>
               </tr>
             </thead>
@@ -187,10 +189,21 @@
                     <div class="invoice-product-code">Code: {{detail.code}}</div>
                     <div v-if="detail.is_imei && detail.imei_number !== null" class="invoice-product-imei">SN: {{detail.imei_number}}</div>
                   </td>
-                  <td class="invoice-product-price-cell">{{ formatPriceDisplay(detail.cost, 2) }}</td>
+                  <td class="invoice-product-price-cell">{{ formatPriceDisplay(detail.company_rb_price * detail.quantity, 2) }}</td>
+                  <td class="invoice-product-price-cell">
+                    <div>{{ formatPriceDisplay(detail.gst_tax, 2) }}</div>
+                    <div class="invoice-product-tax-rate">GST ({{ formatNumber(detail.gst_rate, 2) }}%)</div>
+                  </td>
+                  <td class="invoice-product-discount-cell">
+                    <div>{{ formatPriceDisplay(detail.DiscountNet, 2) }}</div>
+                    <div class="invoice-product-discount-type">{{ discountTypeLabel(detail) }}</div>
+                  </td>
+                  <td class="invoice-product-price-cell">
+                    <div>{{ formatPriceDisplay(detail.wht_tax, 2) }}</div>
+                    <div class="invoice-product-tax-rate">WHT ({{ formatNumber(detail.wht_rate, 2) }}%)</div>
+                  </td>
                   <td class="invoice-product-price-cell">{{formatNumber(detail.quantity,2)}} {{detail.unit_purchase}}</td>
-                  <td class="invoice-product-discount-cell">{{ formatPriceDisplay(detail.DiscountNet, 2) }}</td>
-                  <td class="invoice-product-price-cell">{{ formatPriceDisplay(detail.taxe, 2) }}</td>
+                  <td class="invoice-product-price-cell">{{ formatPriceDisplay(detail.company_rb_price, 2) }}</td>
                   <td class="invoice-product-total-cell">{{ formatPriceDisplay(detail.total, 2) }}</td>
                 </tr>
                 <tr
@@ -198,7 +211,7 @@
                   :key="'b-' + index"
                   class="invoice-batches-row"
                 >
-                  <td colspan="6" style="padding: 0; background: #ffffff;">
+                  <td colspan="8" style="padding: 0; background: #ffffff;">
                     <div
                       style="
                         margin: 6px 8px 10px 8px;
@@ -326,20 +339,28 @@
                 </div>
                 <div class="invoice-product-card-details">
                   <div class="invoice-product-card-detail-item">
-                    <span class="invoice-product-card-detail-label">Cost:</span>
-                    <span class="invoice-product-card-detail-value">{{ formatPriceDisplay(detail.cost, 2) }}</span>
+                    <span class="invoice-product-card-detail-label">Total RP Price:</span>
+                    <span class="invoice-product-card-detail-value">{{ formatPriceDisplay(detail.company_rb_price * detail.quantity, 2) }}</span>
+                  </div>
+                  <div class="invoice-product-card-detail-item">
+                    <span class="invoice-product-card-detail-label">GST Tax ({{ formatNumber(detail.gst_rate, 2) }}%):</span>
+                    <span class="invoice-product-card-detail-value">{{ formatPriceDisplay(detail.gst_tax, 2) }}</span>
+                  </div>
+                  <div class="invoice-product-card-detail-item">
+                    <span class="invoice-product-card-detail-label">Disc ({{ discountTypeLabel(detail) }}):</span>
+                    <span class="invoice-product-card-detail-value discount">{{ formatPriceDisplay(detail.DiscountNet, 2) }}</span>
+                  </div>
+                  <div class="invoice-product-card-detail-item">
+                    <span class="invoice-product-card-detail-label">WHT Tax ({{ formatNumber(detail.wht_rate, 2) }}%):</span>
+                    <span class="invoice-product-card-detail-value">{{ formatPriceDisplay(detail.wht_tax, 2) }}</span>
                   </div>
                   <div class="invoice-product-card-detail-item">
                     <span class="invoice-product-card-detail-label">Qty:</span>
                     <span class="invoice-product-card-detail-value">{{formatNumber(detail.quantity,2)}} {{detail.unit_purchase}}</span>
                   </div>
                   <div class="invoice-product-card-detail-item">
-                    <span class="invoice-product-card-detail-label">Disc:</span>
-                    <span class="invoice-product-card-detail-value discount">{{ formatPriceDisplay(detail.DiscountNet, 2) }}</span>
-                  </div>
-                  <div class="invoice-product-card-detail-item">
-                    <span class="invoice-product-card-detail-label">Tax:</span>
-                    <span class="invoice-product-card-detail-value">{{ formatPriceDisplay(detail.taxe, 2) }}</span>
+                    <span class="invoice-product-card-detail-label">RP Price (Per Item):</span>
+                    <span class="invoice-product-card-detail-value">{{ formatPriceDisplay(detail.company_rb_price, 2) }}</span>
                   </div>
                 </div>
                 <div
@@ -521,6 +542,7 @@ import Util from "../../../../utils/index";
 export default {
   computed: {
     ...mapGetters(["currentUserPermissions", "currentUser"]),
+    ...mapGetters("config", ["getPrimaryColor"]),
 
     totalQuantity() {
       const details = Array.isArray(this.details) ? this.details : [];
@@ -568,6 +590,18 @@ export default {
   },
 
   methods: {
+    discountTypeLabel(detail) {
+      const method = String((detail && detail.discount_method) || "").toLowerCase();
+      if (method === "1" || method === "percentage") {
+        return `Percentage (${this.formatNumber(detail.discount, 2)}%)`;
+      }
+      return "Fixed";
+    },
+
+    activeThemeColor() {
+      return this.getPrimaryColor || "#663399";
+    },
+
     //----------------------------------- print Purchase -------------------------\\
     Print_Purchase_PDF() {
       // Start the progress bar.
@@ -576,6 +610,7 @@ export default {
       let id = this.$route.params.id;
       axios
         .get(`purchase_pdf/${id}`, {
+          params: { theme_color: this.activeThemeColor() },
           responseType: "blob", // important
           headers: {
             "Content-Type": "application/json"
@@ -612,7 +647,9 @@ export default {
       let closeTimeout = null;
       
       axios
-        .get(`purchase_print_html/${id}`)
+        .get(`purchase_print_html/${id}`, {
+          params: { theme_color: this.activeThemeColor() }
+        })
         .then(response => {
           // Create a new window with the HTML content
           printWindow = window.open('', '_blank', 'width=800,height=600');
@@ -1370,7 +1407,7 @@ export default {
   }
 
   .invoice-products-mobile-header {
-    background: #1a56db;
+    background: var(--primary-color, #663399);
     color: #ffffff;
     padding: 8px 12px;
     font-size: 9pt;
@@ -1415,7 +1452,7 @@ export default {
   .invoice-product-card-total {
     font-size: 10pt;
     font-weight: bold;
-    color: #1a56db;
+    color: var(--primary-color, #663399);
     white-space: nowrap;
   }
 
@@ -1736,7 +1773,7 @@ export default {
 .invoice-main-title {
   font-size: 18pt;
   font-weight: bold;
-  color: #1a56db;
+  color: var(--primary-color, #663399);
   margin-bottom: 6px;
   letter-spacing: 0.5px;
 }
@@ -1805,7 +1842,7 @@ export default {
 /* Divider */
 .invoice-divider {
   height: 2px;
-  background: #1a56db;
+  background: var(--primary-color, #663399);
   margin: 8px 0 10px 0;
 }
 
@@ -1832,7 +1869,7 @@ export default {
 }
 
 .invoice-box-header {
-  background: #1a56db;
+  background: var(--primary-color, #663399);
   padding: 5px 10px;
   border-bottom: 1px solid #3b82f6;
   color: #ffffff;
@@ -1877,7 +1914,7 @@ export default {
 }
 
 .invoice-products-header {
-  background: #1a56db;
+  background: var(--primary-color, #663399);
 }
 
 .invoice-products-th-left {
@@ -1941,12 +1978,28 @@ export default {
   color: #ef4444;
 }
 
+.invoice-product-discount-type {
+  margin-top: 1px;
+  font-size: 6.5pt;
+  font-weight: 600;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.invoice-product-tax-rate {
+  margin-top: 1px;
+  font-size: 6.5pt;
+  font-weight: 600;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
 .invoice-product-total-cell {
   padding: 5px;
   text-align: right;
   font-size: 9pt;
   font-weight: bold;
-  color: #1a56db;
+  color: var(--primary-color, #663399);
 }
 
 .invoice-products-row-even {
@@ -2014,7 +2067,7 @@ export default {
 }
 
 .invoice-summary-total-row {
-  background: #1a56db;
+  background: var(--primary-color, #663399);
 }
 
 .invoice-summary-total-label {
@@ -2081,7 +2134,7 @@ export default {
 .invoice-footer-text {
   padding: 8px 10px;
   background: #f9fafb;
-  border-left: 3px solid #1a56db;
+  border-left: 3px solid var(--primary-color, #663399);
   border-radius: 3px;
   margin-bottom: 10px;
 }
@@ -2101,7 +2154,7 @@ export default {
 .invoice-footer-thanks p {
   font-size: 10pt;
   font-weight: bold;
-  color: #1a56db;
+  color: var(--primary-color, #663399);
   margin: 0;
   letter-spacing: 0.3px;
 }
