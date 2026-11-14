@@ -432,22 +432,36 @@
                   <table class="table table-striped table-sm">
                     <tbody>
                       <tr>
+                        <td class="bold">Total RP Price</td>
+                        <td>{{currentUser.currency}} {{formatNumber(purchaseSummary.totalRpPrice, 2)}}</td>
+                      </tr>
+                      <tr>
+                        <td class="bold">Total Trade Discount</td>
+                        <td>-{{currentUser.currency}} {{formatNumber(purchaseSummary.totalTradeDiscount, 2)}}</td>
+                      </tr>
+                      <tr>
+                        <td class="bold">Net Value Without Tax</td>
+                        <td>{{currentUser.currency}} {{formatNumber(purchaseSummary.netValueWithoutTax, 2)}}</td>
+                      </tr>
+                      <tr>
+                        <td class="bold">Total GST Tax</td>
+                        <td>+{{currentUser.currency}} {{formatNumber(purchaseSummary.totalGst, 2)}} ({{formatNumber(purchase.tax_rate, 2)}} %)</td>
+                      </tr>
+                      <tr>
                         <td class="bold">Total Value With Tax</td>
-                        <td>{{currentUser.currency}} {{formatNumber(total, 2)}}</td>
+                        <td>{{currentUser.currency}} {{formatNumber(purchaseSummary.totalValueWithTax, 2)}}</td>
                       </tr>
                       <tr>
-                        <td class="bold">{{$t('OrderTax')}}</td>
-                        <td>
-                          <span>{{currentUser.currency}} {{purchase.TaxNet.toFixed(2)}} ({{formatNumber(purchase.tax_rate ,2)}} %)</span>
-                        </td>
+                        <td class="bold">Total WHT Tax</td>
+                        <td>+{{currentUser.currency}} {{formatNumber(purchaseSummary.totalWht, 2)}} ({{formatNumber(withholding_tax_rate, 2)}} %)</td>
                       </tr>
                       <tr>
-                        <td class="bold">I.Tax WithHold</td>
-                        <td>+{{currentUser.currency}} {{purchase.withholding_tax.toFixed(2)}} ({{formatNumber(withholding_tax_rate, 2)}} %)</td>
+                        <td class="bold">Invoice Total</td>
+                        <td>{{currentUser.currency}} {{formatNumber(purchaseSummary.invoiceTotal, 2)}}</td>
                       </tr>
                       <tr>
-                        <td class="bold">{{$t('Discount')}}</td>
-                        <td>{{currentUser.currency}} {{purchase.discount.toFixed(2)}}</td>
+                        <td class="bold">Order Discount</td>
+                        <td>-{{currentUser.currency}} {{formatNumber(purchase.discount, 2)}}</td>
                       </tr>
                       <tr>
                         <td class="bold">{{$t('Shipping')}}</td>
@@ -766,6 +780,30 @@ export default {
         const quantity = Number(detail.quantity);
         return total + (Number.isFinite(quantity) ? quantity : 0);
       }, 0);
+    },
+    purchaseSummary() {
+      const summary = (this.details || []).reduce((totals, detail) => {
+        if (!detail || detail.del === 1) return totals;
+        const quantity = Number(detail.quantity) || 0;
+        const rbPrice = Number(detail.company_rb_price !== undefined
+          ? detail.company_rb_price
+          : detail.Unit_cost) || 0;
+        totals.totalRpPrice += rbPrice * quantity;
+        totals.totalTradeDiscount += (Number(detail.DiscountNet) || 0) * quantity;
+        totals.netValueWithoutTax += (Number(detail.Net_cost) || 0) * quantity;
+        totals.totalGst += (Number(detail.taxe) || 0) * quantity;
+        totals.totalWht += (Number(detail.withholding_tax) || 0) * quantity;
+        return totals;
+      }, {
+        totalRpPrice: 0,
+        totalTradeDiscount: 0,
+        netValueWithoutTax: 0,
+        totalGst: 0,
+        totalWht: 0
+      });
+      summary.totalValueWithTax = summary.netValueWithoutTax + summary.totalGst;
+      summary.invoiceTotal = summary.totalValueWithTax + summary.totalWht;
+      return summary;
     },
     paymentDueDayOptions() {
       return [5, 10, 15, 20, 30].map(days => ({ value: days, text: `${days} days` }));

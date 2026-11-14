@@ -482,24 +482,44 @@
                     <td class="invoice-summary-value">{{ formatNumber(totalQuantity, 2) }}</td>
                   </tr>
                   <tr class="invoice-summary-row-alt">
-                    <td class="invoice-summary-label">Subtotal:</td>
-                    <td class="invoice-summary-value">{{ formatPriceWithSymbol(currentUser.currency, invoiceSubtotal, 2) }}</td>
+                    <td class="invoice-summary-label">Total RP Price:</td>
+                    <td class="invoice-summary-value">{{ formatPriceWithSymbol(currentUser.currency, purchaseSummary.totalRpPrice, 2) }}</td>
                   </tr>
                   <tr class="invoice-summary-row">
-                    <td class="invoice-summary-label">Order Tax:</td>
-                    <td class="invoice-summary-value">{{ formatPriceWithSymbol(currentUser.currency, purchase.TaxNet, 2) }}</td>
+                    <td class="invoice-summary-label">Total Trade Discount:</td>
+                    <td class="invoice-summary-discount-value">- {{ formatPriceWithSymbol(currentUser.currency, purchaseSummary.totalTradeDiscount, 2) }}</td>
                   </tr>
-                  <tr v-for="tax in tax_summary" :key="tax.code" class="invoice-summary-row-alt">
+                  <tr class="invoice-summary-row-alt">
+                    <td class="invoice-summary-label">Net Value Without Tax:</td>
+                    <td class="invoice-summary-value">{{ formatPriceWithSymbol(currentUser.currency, purchaseSummary.netValueWithoutTax, 2) }}</td>
+                  </tr>
+                  <tr class="invoice-summary-row">
+                    <td class="invoice-summary-label">Total GST Tax:</td>
+                    <td class="invoice-summary-value">{{ formatPriceWithSymbol(currentUser.currency, purchaseSummary.totalGst, 2) }}</td>
+                  </tr>
+                  <tr class="invoice-summary-row-alt">
+                    <td class="invoice-summary-label">Total Value With Tax:</td>
+                    <td class="invoice-summary-value">{{ formatPriceWithSymbol(currentUser.currency, purchaseSummary.totalValueWithTax, 2) }}</td>
+                  </tr>
+                  <tr class="invoice-summary-row">
+                    <td class="invoice-summary-label">Total WHT Tax:</td>
+                    <td class="invoice-summary-value">{{ formatPriceWithSymbol(currentUser.currency, purchaseSummary.totalWht, 2) }}</td>
+                  </tr>
+                  <tr v-for="tax in otherTaxSummary" :key="tax.code" class="invoice-summary-row-alt">
                     <td class="invoice-summary-label">{{ tax.name }} ({{ tax.code }}):</td>
                     <td class="invoice-summary-value">
                       {{ tax.behavior === 'deductive' ? '- ' : '' }}{{ formatPriceWithSymbol(currentUser.currency, tax.amount, 2) }}
                     </td>
                   </tr>
                   <tr class="invoice-summary-row-alt">
-                    <td class="invoice-summary-label">Discount:</td>
-                    <td class="invoice-summary-discount-value">- {{ formatPriceWithSymbol(currentUser.currency, purchase.discount, 2) }}</td>
+                    <td class="invoice-summary-label">Invoice Total:</td>
+                    <td class="invoice-summary-value">{{ formatPriceWithSymbol(currentUser.currency, invoiceSubtotal, 2) }}</td>
                   </tr>
                   <tr class="invoice-summary-row">
+                    <td class="invoice-summary-label">Order Discount:</td>
+                    <td class="invoice-summary-discount-value">- {{ formatPriceWithSymbol(currentUser.currency, purchase.discount, 2) }}</td>
+                  </tr>
+                  <tr class="invoice-summary-row-alt">
                     <td class="invoice-summary-label">Shipping:</td>
                     <td class="invoice-summary-value">{{ formatPriceWithSymbol(currentUser.currency, purchase.shipping, 2) }}</td>
                   </tr>
@@ -569,6 +589,28 @@ export default {
       } catch (e) {
         return 0;
       }
+    },
+    purchaseSummary() {
+      const details = Array.isArray(this.details) ? this.details : [];
+      const summary = details.reduce((totals, detail) => {
+        const quantity = Number(detail && detail.quantity) || 0;
+        totals.totalRpPrice += (Number(detail && detail.company_rb_price) || 0) * quantity;
+        totals.totalTradeDiscount += (Number(detail && detail.DiscountNet) || 0) * quantity;
+        totals.totalGst += Number(detail && detail.gst_tax) || 0;
+        totals.totalWht += Number(detail && detail.wht_tax) || 0;
+        return totals;
+      }, {
+        totalRpPrice: 0,
+        totalTradeDiscount: 0,
+        totalGst: 0,
+        totalWht: 0
+      });
+      summary.netValueWithoutTax = summary.totalRpPrice - summary.totalTradeDiscount;
+      summary.totalValueWithTax = summary.netValueWithoutTax + summary.totalGst;
+      return summary;
+    },
+    otherTaxSummary() {
+      return (this.tax_summary || []).filter(tax => !["GST", "WHT"].includes(String(tax.code || "").toUpperCase()));
     },
   },
   metaInfo: {

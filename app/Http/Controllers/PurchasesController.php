@@ -1354,6 +1354,7 @@ class PurchasesController extends BaseController
         $purchase_data['shipping'] = $purchase->shipping;
         $purchase_data['tax_rate'] = $purchase->tax_rate;
         $purchase_data['TaxNet'] = $purchase->TaxNet;
+        $purchase_data['withholding_tax'] = $purchase->withholding_tax ?? 0;
         $purchase_data['supplier_name'] = $purchase['provider']->name;
         $purchase_data['supplier_email'] = $purchase['provider']->email;
         $purchase_data['supplier_phone'] = $purchase['provider']->phone;
@@ -1414,7 +1415,7 @@ class PurchasesController extends BaseController
             if ($detail->discount_method == '2') {
                 $data['DiscountNet'] = $detail->discount;
             } else {
-                $data['DiscountNet'] = $detail->cost * $detail->discount / 100;
+                $data['DiscountNet'] = $data['company_rb_price'] * $detail->discount / 100;
             }
 
             $tax_cost = $detail->TaxNet * (($detail->cost - $data['DiscountNet']) / 100);
@@ -1633,7 +1634,7 @@ class PurchasesController extends BaseController
             if ($detail->discount_method == '2') {
                 $data['DiscountNet'] = number_format($detail->discount, 2, '.', '');
             } else {
-                $data['DiscountNet'] = number_format($detail->cost * $detail->discount / 100, 2, '.', '');
+                $data['DiscountNet'] = number_format((float) $data['company_rb_price'] * $detail->discount / 100, 2, '.', '');
             }
 
             $tax_cost = $detail->TaxNet * (($detail->cost - $data['DiscountNet']) / 100);
@@ -1777,7 +1778,7 @@ class PurchasesController extends BaseController
             if ($detail->discount_method == '2') {
                 $data['DiscountNet'] = number_format($detail->discount, 2, '.', '');
             } else {
-                $data['DiscountNet'] = number_format($detail->cost * $detail->discount / 100, 2, '.', '');
+                $data['DiscountNet'] = number_format((float) $data['company_rb_price'] * $detail->discount / 100, 2, '.', '');
             }
 
             $tax_cost = $detail->TaxNet * (($detail->cost - $data['DiscountNet']) / 100);
@@ -2089,17 +2090,17 @@ class PurchasesController extends BaseController
 
                 $data['is_imei'] = $detail['product']['is_imei'];
                 $data['imei_number'] = $detail->imei_number;
+                $data['Unit_cost'] = $detail->cost;
+                $data['company_rb_price'] = $detail->company_rb_price ?: $detail->cost;
+                $data['mrp_price'] = $detail->mrp_price ?: $detail->cost;
 
                 if ($detail->discount_method == '2') {
                     $data['DiscountNet'] = $detail->discount;
                 } else {
-                    $data['DiscountNet'] = $detail->cost * $detail->discount / 100;
+                    $data['DiscountNet'] = $data['company_rb_price'] * $detail->discount / 100;
                 }
 
                 $tax_cost = $detail->TaxNet * (($detail->cost - $data['DiscountNet']) / 100);
-                $data['Unit_cost'] = $detail->cost;
-                $data['company_rb_price'] = $detail->company_rb_price ?: $detail->cost;
-                $data['mrp_price'] = $detail->mrp_price ?: $detail->cost;
                 $data['withholding_tax'] = $detail->withholding_tax ?? 0;
                 $data['tax_percent'] = $detail->TaxNet;
                 $data['tax_method'] = $detail->tax_method;
