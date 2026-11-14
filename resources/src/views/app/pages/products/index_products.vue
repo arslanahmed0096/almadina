@@ -184,12 +184,12 @@
             </b-badge>
           </span>
           <span
-            v-else-if="props.column.field === 'cost'"
+            v-else-if="props.column.field === 'purchase_price'"
             :class="{'pre': props.row.type === 'Variable'}"
           >
             {{ props.row.type === 'Variable' 
-              ? formatPriceWithSymbol(currentUser && currentUser.currency ? currentUser.currency : '', firstLine(props.row.cost), 2)
-              : formatPriceWithSymbol(currentUser && currentUser.currency ? currentUser.currency : '', props.row.cost, 2) }}
+              ? formatPriceWithSymbol(currentUser && currentUser.currency ? currentUser.currency : '', firstLine(props.row.purchase_price), 2)
+              : formatPriceWithSymbol(currentUser && currentUser.currency ? currentUser.currency : '', props.row.purchase_price, 2) }}
           </span>
           <span
             v-else-if="props.column.field === 'price'"
@@ -198,6 +198,14 @@
             {{ props.row.type === 'Variable' 
               ? formatPriceWithSymbol(currentUser && currentUser.currency ? currentUser.currency : '', firstLine(props.row.price), 2)
               : formatPriceWithSymbol(currentUser && currentUser.currency ? currentUser.currency : '', props.row.price, 2) }}
+          </span>
+          <span
+            v-else-if="props.column.field === 'invoice_print_price'"
+            :class="{'pre': props.row.type === 'Variable'}"
+          >
+            {{ props.row.type === 'Variable'
+              ? formatPriceWithSymbol(currentUser && currentUser.currency ? currentUser.currency : '', firstLine(props.row.invoice_print_price), 2)
+              : formatPriceWithSymbol(currentUser && currentUser.currency ? currentUser.currency : '', props.row.invoice_print_price, 2) }}
           </span>
           <span
             v-else-if="props.column.field === 'fix_price'"
@@ -661,10 +669,11 @@ export default {
         { label: this.$t("Categorie"), field: "category", tdClass: "text-left pre", thClass: "text-left" }
       ];
       if (this.can("products_cost_view")) {
-        columns.push({ label: this.$t("Cost"), field: "cost", tdClass: "text-left pre", thClass: "text-left" });
+        columns.push({ label: "Invoice Price (Per Item)", field: "purchase_price", tdClass: "text-left pre", thClass: "text-left", sortable: false });
       }
       columns.push(
         { label: "Al-Madina Price", field: "price", tdClass: "text-left pre", thClass: "text-left" },
+        { label: "Fixed Price", field: "invoice_print_price", tdClass: "text-left pre", thClass: "text-left" },
         { label: "Regular Price", field: "fix_price", tdClass: "text-left pre", thClass: "text-left" },
         { label: this.$t("Unit"), field: "unit", tdClass: "text-left", thClass: "text-left" },
         { label: this.$t("Quantity"), field: "quantity", tdClass: "text-left", thClass: "text-left" },
@@ -681,10 +690,11 @@ export default {
         { label: this.$t("Categorie"), field: "categories_display" }
       ];
       if (this.can("products_cost_view")) {
-        columns.push({ label: this.$t("Cost"), field: "cost" });
+        columns.push({ label: "Invoice Price (Per Item)", field: "purchase_price" });
       }
       columns.push(
         { label: "Al-Madina Price", field: "price" },
+        { label: "Fixed Price", field: "invoice_print_price" },
         { label: "Regular Price", field: "fix_price" },
         { label: this.$t("Unit"), field: "unit" },
         { label: this.$t("Quantity"), field: "quantity" },
@@ -861,22 +871,23 @@ export default {
         this.$t("Code"),
         this.$t("Categorie")
       ];
-      if (this.can("products_cost_view")) headers.push(this.$t("Cost"));
-      headers.push(this.$t("Price"), "Regular Price", this.$t("Unit"), this.$t("Quantity"), this.$t("Status") || "Status");
+      if (this.can("products_cost_view")) headers.push("Invoice Price (Per Item)");
+      headers.push("Al-Madina Price", "Fixed Price", "Regular Price", this.$t("Unit"), this.$t("Quantity"), this.$t("Status") || "Status");
 
       const products_pdf = JSON.parse(JSON.stringify(this.products));
       products_pdf.forEach(item => {
         item.name  = String(item.name || '').replace(/\r?\n/g, '\n');
-        item.cost  = String(item.cost || '').replace(/\r?\n/g, '\n');
+        item.purchase_price = String(item.purchase_price || '').replace(/\r?\n/g, '\n');
         item.price = String(item.price || '').replace(/\r?\n/g, '\n');
+        item.invoice_print_price = String(item.invoice_print_price || '').replace(/\r?\n/g, '\n');
         item.fix_price = String(item.fix_price || '').replace(/\r?\n/g, '\n');
         item.categories_display = String(item.categories_display || '').replace(/\r?\n/g, '\n');
       });
 
       const body = products_pdf.map(p => {
         const row = [p.type, p.name, p.code, p.categories_display || p.category];
-        if (this.can("products_cost_view")) row.push(p.cost);
-        row.push(p.price, p.fix_price, p.unit, p.quantity, p.status);
+        if (this.can("products_cost_view")) row.push(p.purchase_price);
+        row.push(p.price, p.invoice_print_price, p.fix_price, p.unit, p.quantity, p.status);
         return row;
       });
 
@@ -895,8 +906,8 @@ export default {
         headStyles: { font: 'Vazirmatn', fontStyle: 'bold', fillColor: [63,81,181], textColor: 255 },
         alternateRowStyles: { fillColor: [245,247,250] },
         columnStyles: this.can("products_cost_view")
-          ? { 4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' }, 8: { halign: 'right' } }
-          : { 4: { halign: 'right' }, 5: { halign: 'right' }, 7: { halign: 'right' } },
+          ? { 4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' }, 7: { halign: 'right' }, 9: { halign: 'right' } }
+          : { 4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' }, 8: { halign: 'right' } },
         didDrawPage: (d) => {
           const pageW = pdf.internal.pageSize.getWidth();
           const pageH = pdf.internal.pageSize.getHeight();

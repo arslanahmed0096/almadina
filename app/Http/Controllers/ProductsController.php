@@ -74,7 +74,7 @@ class ProductsController extends BaseController
             $dir = 'asc';
         }
 
-        $allowedSort = ['id', 'name', 'category_id', 'brand_id', 'code', 'sub_category_id', 'fix_price', 'is_active'];
+        $allowedSort = ['id', 'name', 'category_id', 'brand_id', 'code', 'sub_category_id', 'invoice_print_price', 'fix_price', 'price', 'is_active'];
         if (! in_array($order, $allowedSort, true)) {
             $order = 'name';
         }
@@ -178,6 +178,7 @@ class ProductsController extends BaseController
             ->get();
 
         $data = [];
+        $pricingService = app(\App\Services\ProductMarginPricingService::class);
         foreach ($products as $product) {
             $item = [];
 
@@ -200,8 +201,7 @@ class ProductsController extends BaseController
                 $item['fix_price'] = (float) $product->fix_price;
                 $item['wholesale_price'] = (float) $product->wholesale_price;
                 $item['min_price'] = (float) $product->min_price;
-                $purchasePricing = app(\App\Services\ProductMarginPricingService::class)
-                    ->effectivePurchasePrice($product);
+                $purchasePricing = $pricingService->effectivePurchasePrice($product);
                 $item['purchase_price'] = $purchasePricing['price'];
                 $item['purchase_price_source'] = $purchasePricing['source'];
                 $item['pricing_margins'] = $product->pricing_margins ?: [];
@@ -212,6 +212,12 @@ class ProductsController extends BaseController
                 $item['target_further_discounts'] = $targetPricingDiscounts;
             } else {
                 $item['fix_price'] = number_format((float) $product->fix_price, 2, '.', '');
+                $item['invoice_print_price'] = number_format((float) $product->invoice_print_price, 2, '.', '');
+                if ($exposeCost) {
+                    $purchasePricing = $pricingService->effectivePurchasePrice($product);
+                    $item['purchase_price'] = number_format((float) $purchasePricing['price'], 2, '.', '');
+                    $item['purchase_price_source'] = $purchasePricing['source'];
+                }
             }
             $item['created_at'] = $product->created_at ? $product->created_at->toIso8601String() : null;
             $item['pricing_updated_at'] = $product->updated_at ? $product->updated_at->toIso8601String() : null;
@@ -322,11 +328,17 @@ class ProductsController extends BaseController
                     $item['cost'] = $variants
                         ->map(fn ($v) => number_format((float) $v->cost, 2, '.', ''))
                         ->implode("\n");
+                    $item['purchase_price'] = $variants
+                        ->map(fn ($v) => number_format((float) $pricingService->effectivePurchasePrice($v)['price'], 2, '.', ''))
+                        ->implode("\n");
                 }
                 $item['price'] = $variants
                     ->map(fn ($v) => number_format((float) $v->price, 2, '.', ''))
                     ->implode("\n");
                 if (! $isPricingRequest) {
+                    $item['invoice_print_price'] = $variants
+                        ->map(fn ($v) => number_format((float) $v->invoice_print_price, 2, '.', ''))
+                        ->implode("\n");
                     $item['fix_price'] = $variants
                         ->map(fn ($v) => number_format((float) $v->fix_price, 2, '.', ''))
                         ->implode("\n");
@@ -352,6 +364,7 @@ class ProductsController extends BaseController
                 $item['name'] = $product->name; // PLAIN TEXT
                 if ($exposeCost) {
                     $item['cost'] = '----';
+                    $item['purchase_price'] = '----';
                 }
                 $item['quantity'] = '----';
                 $item['unit'] = '----';

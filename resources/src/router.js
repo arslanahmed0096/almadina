@@ -1004,6 +1004,15 @@ const baseRoutes = [
                                 "./views/app/pages/purchases/supplier_payments"
                             )
                     },
+                    {
+                        name: "purchase_discounts",
+                        path: "discounts",
+                        component: () =>
+                            import(
+                                /* webpackChunkName: "purchase_discounts" */
+                                "./views/app/pages/purchases/purchase_discounts"
+                            )
+                    },
 
                     {
                         name: "import_purchases",

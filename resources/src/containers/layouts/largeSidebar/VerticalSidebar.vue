@@ -397,7 +397,9 @@
               currentUserPermissions.includes('purchase_orders_view') ||
               currentUserPermissions.includes('purchase_orders_create') ||
               currentUserPermissions.includes('gate_passes_view') ||
-              currentUserPermissions.includes('gate_passes_create')
+              currentUserPermissions.includes('gate_passes_create') ||
+              currentUserPermissions.includes('purchase_discounts.view') ||
+              currentUserPermissions.includes('purchase_discounts.create')
             )"
             :class="{ active: isActiveRoute('purchases') || isActiveRoute('procurement'), 'has-submenu': true, open: openMenus.includes('purchases') }"
             class="nav-item"
@@ -424,6 +426,12 @@
                 <router-link to="/app/purchases/list" class="submenu-link">
                   <lucide-icon class="submenu-icon" name="files" />
                   <span>{{ $t('ListPurchases') }}</span>
+                </router-link>
+              </li>
+              <li class="submenu-item" v-if="currentUserPermissions && currentUserPermissions.includes('purchase_discounts.view')">
+                <router-link to="/app/purchases/discounts" class="submenu-link">
+                  <lucide-icon class="submenu-icon" name="percent" />
+                  <span>Discounts</span>
                 </router-link>
               </li>
               <li class="submenu-item" v-if="currentUserPermissions && (currentUserPermissions.includes('payment_purchases_view') || currentUserPermissions.includes('payment_purchases_add'))">

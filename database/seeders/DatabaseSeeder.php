@@ -28,6 +28,7 @@ class DatabaseSeeder extends Seeder
             Warehouse::class,
             UserWarehouse::class,
             StoreSettingSeeder::class,
+            PurchaseDiscountSeeder::class,
         ]);
 
     }

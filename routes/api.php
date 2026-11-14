@@ -17,6 +17,7 @@ use App\Http\Controllers\Procurement\GatePassController;
 use App\Http\Controllers\Procurement\ProcurementReportController;
 use App\Http\Controllers\Procurement\PurchaseOrderController;
 use App\Http\Controllers\Procurement\SupplierInvoiceController;
+use App\Http\Controllers\PurchaseDiscountController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -745,6 +746,7 @@ Route::middleware(['auth:api', 'Is_Active', 'allowed.ips', 'request.safety', 'to
     // ------------------------------------------------------------------\\
 
     Route::get('purchase-gate-passes/lookup', 'PurchasesController@gatePassLookup');
+    Route::apiResource('purchase-discounts', PurchaseDiscountController::class);
     Route::resource('purchases', 'PurchasesController');
 
     // Procurement: physical receipt is posted by Gate Pass; linked Purchases are financial-only.

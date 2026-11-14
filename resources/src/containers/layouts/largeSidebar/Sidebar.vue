@@ -148,7 +148,9 @@
                         || currentUserPermissions.includes('purchase_orders_view')
                         || currentUserPermissions.includes('purchase_orders_create')
                         || currentUserPermissions.includes('gate_passes_view')
-                        || currentUserPermissions.includes('gate_passes_create'))"
+                        || currentUserPermissions.includes('gate_passes_create')
+                        || currentUserPermissions.includes('purchase_discounts.view')
+                        || currentUserPermissions.includes('purchase_discounts.create'))"
             @mouseenter="toggleSubMenu"
             class="nav-item"
             :class="{ active: selectedParentMenu == 'purchases' }"
@@ -1099,6 +1101,13 @@
             <router-link class to="/app/purchases/list">
               <lucide-icon class="nav-icon" name="files" />
               <span class="item-name">{{$t('ListPurchases')}}</span>
+            </router-link>
+          </li>
+
+          <li class="nav-item" v-if="currentUserPermissions && currentUserPermissions.includes('purchase_discounts.view')">
+            <router-link class to="/app/purchases/discounts">
+              <lucide-icon class="nav-icon" name="percent" />
+              <span class="item-name">Discounts</span>
             </router-link>
           </li>
 
