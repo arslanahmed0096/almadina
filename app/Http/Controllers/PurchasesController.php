@@ -460,7 +460,6 @@ class PurchasesController extends BaseController
             }
             PurchaseDetail::insert($orderDetails);
             app(\App\Services\SupplierCreditTermsService::class)->syncPurchase($order);
-            app(\App\Services\ProductMarginPricingService::class)->syncPurchase($order);
             if ($purchaseOrder) {
                 app(\App\Services\Procurement\PurchaseOrderProgressService::class)
                     ->refreshStatus($purchaseOrder->fresh());
@@ -470,6 +469,11 @@ class PurchasesController extends BaseController
             // columns remain dual-written for backward-compatible reports/PDFs.
             app(\App\Services\Tax\TransactionTaxService::class)
                 ->snapshotPurchase($order, array_values($data), $request->user('api'));
+
+            // The managed-tax snapshot finalizes PurchaseDetail.total. Reprice
+            // afterwards so every saved pricing tier uses the final invoice
+            // price per item without requiring the user to click the % action.
+            app(\App\Services\ProductMarginPricingService::class)->syncPurchase($order->fresh());
 
             // Pharmacy: link captured batches to the freshly inserted PurchaseDetail rows.
             // Re-fetch in id order so position matches the input array order.
@@ -922,7 +926,6 @@ class PurchasesController extends BaseController
                     'payment_statut' => $payment_statut,
                 ]);
                 app(\App\Services\SupplierCreditTermsService::class)->syncPurchase($current_Purchase);
-                app(\App\Services\ProductMarginPricingService::class)->syncPurchase($current_Purchase);
 
                 // Pharmacy: re-apply batches to the now-persisted PurchaseDetail rows.
                 if ($batchService->isSupported() && $current_Purchase->statut == 'received') {
@@ -953,6 +956,9 @@ class PurchasesController extends BaseController
 
                 app(\App\Services\Tax\TransactionTaxService::class)
                     ->snapshotPurchase($current_Purchase->fresh(), array_values($new_purchase_details), $request->user('api'));
+
+                app(\App\Services\ProductMarginPricingService::class)
+                    ->syncPurchase($current_Purchase->fresh());
             }
 
         }, 10);
@@ -1032,10 +1038,12 @@ class PurchasesController extends BaseController
                 'payment_statut' => $paymentStatus,
             ]);
             app(\App\Services\SupplierCreditTermsService::class)->syncPurchase($purchase);
-            app(\App\Services\ProductMarginPricingService::class)->syncPurchase($purchase);
 
             app(\App\Services\Tax\TransactionTaxService::class)
                 ->snapshotPurchase($purchase->fresh(), array_values($request->input('details', [])), $request->user('api'));
+
+            app(\App\Services\ProductMarginPricingService::class)
+                ->syncPurchase($purchase->fresh());
         }, 10);
 
         return response()->json(['success' => true, 'message' => 'Purchase Updated !!']);

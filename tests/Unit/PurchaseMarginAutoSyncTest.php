@@ -153,4 +153,39 @@ class PurchaseMarginAutoSyncTest extends TestCase
         $this->assertSame(50.0, $effective['price']);
         $this->assertSame('invoice', $effective['source']);
     }
+
+    public function test_sync_uses_the_finalized_invoice_line_total_for_every_pricing_tier(): void
+    {
+        $product = Product::create([
+            'name' => 'Tax-adjusted product',
+            'type' => 'is_single',
+            'purchase_price' => 100,
+            'pricing_margins' => [
+                ['type' => 'fixed', 'value' => 10],
+                ['type' => 'fixed', 'value' => 20],
+                ['type' => 'fixed', 'value' => 30],
+                ['type' => 'fixed', 'value' => 40],
+            ],
+        ]);
+        $purchase = Purchase::create(['GrandTotal' => 250]);
+        $detail = PurchaseDetail::create([
+            'purchase_id' => $purchase->id,
+            'product_id' => $product->id,
+            'quantity' => 2,
+            'cost' => 100,
+            // This is the provisional subtotal saved before managed taxes.
+            'total' => 200,
+        ]);
+
+        // TransactionTaxService finalizes the invoice line before pricing sync.
+        $detail->update(['total' => 250]);
+        (new ProductMarginPricingService)->syncPurchase($purchase->fresh());
+
+        $product->refresh();
+        $this->assertSame(125.0, $product->purchase_price);
+        $this->assertSame(135.0, $product->min_price);
+        $this->assertSame(145.0, $product->wholesale_price);
+        $this->assertSame(155.0, $product->price);
+        $this->assertSame(165.0, $product->fix_price);
+    }
 }

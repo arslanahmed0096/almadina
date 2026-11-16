@@ -153,11 +153,23 @@
                     </b-form-group>
              </validation-provider>
              </b-col>
+              <!-- warehouse -->
               <b-col lg="4" md="4" sm="12" class="mb-3">
-                <b-form-group :label="selectedSupplier && selectedSupplier.credit_terms_mode === 'category' ? 'Fallback Credit Days' : 'Allowed Credit Days *'">
-                  <b-form-select v-model.number="purchase.payment_due_days" :options="paymentDueDayOptions" :disabled="selectedSupplier && selectedSupplier.credit_terms_mode === 'category'" />
-                  <small class="text-muted">{{ selectedSupplierTermsText }} Invoice due date: {{ paymentDueDatePreview }}</small>
-                </b-form-group>
+                <validation-provider name="warehouse" :rules="{ required: true}">
+                  <b-form-group slot-scope="{ valid, errors }" :label="$t('warehouse') + ' ' + '*'">
+                    <v-select
+                      :class="{'is-invalid': !!errors.length}"
+                      :state="errors[0] ? false : (valid ? true : null)"
+                      :disabled="details.length > 0"
+                      @input="Selected_Warehouse"
+                      v-model="purchase.warehouse_id"
+                      :reduce="label => label.value"
+                      :placeholder="$t('Choose_Warehouse')"
+                      :options="warehouses.map(warehouses => ({label: warehouses.name, value: warehouses.id}))"
+                    />
+                    <b-form-invalid-feedback>{{ errors[0] }}</b-form-invalid-feedback>
+                  </b-form-group>
+                </validation-provider>
               </b-col>
              <!-- Supplier -->
                 <b-col lg="4" md="4" sm="12" class="mb-3">
@@ -192,23 +204,11 @@
                   </validation-provider>
                 </b-col>
 
-                <!-- warehouse -->
                 <b-col lg="4" md="4" sm="12" class="mb-3">
-                  <validation-provider name="warehouse" :rules="{ required: true}">
-                    <b-form-group slot-scope="{ valid, errors }" :label="$t('warehouse') + ' ' + '*'">
-                      <v-select
-                        :class="{'is-invalid': !!errors.length}"
-                        :state="errors[0] ? false : (valid ? true : null)"
-                        :disabled="details.length > 0"
-                        @input="Selected_Warehouse"
-                        v-model="purchase.warehouse_id"
-                        :reduce="label => label.value"
-                        :placeholder="$t('Choose_Warehouse')"
-                        :options="warehouses.map(warehouses => ({label: warehouses.name, value: warehouses.id}))"
-                      />
-                      <b-form-invalid-feedback>{{ errors[0] }}</b-form-invalid-feedback>
-                    </b-form-group>
-                  </validation-provider>
+                  <b-form-group :label="selectedSupplier && selectedSupplier.credit_terms_mode === 'category' ? 'Fallback Credit Days' : 'Allowed Credit Days *'">
+                    <b-form-select v-model.number="purchase.payment_due_days" :options="paymentDueDayOptions" :disabled="selectedSupplier && selectedSupplier.credit_terms_mode === 'category'" />
+                    <small class="text-muted">{{ selectedSupplierTermsText }} Invoice due date: {{ paymentDueDatePreview }}</small>
+                  </b-form-group>
                 </b-col>
 
                 <!-- Supplier invoice references -->
@@ -353,6 +353,8 @@
                                 type="number"
                                 class="form-control purchase-quantity-input"
                                 @input="Verified_Qty(detail, detail.detail_id)"
+                                @blur="Finalize_Qty(detail, detail.detail_id)"
+                                @focus="$event.target.select()"
                                 :min="1"
                                 :max="isGatePassDetail(detail) && !canAddInvoiceExcess ? detail.gate_pass_max_quantity : null"
                                 step="any"
@@ -1652,9 +1654,18 @@ export default {
     Verified_Qty(detail, id) {
       for (var i = 0; i < this.details.length; i++) {
         if (this.details[i].detail_id == id) {
+          // Keep the field empty while the user replaces the existing value.
+          // The minimum quantity is enforced when the field loses focus.
+          if (detail.quantity === '' || detail.quantity === null) {
+            this.Calcul_Total();
+            this.$forceUpdate();
+            return;
+          }
           let quantity = Number(detail.quantity);
           if (!Number.isFinite(quantity) || quantity <= 0) {
-            quantity = 1;
+            this.Calcul_Total();
+            this.$forceUpdate();
+            return;
           }
           if (this.isGatePassDetail(detail) && !this.canAddInvoiceExcess && quantity > Number(detail.gate_pass_max_quantity)) {
             quantity = Number(detail.gate_pass_max_quantity);
@@ -1666,6 +1677,14 @@ export default {
           return;
         }
       }
+    },
+
+    Finalize_Qty(detail, id) {
+      const quantity = Number(detail.quantity);
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        this.$set(detail, 'quantity', 1);
+      }
+      this.Verified_Qty(detail, id);
     },
 
     //-----------------------------------increment QTY ------------------------------\\
