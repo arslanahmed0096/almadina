@@ -650,6 +650,17 @@
                 </div>
 
                 <b-col md="12">
+                  <b-form-group :label="$t('Note')">
+                    <textarea
+                      v-model="purchase.notes"
+                      rows="4"
+                      class="form-control"
+                      :placeholder="$t('Afewwords')"
+                    ></textarea>
+                  </b-form-group>
+                </b-col>
+
+                <b-col md="12">
                   <b-form-group>
                     <b-button
                       variant="primary"
